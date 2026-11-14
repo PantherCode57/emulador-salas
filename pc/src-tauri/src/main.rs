@@ -3,11 +3,20 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::RandomState;
 use std::fs;
+use std::hash::{BuildHasher, Hasher};
+use std::io::{BufRead, BufReader};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
+
+/// Para que los programas de consola (sala y enlace) no abran una ventana negra.
+#[cfg(windows)]
+const SIN_VENTANA: u32 = 0x0800_0000;
 
 /// Lo que guardamos entre sesiones (en %APPDATA%\com.panthercode.pokemulador\config.json).
 #[derive(Serialize, Deserialize, Clone)]
@@ -52,7 +61,36 @@ struct Library {
 
 struct AppData {
     config: Mutex<Config>,
+    sala: Mutex<Option<Sala>>,
 }
+
+/// Sala online abierta: el código y los procesos que la mantienen (servidor de Azahar y enlace).
+struct Sala {
+    codigo: String,
+    anfitrion: bool,
+    procesos: Vec<Child>,
+}
+
+impl Sala {
+    fn cerrar(&mut self) {
+        for proceso in &mut self.procesos {
+            let _ = proceso.kill();
+            let _ = proceso.wait();
+        }
+        self.procesos.clear();
+    }
+}
+
+#[derive(Serialize)]
+struct EstadoSala {
+    codigo: String,
+    anfitrion: bool,
+}
+
+const PUERTO_SALA: u16 = 24872;
+const LETRAS_CODIGO: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+/// Clave de Tailscale metida al compilar (variable POKEMULADOR_TS_KEY). Nunca va en el repositorio.
+const CLAVE_COMPILADA: Option<&str> = option_env!("POKEMULADOR_TS_KEY");
 
 fn config_path(app: &AppHandle) -> PathBuf {
     app.path()
@@ -284,13 +322,214 @@ fn launch(app: AppHandle, data: State<AppData>, path: String) -> Result<(), Stri
     Ok(())
 }
 
+// ---------- Salas online ----------
+
+fn clave_tailscale(app: &AppHandle) -> Option<String> {
+    // Primero un archivo junto a la configuración (para cambiarla sin recompilar), luego la compilada.
+    let archivo = config_path(app).with_file_name("tailscale.txt");
+    if let Ok(texto) = fs::read_to_string(archivo) {
+        let texto = texto.trim().to_string();
+        if !texto.is_empty() {
+            return Some(texto);
+        }
+    }
+    CLAVE_COMPILADA.map(|c| c.trim().to_string()).filter(|c| !c.is_empty())
+}
+
+fn nuevo_codigo() -> String {
+    let mut semilla = RandomState::new().build_hasher();
+    semilla.write_u128(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default(),
+    );
+    let mut x = semilla.finish() | 1;
+    (0..6)
+        .map(|_| {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            LETRAS_CODIGO[(x % LETRAS_CODIGO.len() as u64) as usize] as char
+        })
+        .collect()
+}
+
+fn codigo_valido(codigo: &str) -> bool {
+    codigo.len() == 6 && codigo.bytes().all(|b| b.is_ascii_alphanumeric())
+}
+
+/// Deja escrita en Azahar la dirección de la sala (127.0.0.1:24872) para "Conectar directamente".
+fn preparar_azahar(emuladores: &Path) {
+    let ini = emuladores
+        .join("Azahar")
+        .join("user")
+        .join("config")
+        .join("qt-config.ini");
+    let texto = fs::read_to_string(&ini).unwrap_or_default();
+    let nuestras = [
+        "Multiplayer\\ip\\default=false".to_string(),
+        "Multiplayer\\ip=127.0.0.1".to_string(),
+        "Multiplayer\\port\\default=false".to_string(),
+        format!("Multiplayer\\port={PUERTO_SALA}"),
+    ];
+    let mut lineas: Vec<String> = texto
+        .lines()
+        .filter(|l| {
+            !(l.starts_with("Multiplayer\\ip=")
+                || l.starts_with("Multiplayer\\ip\\default=")
+                || l.starts_with("Multiplayer\\port=")
+                || l.starts_with("Multiplayer\\port\\default="))
+        })
+        .map(String::from)
+        .collect();
+    match lineas.iter().position(|l| l.trim() == "[UI]") {
+        Some(i) => {
+            for (n, linea) in nuestras.iter().enumerate() {
+                lineas.insert(i + 1 + n, linea.clone());
+            }
+        }
+        None => {
+            lineas.push("[UI]".to_string());
+            lineas.extend(nuestras.iter().cloned());
+        }
+    }
+    if let Some(carpeta) = ini.parent() {
+        let _ = fs::create_dir_all(carpeta);
+    }
+    let _ = fs::write(&ini, lineas.join("\n") + "\n");
+}
+
+fn sin_ventana(command: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    command.creation_flags(SIN_VENTANA);
+    command
+}
+
+/// Arranca el enlace de Tailscale y reenvía cada línea de estado a la ventana ("sala-estado").
+fn arrancar_enlace(app: &AppHandle, modo: &str, codigo: &str, clave: &str) -> Result<Child, String> {
+    let exe = emulators_dir(app).join("Enlace").join("enlace.exe");
+    let mut command = Command::new(exe);
+    sin_ventana(&mut command)
+        .arg(modo)
+        .arg("--codigo")
+        .arg(codigo)
+        .arg("--puerto")
+        .arg(PUERTO_SALA.to_string())
+        .env("POKEMULADOR_TS_KEY", clave)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let mut hijo = command
+        .spawn()
+        .map_err(|e| format!("No se pudo arrancar el enlace online: {e}"))?;
+    let salida = hijo.stdout.take();
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        if let Some(salida) = salida {
+            for linea in BufReader::new(salida).lines().map_while(Result::ok) {
+                if let Ok(valor) = serde_json::from_str::<serde_json::Value>(&linea) {
+                    let _ = handle.emit("sala-estado", valor);
+                }
+            }
+        }
+        let _ = handle.emit("sala-cerrada", ());
+    });
+    Ok(hijo)
+}
+
+fn abrir_sala(app: &AppHandle, data: &AppData, codigo: String, anfitrion: bool) -> Result<EstadoSala, String> {
+    let clave = clave_tailscale(app)
+        .ok_or("Esta versión de Pokemulador no tiene la clave de Tailscale para jugar online.")?;
+    let emuladores = emulators_dir(app);
+
+    let mut sala = data.sala.lock().unwrap();
+    if let Some(anterior) = sala.as_mut() {
+        anterior.cerrar();
+    }
+    *sala = None;
+
+    preparar_azahar(&emuladores);
+    let mut procesos = Vec::new();
+    if anfitrion {
+        let dir = emuladores.join("Azahar");
+        let mut servidor = Command::new(dir.join("azahar-room.exe"));
+        sin_ventana(&mut servidor)
+            .current_dir(&dir)
+            .arg("--room-name")
+            .arg(format!("Pokemulador {codigo}"))
+            .arg("--port")
+            .arg(PUERTO_SALA.to_string())
+            .arg("--password")
+            .arg(&codigo)
+            .arg("--max_members")
+            .arg("4")
+            .arg("--preferred-app")
+            .arg("Pokemon")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        procesos.push(
+            servidor
+                .spawn()
+                .map_err(|e| format!("No se pudo abrir el servidor de la sala: {e}"))?,
+        );
+    }
+    match arrancar_enlace(app, if anfitrion { "host" } else { "unirse" }, &codigo, &clave) {
+        Ok(enlace) => procesos.push(enlace),
+        Err(e) => {
+            for mut p in procesos {
+                let _ = p.kill();
+            }
+            return Err(e);
+        }
+    }
+    *sala = Some(Sala {
+        codigo: codigo.clone(),
+        anfitrion,
+        procesos,
+    });
+    Ok(EstadoSala { codigo, anfitrion })
+}
+
+#[tauri::command]
+fn crear_sala(app: AppHandle, data: State<AppData>) -> Result<EstadoSala, String> {
+    abrir_sala(&app, &data, nuevo_codigo(), true)
+}
+
+#[tauri::command]
+fn unirse_sala(app: AppHandle, data: State<AppData>, codigo: String) -> Result<EstadoSala, String> {
+    let codigo = codigo.trim().to_uppercase();
+    if !codigo_valido(&codigo) {
+        return Err("El código tiene que tener 6 letras o números.".into());
+    }
+    abrir_sala(&app, &data, codigo, false)
+}
+
+#[tauri::command]
+fn salir_sala(data: State<AppData>) {
+    if let Some(mut sala) = data.sala.lock().unwrap().take() {
+        sala.cerrar();
+    }
+}
+
+#[tauri::command]
+fn estado_sala(app: AppHandle, data: State<AppData>) -> serde_json::Value {
+    let sala = data.sala.lock().unwrap();
+    serde_json::json!({
+        "clave": clave_tailscale(&app).is_some(),
+        "sala": sala.as_ref().map(|s| EstadoSala { codigo: s.codigo.clone(), anfitrion: s.anfitrion }),
+    })
+}
+
 fn main() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let config = load_config(app.handle());
             app.manage(AppData {
                 config: Mutex::new(config),
+                sala: Mutex::new(None),
             });
             Ok(())
         })
@@ -300,8 +539,23 @@ fn main() {
             toggle_favorite,
             set_fullscreen,
             open_folder,
-            launch
+            launch,
+            crear_sala,
+            unirse_sala,
+            salir_sala,
+            estado_sala
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("no se pudo iniciar Pokemulador");
+
+    app.run(|handle, event| {
+        // Al cerrar Pokemulador cerramos también la sala, si había una abierta.
+        if let RunEvent::Exit = event {
+            if let Some(data) = handle.try_state::<AppData>() {
+                if let Some(mut sala) = data.sala.lock().unwrap().take() {
+                    sala.cerrar();
+                }
+            }
+        }
+    });
 }

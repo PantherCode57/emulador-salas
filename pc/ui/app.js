@@ -17,7 +17,13 @@ const ICONO_PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14
 const tauri = window.__TAURI__ || crearSimulacion();
 const invoke = tauri.core.invoke;
 
-const estado = { biblioteca: null, vista: 'inicio', sistema: null, busqueda: '' };
+const estado = {
+  biblioteca: null,
+  vista: 'inicio',
+  sistema: null,
+  busqueda: '',
+  online: { clave: false, sala: null, estado: null, error: null, amigos: 0, ruta: null },
+};
 const pantalla = document.getElementById('pantalla');
 const titulo = document.getElementById('titulo');
 const buscar = document.getElementById('buscar');
@@ -154,15 +160,66 @@ function vistaBuscar() {
   return `<h2>Resultados para «${esc(estado.busqueda)}»</h2>${lista(indices, true)}`;
 }
 
+const TEXTO_ESTADO = {
+  conectando: 'Conectando con Tailscale…',
+  listo: 'Sala lista. Pásale el código a tu amigo.',
+  buscando: 'Buscando la sala de tu amigo…',
+  conectado: 'Conectado a la sala de tu amigo.',
+};
+
+function casillasCodigo(codigo) {
+  return [...codigo.padEnd(6, '·')].map((c) => `<span class="${c === '·' ? '' : 'lleno'}">${esc(c)}</span>`).join('');
+}
+
 function vistaOnline() {
-  const casillas = '<span>·</span>'.repeat(6);
-  return `<span class="etiqueta-pronto">Próximamente</span>
-    <h2>Tu sala</h2>
-    <div class="codigo">${casillas}</div>
-    <p>Muy pronto podrás crear una sala, pasarle el código a tus amigos y jugar juntos aunque estéis en redes distintas. Servirá también para jugar del PC contra el móvil.</p>
-    <div class="separador"></div>
-    <h2>Unirme con código</h2>
-    <div class="codigo">${casillas}</div>`;
+  const online = estado.online;
+  if (!online.clave) {
+    return `<div class="alerta">Esta versión de Pokemulador no tiene la clave de Tailscale, así que no puede jugar online.</div>`;
+  }
+
+  if (!online.sala) {
+    return `<p class="suave">De momento, las salas son para juegos de 3DS.</p>
+      <div class="ajuste">
+        <h2>Crear una sala</h2>
+        <p>Pokemulador te dará un código de 6 letras para que se lo pases a tus amigos.</p>
+        <button class="boton" data-accion="crear-sala">Crear sala</button>
+      </div>
+      <div class="ajuste">
+        <h2>Unirme con código</h2>
+        <div class="fila-botones">
+          <input id="codigo-unirse" class="entrada-codigo" maxlength="6" placeholder="K7P2QX" autocomplete="off" aria-label="Código de sala">
+          <button class="boton" data-accion="unirse-sala">Entrar</button>
+        </div>
+        <p id="error-codigo" class="error" hidden></p>
+      </div>
+      ${online.error ? `<div class="alerta">${esc(online.error)}</div>` : ''}`;
+  }
+
+  const sala = online.sala;
+  const textoEstado = online.estado === 'error' ? online.error : (TEXTO_ESTADO[online.estado] || 'Preparando la sala…');
+  let detalle = '';
+  if (sala.anfitrion && online.amigos > 0) detalle = online.amigos === 1 ? '1 amigo conectado' : `${online.amigos} amigos conectados`;
+  if (online.ruta) detalle += `${detalle ? ' · ' : ''}conexión ${online.ruta === 'directa' ? 'directa' : 'por repetidor'}`;
+  const listo = online.estado === 'listo' || online.estado === 'conectado';
+
+  return `<h2>${sala.anfitrion ? 'Tu sala' : 'Sala de tu amigo'}</h2>
+    <div class="codigo">${casillasCodigo(sala.codigo)}</div>
+    <p class="${online.estado === 'error' ? 'error' : ''}"><strong>${esc(textoEstado)}</strong></p>
+    ${detalle ? `<p class="suave">${esc(detalle)}</p>` : ''}
+    <div class="fila-botones">
+      ${sala.anfitrion ? '<button class="boton sec" data-accion="copiar-codigo">Copiar código</button>' : ''}
+      <button class="boton sec" data-accion="salir-sala">Salir de la sala</button>
+    </div>
+    ${listo ? `<div class="ajuste" style="margin-top:18px">
+      <h2>Cómo entrar desde el juego</h2>
+      <ol class="pasos">
+        <li>Abre tu juego de 3DS desde Pokemulador${sala.anfitrion ? '' : ' (tu amigo también tiene que estar en la sala)'}.</li>
+        <li>En la ventana de Azahar, ve a <strong>Multijugador › Conectar directamente a una sala</strong>.</li>
+        <li>La dirección ya está puesta. En <strong>Contraseña</strong> escribe <strong>${esc(sala.codigo)}</strong> y pulsa Conectar.</li>
+        <li>En el juego, usa la comunicación local (Festival Plaza, PSS…) para intercambiar o combatir.</li>
+      </ol>
+      <p class="suave">Cada jugador necesita un nombre distinto en Azahar: Emulación › Configurar › Sistema › Nombre de usuario.</p>
+    </div>` : ''}`;
 }
 
 function vistaAjustes() {
@@ -221,6 +278,9 @@ function pintar() {
 
 async function cargar() {
   estado.biblioteca = await invoke('library');
+  const online = await invoke('estado_sala');
+  estado.online.clave = online.clave;
+  estado.online.sala = online.sala;
   pintar();
 }
 
@@ -265,8 +325,74 @@ pantalla.addEventListener('click', (evento) => {
     case 'elegir-carpeta': elegirCarpeta(); break;
     case 'reescanear': cargar().then(() => avisar(`${juegos().length} juegos encontrados`)); break;
     case 'abrir-carpeta': invoke('open_folder', { path: estado.biblioteca.roms_dir }); break;
+    case 'crear-sala': abrirSala(() => invoke('crear_sala')); break;
+    case 'unirse-sala': unirseConCodigo(); break;
+    case 'salir-sala': salirSala(); break;
+    case 'copiar-codigo':
+      navigator.clipboard.writeText(estado.online.sala.codigo).then(() => avisar('Código copiado'));
+      break;
     default: break;
   }
+});
+
+pantalla.addEventListener('keydown', (evento) => {
+  if (evento.target.id === 'codigo-unirse' && evento.key === 'Enter') unirseConCodigo();
+});
+
+pantalla.addEventListener('input', (evento) => {
+  if (evento.target.id !== 'codigo-unirse') return;
+  evento.target.value = evento.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  document.getElementById('error-codigo').hidden = true;
+});
+
+async function abrirSala(accion) {
+  try {
+    const sala = await accion();
+    estado.online = { ...estado.online, sala, estado: 'conectando', error: null, amigos: 0, ruta: null };
+  } catch (error) {
+    estado.online = { ...estado.online, sala: null, error: String(error) };
+  }
+  pintar();
+}
+
+function unirseConCodigo() {
+  const campo = document.getElementById('codigo-unirse');
+  const codigo = campo.value.trim();
+  if (codigo.length !== 6) {
+    const error = document.getElementById('error-codigo');
+    error.textContent = 'El código tiene 6 letras o números.';
+    error.hidden = false;
+    campo.focus();
+    return;
+  }
+  abrirSala(() => invoke('unirse_sala', { codigo }));
+}
+
+async function salirSala() {
+  await invoke('salir_sala');
+  estado.online = { ...estado.online, sala: null, estado: null, error: null, amigos: 0, ruta: null };
+  pintar();
+}
+
+tauri.event.listen('sala-estado', (evento) => {
+  const datos = evento.payload || {};
+  const online = estado.online;
+  if (datos.estado === 'amigos') online.amigos = datos.n || 0;
+  else if (datos.estado === 'ruta') online.ruta = datos.tipo;
+  else {
+    online.estado = datos.estado;
+    if (datos.estado === 'error') online.error = datos.mensaje;
+  }
+  if (estado.vista === 'online') pintar();
+});
+
+tauri.event.listen('sala-cerrada', () => {
+  const online = estado.online;
+  if (online.sala && online.estado !== 'error') {
+    online.estado = 'error';
+    online.error = 'Se ha cerrado la conexión de la sala.';
+  }
+  if (estado.vista === 'online') pintar();
 });
 
 pantalla.addEventListener('change', (evento) => {
@@ -315,8 +441,15 @@ function crearSimulacion() {
     roms_dir: 'C:\\Juegos', games: ejemplo, recents: [ejemplo[2].path, ejemplo[0].path, ejemplo[4].path],
     favorites: [ejemplo[3].path], fullscreen: true, emulators_found: true,
   };
+  const respuestas = {
+    library: datos,
+    set_roms_dir: datos,
+    estado_sala: { clave: true, sala: null },
+    crear_sala: { codigo: 'K7P2QX', anfitrion: true },
+    unirse_sala: { codigo: 'K7P2QX', anfitrion: false },
+  };
   return {
-    core: { invoke: async (cmd) => (cmd === 'library' || cmd === 'set_roms_dir' ? datos : true) },
+    core: { invoke: async (cmd) => (cmd in respuestas ? respuestas[cmd] : true) },
     dialog: { open: async () => 'C:\\Juegos' },
     event: { listen: () => {} },
   };

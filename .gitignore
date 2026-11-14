@@ -25,3 +25,5 @@ pc/node_modules/
 pc/src-tauri/target/
 pc/src-tauri/gen/
 salida/
+herramientas/
+pc/secretos/

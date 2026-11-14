@@ -61,5 +61,16 @@ if (-not (Test-Path (Join-Path $azDestino 'azahar.exe'))) {
     Remove-Item -Recurse $tmp
 }
 New-Item -ItemType Directory -Force (Join-Path $azDestino 'user') | Out-Null
+# El instalador no copia carpetas vacías: dejamos un archivo para que "user" exista.
+Set-Content -Path (Join-Path $azDestino 'user\LEEME.txt') -Value 'Configuración de Azahar dentro de Pokemulador.' -Encoding UTF8
+
+# Enlace online (Go + Tailscale). Necesita Go: herramientas\go o el que haya instalado.
+$go = Join-Path (Split-Path $pc -Parent) 'herramientas\go\bin\go.exe'
+if (-not (Test-Path $go)) { $go = 'go' }
+$enlaceDestino = Join-Path $emuladores 'Enlace'
+New-Item -ItemType Directory -Force $enlaceDestino | Out-Null
+Push-Location (Join-Path $pc 'enlace')
+& $go build -p 2 -trimpath -ldflags '-s -w' -o (Join-Path $enlaceDestino 'enlace.exe') .
+Pop-Location
 
 Write-Host 'Emuladores listos en' $emuladores

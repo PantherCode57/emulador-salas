@@ -1,0 +1,14 @@
+{
+  // Política para la red de Pokemulador: los dispositivos de la app solo pueden
+  // hablar entre ellos y solo por el puerto de las salas de Azahar (24872).
+  "tagOwners": {
+    "tag:pokemulador": ["autogroup:admin"]
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["tag:pokemulador"],
+      "dst": ["tag:pokemulador:24872"]
+    }
+  ]
+}

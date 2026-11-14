@@ -1,0 +1,316 @@
+// Enlace de Pokemulador: conecta dos dispositivos por un código de sala usando Tailscale
+// (tsnet) dentro del propio programa, sin instalar Tailscale ni activar una VPN.
+//
+//	enlace host   --codigo K7P2QX   el que crea la sala: expone su sala de Azahar (UDP 24872)
+//	enlace unirse --codigo K7P2QX   el amigo: abre 127.0.0.1:24872 y lo lleva hasta el anfitrión
+//
+// La clave (secreto OAuth "tskey-client-…") llega en la variable POKEMULADOR_TS_KEY.
+// Cada línea que escribe en la salida es un JSON con el estado, para que lo lea Pokemulador.
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"log"
+	"math/rand/v2"
+	"net"
+	"net/netip"
+	"os"
+	"os/signal"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"tailscale.com/client/local"
+	"tailscale.com/ipn/store/mem"
+	"tailscale.com/tsnet"
+)
+
+const (
+	etiqueta       = "tag:pokemulador"
+	alfabetoCodigo = "abcdefghijklmnopqrstuvwxyz0123456789"
+	inactividad    = 2 * time.Minute
+)
+
+func avisar(estado string, extra map[string]any) {
+	m := map[string]any{"estado": estado}
+	for k, v := range extra {
+		m[k] = v
+	}
+	b, _ := json.Marshal(m)
+	fmt.Println(string(b))
+}
+
+func fallar(mensaje string) {
+	avisar("error", map[string]any{"mensaje": mensaje})
+	os.Exit(1)
+}
+
+func codigoValido(c string) bool {
+	if len(c) != 6 {
+		return false
+	}
+	for _, r := range c {
+		if !strings.ContainsRune(alfabetoCodigo, r) {
+			return false
+		}
+	}
+	return true
+}
+
+func sufijo() string {
+	b := make([]byte, 4)
+	for i := range b {
+		b[i] = alfabetoCodigo[rand.IntN(len(alfabetoCodigo))]
+	}
+	return string(b)
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fallar("Uso: enlace host|unirse --codigo XXXXXX")
+	}
+	modo := os.Args[1]
+	opciones := flag.NewFlagSet(modo, flag.ExitOnError)
+	codigo := opciones.String("codigo", "", "código de sala de 6 caracteres")
+	puerto := opciones.Int("puerto", 24872, "puerto UDP de la sala de Azahar")
+	puertoLocal := opciones.Int("local", 0, "al unirse: puerto local para Azahar (por defecto, el mismo que --puerto)")
+	_ = opciones.Parse(os.Args[2:])
+	if *puertoLocal == 0 {
+		*puertoLocal = *puerto
+	}
+
+	c := strings.ToLower(strings.TrimSpace(*codigo))
+	if !codigoValido(c) {
+		fallar("El código de sala no es válido.")
+	}
+	if modo != "host" && modo != "unirse" {
+		fallar("Modo desconocido: " + modo)
+	}
+
+	clave := strings.TrimSpace(os.Getenv("POKEMULADOR_TS_KEY"))
+	if clave == "" {
+		fallar("Falta la clave de Tailscale en esta versión de Pokemulador.")
+	}
+	if strings.HasPrefix(clave, "tskey-client-") && !strings.Contains(clave, "?") {
+		clave += "?ephemeral=true&preauthorized=true"
+	}
+
+	dir, err := os.MkdirTemp("", "pokemulador-enlace-*")
+	if err != nil {
+		fallar("No se pudo crear la carpeta temporal: " + err.Error())
+	}
+	defer os.RemoveAll(dir)
+
+	nombre := "pkm-" + c
+	if modo == "unirse" {
+		nombre += "-" + sufijo()
+	}
+	srv := &tsnet.Server{
+		Dir:           dir,
+		Hostname:      nombre,
+		AuthKey:       clave,
+		Ephemeral:     true,
+		Store:         new(mem.Store),
+		AdvertiseTags: []string{etiqueta},
+		Logf:          func(string, ...any) {},
+	}
+	if os.Getenv("POKEMULADOR_DEBUG") != "" {
+		srv.Logf = log.Printf
+	}
+	defer srv.Close()
+
+	ctx, cancelar := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancelar()
+	// Si Pokemulador se cierra, se cierra su lado de la tubería y salimos.
+	go func() {
+		_, _ = io.Copy(io.Discard, os.Stdin)
+		cancelar()
+	}()
+
+	avisar("conectando", nil)
+	ctxUp, cancelarUp := context.WithTimeout(ctx, 60*time.Second)
+	if _, err := srv.Up(ctxUp); err != nil {
+		fallar("No se pudo conectar con Tailscale: " + err.Error())
+	}
+	cancelarUp()
+
+	if modo == "host" {
+		anfitrion(ctx, srv, *puerto)
+	} else {
+		unirse(ctx, srv, "pkm-"+c, *puerto, *puertoLocal)
+	}
+}
+
+// anfitrion recibe a los amigos por Tailscale y reenvía su tráfico a la sala local de Azahar.
+// Cada amigo usa su propio socket local, así la sala lo ve como un jugador distinto.
+func anfitrion(ctx context.Context, srv *tsnet.Server, puerto int) {
+	ip4, _ := srv.TailscaleIPs()
+	pc, err := srv.ListenPacket("udp", netip.AddrPortFrom(ip4, uint16(puerto)).String())
+	if err != nil {
+		fallar("No se pudo abrir la sala en Tailscale: " + err.Error())
+	}
+	defer pc.Close()
+	go func() {
+		<-ctx.Done()
+		pc.Close()
+	}()
+
+	sala := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: puerto}
+	avisar("listo", map[string]any{"ip": ip4.String()})
+
+	var mu sync.Mutex
+	sesiones := map[string]*net.UDPConn{}
+	buf := make([]byte, 65535)
+	for {
+		n, origen, err := pc.ReadFrom(buf)
+		if err != nil {
+			return
+		}
+		clave := origen.String()
+		mu.Lock()
+		s, existe := sesiones[clave]
+		if !existe {
+			s, err = net.DialUDP("udp", nil, sala)
+			if err != nil {
+				mu.Unlock()
+				continue
+			}
+			sesiones[clave] = s
+			avisar("amigos", map[string]any{"n": len(sesiones)})
+			go func(s *net.UDPConn, origen net.Addr, clave string) {
+				b := make([]byte, 65535)
+				for {
+					_ = s.SetReadDeadline(time.Now().Add(inactividad))
+					m, err := s.Read(b)
+					if err != nil {
+						break
+					}
+					_, _ = pc.WriteTo(b[:m], origen)
+				}
+				s.Close()
+				mu.Lock()
+				delete(sesiones, clave)
+				quedan := len(sesiones)
+				mu.Unlock()
+				avisar("amigos", map[string]any{"n": quedan})
+			}(s, origen, clave)
+		}
+		mu.Unlock()
+		_, _ = s.Write(buf[:n])
+	}
+}
+
+// unirse busca al anfitrión por su nombre en Tailscale y abre 127.0.0.1:puerto para Azahar.
+func unirse(ctx context.Context, srv *tsnet.Server, nombreAnfitrion string, puerto, puertoLocal int) {
+	lc, err := srv.LocalClient()
+	if err != nil {
+		fallar("Tailscale no responde: " + err.Error())
+	}
+
+	avisar("buscando", nil)
+	var ip netip.Addr
+	limite := time.Now().Add(45 * time.Second)
+	for !ip.IsValid() {
+		if estado, err := lc.Status(ctx); err == nil {
+			for _, p := range estado.Peer {
+				if !strings.EqualFold(p.HostName, nombreAnfitrion) || !p.Online {
+					continue
+				}
+				for _, a := range p.TailscaleIPs {
+					if a.Is4() {
+						ip = a
+					}
+				}
+			}
+		}
+		if ip.IsValid() {
+			break
+		}
+		if time.Now().After(limite) {
+			fallar("No hay ninguna sala abierta con ese código. Comprueba que tu amigo la ha creado.")
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+	}
+
+	remoto, err := srv.Dial(ctx, "udp", netip.AddrPortFrom(ip, uint16(puerto)).String())
+	if err != nil {
+		fallar("No se pudo llegar a la sala: " + err.Error())
+	}
+	defer remoto.Close()
+	local, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: puertoLocal})
+	if err != nil {
+		fallar(fmt.Sprintf("El puerto %d de este equipo está ocupado. Cierra otras salas de Azahar.", puertoLocal))
+	}
+	defer local.Close()
+	go func() {
+		<-ctx.Done()
+		local.Close()
+		remoto.Close()
+	}()
+	avisar("conectado", map[string]any{"ip": ip.String()})
+	go informarRuta(ctx, lc, ip)
+
+	var cliente atomic.Pointer[net.UDPAddr]
+	go func() {
+		b := make([]byte, 65535)
+		for {
+			m, err := remoto.Read(b)
+			if err != nil {
+				return
+			}
+			if a := cliente.Load(); a != nil {
+				_, _ = local.WriteToUDP(b[:m], a)
+			}
+		}
+	}()
+
+	buf := make([]byte, 65535)
+	for {
+		n, origen, err := local.ReadFromUDP(buf)
+		if err != nil {
+			return
+		}
+		cliente.Store(origen)
+		_, _ = remoto.Write(buf[:n])
+	}
+}
+
+// informarRuta avisa de si la conexión va directa o pasando por un repetidor de Tailscale.
+func informarRuta(ctx context.Context, lc *local.Client, ip netip.Addr) {
+	anterior := ""
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(10 * time.Second):
+		}
+		estado, err := lc.Status(ctx)
+		if err != nil {
+			continue
+		}
+		for _, p := range estado.Peer {
+			for _, a := range p.TailscaleIPs {
+				if a != ip {
+					continue
+				}
+				ruta := "repetidor"
+				if p.CurAddr != "" {
+					ruta = "directa"
+				}
+				if ruta != anterior {
+					avisar("ruta", map[string]any{"tipo": ruta})
+					anterior = ruta
+				}
+			}
+		}
+	}
+}
