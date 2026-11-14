@@ -13,6 +13,10 @@ android {
         versionCode = 252
         versionName = "1.17.0" // Always remember to update Cores Tag!
         applicationId = "com.swordfish.lemuroid"
+        // Solo móviles de 64 bits (ARM): es lo que tienen hoy los móviles y lo que pide Azahar (3DS).
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
         // Clave de Tailscale para las salas online. Llega del secreto de GitHub al compilar;
         // nunca se escribe en el repositorio.
         val claveTailscale = System.getenv("POKEMULADOR_TS_KEY").orEmpty().filter { it.isLetterOrDigit() || it == '-' }
@@ -76,6 +80,15 @@ android {
             // Stripping created some issues with some libretro cores such as ppsspp
             keepDebugSymbols += setOf("*/*/*_libretro_android.so")
             useLegacyPackaging = true
+            // Pokemulador solo usa las consolas de Pokémon: GB/GBC (gambatte), GBA (mgba),
+            // DS (melonds, desmume), 3DS (Azahar, con nombre citra) y N64 (mupen64plus).
+            // Quitamos el resto de núcleos para que la app pese mucho menos.
+            excludes +=
+                listOf(
+                    "dosbox_pure", "fbneo", "fceumm", "genesis_plus_gx", "handy", "mame2003_plus",
+                    "mednafen_ngp", "mednafen_pce_fast", "mednafen_wswan", "pcsx_rearmed", "ppsspp",
+                    "prosystem", "snes9x", "stella",
+                ).map { "**/lib${it}_libretro_android.so" }
         }
         resources {
             excludes += setOf("META-INF/DEPENDENCIES", "META-INF/library_release.kotlin_module")
