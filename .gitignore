@@ -17,3 +17,11 @@ project.properties
 .externalNativeBuild
 local.properties
 release.jks
+
+# Versión PC: descargas, emuladores y compilados (no van a git)
+pc/descargas/
+pc/emuladores/
+pc/node_modules/
+pc/src-tauri/target/
+pc/src-tauri/gen/
+salida/

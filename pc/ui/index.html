@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pokemulador</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="pokedex">
+    <header class="barra">
+      <div class="lente" aria-hidden="true"></div>
+      <span class="led rojo" aria-hidden="true"></span>
+      <span class="led amarillo" aria-hidden="true"></span>
+      <span class="led verde" aria-hidden="true"></span>
+      <h1 id="titulo">Inicio</h1>
+      <input id="buscar" type="search" placeholder="Buscar juego" autocomplete="off" aria-label="Buscar juego">
+    </header>
+    <div class="cuerpo">
+      <nav class="menu" aria-label="Secciones">
+        <button data-vista="inicio" class="activo">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1z"/></svg>
+          Inicio
+        </button>
+        <button data-vista="consolas">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="7" width="20" height="11" rx="4"/><path d="M7 10v5M4.5 12.5h5M15 12h.01M18 14h.01"/></svg>
+          Consolas
+        </button>
+        <button data-vista="online">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+          Online
+        </button>
+        <button data-vista="ajustes">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
+          Ajustes
+        </button>
+      </nav>
+      <main id="pantalla" class="pantalla" tabindex="-1"></main>
+    </div>
+  </div>
+  <div id="aviso" class="aviso" role="status" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "pokemulador-pc",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Pokemulador para PC: lanzador con aspecto Pokédex que abre RetroArch y Azahar",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}
