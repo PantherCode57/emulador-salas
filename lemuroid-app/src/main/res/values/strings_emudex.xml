@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Textos nuevos de la app. Están en español por defecto porque es el idioma del grupo. -->
+<resources>
+    <string name="emudex_online_title">Online</string>
+    <string name="emudex_continue_playing">Seguir jugando</string>
+    <string name="emudex_play_online">Jugar online</string>
+    <string name="emudex_create_room">Crear sala</string>
+    <string name="emudex_join_room">Unirme</string>
+    <string name="emudex_online_soon">Próximamente</string>
+    <string name="emudex_your_room">Tu sala</string>
+    <string name="emudex_online_description">Muy pronto podrás crear una sala, pasarle el código a tus amigos y jugar juntos aunque estéis en redes distintas.</string>
+    <string name="emudex_join_with_code">Unirme con código</string>
+</resources>

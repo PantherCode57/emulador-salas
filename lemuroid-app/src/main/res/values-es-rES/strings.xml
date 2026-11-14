@@ -2,9 +2,9 @@
 <resources>
     <string name="title_home">Inicio</string>
     <string name="title_search">Búsqueda</string>
-    <string name="title_systems">Sistemas</string>
+    <string name="title_systems">Consolas</string>
     <string name="title_games">Juegos</string>
-    <string name="title_settings">Configuración</string>
+    <string name="title_settings">Ajustes</string>
     <string name="recent">Recientes</string>
     <string name="favorites">Favoritos</string>
     <string name="discover">Descubrir</string>

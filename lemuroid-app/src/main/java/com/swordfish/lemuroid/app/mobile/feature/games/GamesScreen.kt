@@ -36,6 +36,7 @@ fun GamesScreen(
                 onClick = { onGameClick(game) },
                 onLongClick = { onGameLongClick(game) },
                 onFavoriteToggle = { isFavorite -> onGameFavoriteToggle(game, isFavorite) },
+                number = index + 1,
             )
         }
     }

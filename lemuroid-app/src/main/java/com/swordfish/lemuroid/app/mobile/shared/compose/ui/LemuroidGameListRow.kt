@@ -8,12 +8,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.swordfish.lemuroid.lib.library.db.entity.Game
+import java.util.Locale
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -23,6 +27,8 @@ fun LemuroidGameListRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onFavoriteToggle: (Boolean) -> Unit,
+    // Número de "entrada de Pokédex" (Nº 001, 002…). Null para no mostrarlo.
+    number: Int? = null,
 ) {
     Surface(
         modifier =
@@ -42,6 +48,18 @@ fun LemuroidGameListRow(
                     end = 16.dp,
                 ),
         ) {
+            if (number != null) {
+                Text(
+                    text = String.format(Locale.ROOT, "Nº %03d", number),
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterVertically)
+                            .padding(end = 10.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             LemuroidSmallGameImage(
                 modifier =
                     Modifier

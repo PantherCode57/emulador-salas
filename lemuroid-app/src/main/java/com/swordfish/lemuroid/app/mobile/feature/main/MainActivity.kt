@@ -8,8 +8,13 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
@@ -19,6 +24,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -32,6 +39,7 @@ import com.swordfish.lemuroid.app.mobile.feature.games.GamesScreen
 import com.swordfish.lemuroid.app.mobile.feature.games.GamesViewModel
 import com.swordfish.lemuroid.app.mobile.feature.home.HomeScreen
 import com.swordfish.lemuroid.app.mobile.feature.home.HomeViewModel
+import com.swordfish.lemuroid.app.mobile.feature.online.OnlineScreen
 import com.swordfish.lemuroid.app.mobile.feature.search.SearchScreen
 import com.swordfish.lemuroid.app.mobile.feature.search.SearchViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.advanced.AdvancedSettingsScreen
@@ -50,6 +58,7 @@ import com.swordfish.lemuroid.app.mobile.feature.shortcuts.ShortcutsGenerator
 import com.swordfish.lemuroid.app.mobile.feature.systems.MetaSystemsScreen
 import com.swordfish.lemuroid.app.mobile.feature.systems.MetaSystemsViewModel
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.AppTheme
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.PokedexColors
 import com.swordfish.lemuroid.app.shared.GameInteractor
 import com.swordfish.lemuroid.app.shared.game.BaseGameActivity
 import com.swordfish.lemuroid.app.shared.game.GameLauncher
@@ -173,6 +182,7 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                     .value
 
             Scaffold(
+                containerColor = PokedexColors.Frame,
                 topBar = {
                     MainTopBar(
                         currentRoute = currentRoute,
@@ -183,7 +193,21 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                     )
                 },
                 bottomBar = { MainNavigationBar(currentRoute, navController) },
-            ) { padding ->
+            ) { scaffoldPadding ->
+                // La "pantalla" de la Pokédex: un recuadro crema con borde oscuro dentro de la carcasa roja.
+                val screenShape = RoundedCornerShape(16.dp)
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .padding(scaffoldPadding)
+                            .padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 4.dp)
+                            .clip(screenShape)
+                            .border(2.dp, PokedexColors.Deep, screenShape)
+                            .background(PokedexColors.Screen),
+                ) {
+                // El recuadro ya aplica el margen del Scaffold, así que las pantallas no necesitan más.
+                val padding = PaddingValues(0.dp)
                 NavHost(
                     modifier = Modifier.fillMaxSize(),
                     navController = navController,
@@ -204,7 +228,11 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                             onGameClick = onGameClick,
                             onGameLongClick = onGameLongClick,
                             onOpenCoreSelection = { navController.navigateToRoute(MainRoute.SETTINGS_CORES_SELECTION) },
+                            onOpenOnline = { navController.navigateToTab(MainRoute.ONLINE) },
                         )
+                    }
+                    composable(MainRoute.ONLINE) {
+                        OnlineScreen(modifier = Modifier.padding(padding))
                     }
                     composable(MainRoute.FAVORITES) {
                         FavoritesScreen(
@@ -344,6 +372,7 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                                 ),
                         )
                     }
+                }
                 }
             }
 

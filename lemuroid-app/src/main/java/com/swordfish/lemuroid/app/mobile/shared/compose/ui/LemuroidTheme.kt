@@ -1,95 +1,59 @@
 package com.swordfish.lemuroid.app.mobile.shared.compose.ui
 
-import android.os.Build
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 
-private val LightColorScheme =
+// Esquema único estilo Pokédex. No usamos los colores dinámicos de Android 12+
+// (los que salen del fondo de pantalla) para que la app se vea igual en todos los móviles.
+private val PokedexColorScheme =
     lightColorScheme(
-        primary = md_theme_light_primary,
-        onPrimary = md_theme_light_onPrimary,
-        primaryContainer = md_theme_light_primaryContainer,
-        onPrimaryContainer = md_theme_light_onPrimaryContainer,
-        secondary = md_theme_light_secondary,
-        onSecondary = md_theme_light_onSecondary,
-        secondaryContainer = md_theme_light_secondaryContainer,
-        onSecondaryContainer = md_theme_light_onSecondaryContainer,
-        tertiary = md_theme_light_tertiary,
-        onTertiary = md_theme_light_onTertiary,
-        tertiaryContainer = md_theme_light_tertiaryContainer,
-        onTertiaryContainer = md_theme_light_onTertiaryContainer,
-        error = md_theme_light_error,
-        errorContainer = md_theme_light_errorContainer,
-        onError = md_theme_light_onError,
-        onErrorContainer = md_theme_light_onErrorContainer,
-        background = md_theme_light_background,
-        onBackground = md_theme_light_onBackground,
-        surface = md_theme_light_surface,
-        onSurface = md_theme_light_onSurface,
-        surfaceVariant = md_theme_light_surfaceVariant,
-        onSurfaceVariant = md_theme_light_onSurfaceVariant,
-        outline = md_theme_light_outline,
-        inverseOnSurface = md_theme_light_inverseOnSurface,
-        inverseSurface = md_theme_light_inverseSurface,
-        inversePrimary = md_theme_light_inversePrimary,
-        surfaceTint = md_theme_light_surfaceTint,
-        outlineVariant = md_theme_light_outlineVariant,
-        scrim = md_theme_light_scrim,
+        primary = PokedexColors.Accent,
+        onPrimary = PokedexColors.Screen,
+        primaryContainer = PokedexColors.Card,
+        onPrimaryContainer = PokedexColors.Deep,
+        inversePrimary = PokedexColors.CardStrong,
+        secondary = PokedexColors.OnlineBlue,
+        onSecondary = PokedexColors.OnlineBlueLight,
+        secondaryContainer = PokedexColors.OnlineBlueBorder,
+        onSecondaryContainer = Color(0xFF042C53),
+        tertiary = Color(0xFFBA7517),
+        onTertiary = Color(0xFFFAEEDA),
+        tertiaryContainer = PokedexColors.LedYellow,
+        onTertiaryContainer = Color(0xFF412402),
+        background = PokedexColors.Screen,
+        onBackground = PokedexColors.Deep,
+        surface = PokedexColors.Screen,
+        onSurface = PokedexColors.Deep,
+        surfaceVariant = PokedexColors.Card,
+        onSurfaceVariant = PokedexColors.FrameDark,
+        surfaceTint = PokedexColors.Accent,
+        inverseSurface = PokedexColors.Deep,
+        inverseOnSurface = PokedexColors.Screen,
+        error = Color(0xFFBA1A1A),
+        onError = Color(0xFFFFFFFF),
+        errorContainer = Color(0xFFFFDAD6),
+        onErrorContainer = Color(0xFF410002),
+        outline = PokedexColors.Frame,
+        outlineVariant = PokedexColors.CardStrong,
+        scrim = Color(0xFF000000),
+        surfaceBright = PokedexColors.Screen,
+        surfaceDim = PokedexColors.Card,
+        surfaceContainerLowest = Color(0xFFFFFFFF),
+        surfaceContainerLow = Color(0xFFFAE0E0),
+        surfaceContainer = Color(0xFFF9D6D6),
+        surfaceContainerHigh = Color(0xFFFFF6F6),
+        surfaceContainerHighest = PokedexColors.Card,
     )
 
-private val DarkColorScheme =
-    darkColorScheme(
-        primary = md_theme_dark_primary,
-        onPrimary = md_theme_dark_onPrimary,
-        primaryContainer = md_theme_dark_primaryContainer,
-        onPrimaryContainer = md_theme_dark_onPrimaryContainer,
-        secondary = md_theme_dark_secondary,
-        onSecondary = md_theme_dark_onSecondary,
-        secondaryContainer = md_theme_dark_secondaryContainer,
-        onSecondaryContainer = md_theme_dark_onSecondaryContainer,
-        tertiary = md_theme_dark_tertiary,
-        onTertiary = md_theme_dark_onTertiary,
-        tertiaryContainer = md_theme_dark_tertiaryContainer,
-        onTertiaryContainer = md_theme_dark_onTertiaryContainer,
-        error = md_theme_dark_error,
-        errorContainer = md_theme_dark_errorContainer,
-        onError = md_theme_dark_onError,
-        onErrorContainer = md_theme_dark_onErrorContainer,
-        background = md_theme_dark_background,
-        onBackground = md_theme_dark_onBackground,
-        surface = md_theme_dark_surface,
-        onSurface = md_theme_dark_onSurface,
-        surfaceVariant = md_theme_dark_surfaceVariant,
-        onSurfaceVariant = md_theme_dark_onSurfaceVariant,
-        outline = md_theme_dark_outline,
-        inverseOnSurface = md_theme_dark_inverseOnSurface,
-        inverseSurface = md_theme_dark_inverseSurface,
-        inversePrimary = md_theme_dark_inversePrimary,
-        surfaceTint = md_theme_dark_surfaceTint,
-        outlineVariant = md_theme_dark_outlineVariant,
-        scrim = md_theme_dark_scrim,
-    )
-
+@Suppress("UNUSED_PARAMETER")
 @Composable
 fun AppTheme(
     darkTheme: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    val dynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val colors =
-        when {
-            dynamicColor && darkTheme -> dynamicDarkColorScheme(LocalContext.current)
-            dynamicColor && !darkTheme -> dynamicLightColorScheme(LocalContext.current)
-            darkTheme -> DarkColorScheme
-            else -> LightColorScheme
-        }
-
-    MaterialTheme(colorScheme = colors) {
+    MaterialTheme(colorScheme = PokedexColorScheme) {
         content()
     }
 }

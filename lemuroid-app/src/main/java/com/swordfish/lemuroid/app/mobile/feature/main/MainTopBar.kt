@@ -2,8 +2,6 @@ package com.swordfish.lemuroid.app.mobile.feature.main
 
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,8 +16,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.BottomAppBarDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import com.swordfish.lemuroid.R
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.PokedexColors
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.PokedexLens
 import com.swordfish.lemuroid.app.shared.savesync.SaveSyncWork
 
 @Composable
@@ -80,7 +78,6 @@ fun LemuroidTopAppBar(
     onUpdateQueryString: (String) -> Unit,
 ) {
     val context = LocalContext.current
-    val topBarColor = BottomAppBarDefaults.containerColor
 
     TopAppBar(
         title = {
@@ -95,21 +92,22 @@ fun LemuroidTopAppBar(
         },
         colors =
             TopAppBarDefaults.topAppBarColors(
-                scrolledContainerColor = topBarColor,
-                containerColor = topBarColor,
+                containerColor = PokedexColors.Frame,
+                scrolledContainerColor = PokedexColors.Frame,
+                navigationIconContentColor = PokedexColors.Screen,
+                titleContentColor = PokedexColors.Screen,
+                actionIconContentColor = PokedexColors.Screen,
             ),
         navigationIcon = {
-            AnimatedVisibility(
-                visible = route.parent != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
+            if (route.parent != null) {
                 IconButton(onClick = { navController.popBackStack() }) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         stringResource(id = R.string.back),
                     )
                 }
+            } else {
+                PokedexLens()
             }
         },
         actions = {
@@ -135,6 +133,17 @@ fun LemuroidTopBarActions(
     onHelpPressed: () -> Unit,
 ) {
     Row {
+        // Los ajustes ahora están en la barra inferior; aquí dejamos la búsqueda.
+        if (route != MainRoute.SEARCH && route.parent == null) {
+            IconButton(
+                onClick = { navController.navigate(MainRoute.SEARCH.route) },
+            ) {
+                Icon(
+                    Icons.Filled.Search,
+                    stringResource(R.string.title_search),
+                )
+            }
+        }
         IconButton(
             onClick = { onHelpPressed() },
         ) {
@@ -151,16 +160,6 @@ fun LemuroidTopBarActions(
                 Icon(
                     Icons.Outlined.CloudSync,
                     stringResource(R.string.save_sync),
-                )
-            }
-        }
-        if (route.showBottomNavigation) {
-            IconButton(
-                onClick = { navController.navigate(MainRoute.SETTINGS.route) },
-            ) {
-                Icon(
-                    Icons.Outlined.Settings,
-                    stringResource(R.string.settings),
                 )
             }
         }

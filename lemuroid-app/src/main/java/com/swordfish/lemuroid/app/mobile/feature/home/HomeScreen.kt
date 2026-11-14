@@ -5,30 +5,49 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.LemuroidGameCard
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.LemuroidGameTexts
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.LemuroidSmallGameImage
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.PokedexColors
 import com.swordfish.lemuroid.app.utils.android.ComposableLifecycle
 import com.swordfish.lemuroid.common.displayDetailsSettingsScreen
 import com.swordfish.lemuroid.lib.library.db.entity.Game
@@ -40,6 +59,7 @@ fun HomeScreen(
     onGameClick: (Game) -> Unit,
     onGameLongClick: (Game) -> Unit,
     onOpenCoreSelection: () -> Unit,
+    onOpenOnline: () -> Unit,
 ) {
     val context = LocalContext.current
     val applicationContext = context.applicationContext
@@ -78,6 +98,7 @@ fun HomeScreen(
         },
         { permissionsLauncher.launch(Manifest.permission.RECORD_AUDIO) },
         { viewModel.changeLocalStorageFolder(context) },
+        onOpenOnline,
     ) // TODO COMPOSE We need to understand what's going to happen here.
 }
 
@@ -91,6 +112,7 @@ private fun HomeScreen(
     onEnableNotificationsClicked: () -> Unit,
     onEnableMicrophoneClicked: () -> Unit,
     onSetDirectoryClicked: () -> Unit,
+    onOpenOnline: () -> Unit,
 ) {
     Column(
         modifier =
@@ -132,9 +154,14 @@ private fun HomeScreen(
                 onAction = onOpenCoreSelection,
             )
         }
+        val continueGame = state.recentGames.firstOrNull()
+        if (continueGame != null) {
+            HomeContinuePlaying(continueGame, onGameClicked, onGameLongClick)
+        }
+        HomeOnlineBanner(onOpenOnline)
         HomeRow(
             stringResource(id = R.string.recent),
-            state.recentGames,
+            state.recentGames.drop(1),
             onGameClicked,
             onGameLongClick,
         )
@@ -189,6 +216,125 @@ private fun HomeRow(
                     onClick = { onGameClicked(game) },
                     onLongClick = { onGameLongClick(game) },
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun HomeContinuePlaying(
+    game: Game,
+    onGameClicked: (Game) -> Unit,
+    onGameLongClick: (Game) -> Unit,
+) {
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.emudex_continue_playing),
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Surface(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clip(shape)
+                    .combinedClickable(
+                        onClick = { onGameClicked(game) },
+                        onLongClick = { onGameLongClick(game) },
+                    ),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = shape,
+        ) {
+            Row(
+                modifier = Modifier.padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                LemuroidSmallGameImage(
+                    modifier =
+                        Modifier
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(8.dp)),
+                    game = game,
+                )
+                LemuroidGameTexts(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .padding(start = 8.dp),
+                    game = game,
+                )
+                Box(
+                    modifier =
+                        Modifier
+                            .size(44.dp)
+                            .background(MaterialTheme.colorScheme.primary, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeOnlineBanner(onOpenOnline: () -> Unit) {
+    Surface(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp),
+        color = PokedexColors.OnlineBlue,
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Filled.Public,
+                    contentDescription = null,
+                    tint = PokedexColors.OnlineBlueLight,
+                )
+                Text(
+                    text = stringResource(R.string.emudex_play_online),
+                    modifier = Modifier.padding(start = 8.dp),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = PokedexColors.OnlineBlueLight,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    modifier = Modifier.weight(1f),
+                    onClick = onOpenOnline,
+                    colors =
+                        ButtonDefaults.buttonColors(
+                            containerColor = PokedexColors.OnlineBlueLight,
+                            contentColor = PokedexColors.OnlineBlueDark,
+                        ),
+                ) {
+                    Text(stringResource(R.string.emudex_create_room))
+                }
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onOpenOnline,
+                    border = BorderStroke(1.5.dp, PokedexColors.OnlineBlueBorder),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = PokedexColors.OnlineBlueLight),
+                ) {
+                    Text(stringResource(R.string.emudex_join_room))
+                }
             }
         }
     }

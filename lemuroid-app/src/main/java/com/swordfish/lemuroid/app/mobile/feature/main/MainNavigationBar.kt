@@ -7,12 +7,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.PokedexColors
 
 @Composable
 fun MainNavigationBar(
@@ -33,7 +34,11 @@ private fun LemuroidNavigationBar(
     currentRoute: MainRoute?,
     navController: NavHostController,
 ) {
-    NavigationBar(modifier = Modifier.fillMaxWidth()) {
+    NavigationBar(
+        modifier = Modifier.fillMaxWidth(),
+        containerColor = PokedexColors.Frame,
+        contentColor = PokedexColors.Screen,
+    ) {
         MainNavigationRoutes.values().forEach { destination ->
             val isSelected = currentRoute?.root == destination.route
             val iconDrawable = if (isSelected) destination.selectedIcon else destination.unselectedIcon
@@ -47,21 +52,15 @@ private fun LemuroidNavigationBar(
                 },
                 label = { Text(stringResource(destination.titleId)) },
                 selected = isSelected,
-                onClick = {
-                    navController.navigate(destination.route.route) {
-                        // Pop up to the start destination of the graph to
-                        // avoid building up a large stack of destinations
-                        // on the back stack as users select items
-                        popUpTo(navController.graph.findStartDestination().id) {
-                            saveState = false
-                        }
-                        // Avoid multiple copies of the same destination when
-                        // reselecting the same item
-                        launchSingleTop = true
-                        // Restore state when reselecting a previously selected item
-                        restoreState = false
-                    }
-                },
+                onClick = { navController.navigateToTab(destination.route) },
+                colors =
+                    NavigationBarItemDefaults.colors(
+                        selectedIconColor = PokedexColors.Frame,
+                        selectedTextColor = PokedexColors.Screen,
+                        indicatorColor = PokedexColors.Screen,
+                        unselectedIconColor = PokedexColors.CardStrong,
+                        unselectedTextColor = PokedexColors.CardStrong,
+                    ),
             )
         }
     }
