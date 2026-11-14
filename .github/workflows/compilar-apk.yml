@@ -1,0 +1,37 @@
+name: Compilar APK
+
+# Compila la app con todos los emuladores incluidos cada vez que se sube
+# un cambio a una rama que no sea master (master sigue al Lemuroid original).
+on:
+  push:
+    branches-ignore: [ master ]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    name: APK de prueba
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Compilar
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleFreeBundleDebug --no-daemon
+
+      - name: Subir APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-prueba
+          path: lemuroid-app/build/outputs/apk/freeBundle/debug/*.apk
+          retention-days: 30
