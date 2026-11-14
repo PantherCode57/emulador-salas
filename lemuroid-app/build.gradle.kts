@@ -13,6 +13,10 @@ android {
         versionCode = 252
         versionName = "1.17.0" // Always remember to update Cores Tag!
         applicationId = "com.swordfish.lemuroid"
+        // Clave de Tailscale para las salas online. Llega del secreto de GitHub al compilar;
+        // nunca se escribe en el repositorio.
+        val claveTailscale = System.getenv("POKEMULADOR_TS_KEY").orEmpty().filter { it.isLetterOrDigit() || it == '-' }
+        buildConfigField("String", "POKEMULADOR_TS_KEY", "\"$claveTailscale\"")
     }
     flavorDimensions += listOf("opensource", "cores")
 

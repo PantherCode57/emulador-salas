@@ -46,6 +46,7 @@ import com.swordfish.lemuroid.ext.feature.savesync.SaveSyncManagerImpl
 import com.swordfish.lemuroid.lib.bios.BiosManager
 import com.swordfish.lemuroid.lib.core.CoreUpdater
 import com.swordfish.lemuroid.lib.core.CoreVariablesManager
+import com.swordfish.lemuroid.app.mobile.feature.online.SalaOnline
 import com.swordfish.lemuroid.lib.core.CoresSelection
 import com.swordfish.lemuroid.lib.game.GameLoader
 import com.swordfish.lemuroid.lib.injection.PerActivity
@@ -256,7 +257,10 @@ abstract class LemuroidApplicationModule {
         @Provides
         @PerApp
         @JvmStatic
-        fun coreVariablesManager(sharedPreferences: Lazy<SharedPreferences>) = CoreVariablesManager(sharedPreferences)
+        fun coreVariablesManager(
+            sharedPreferences: Lazy<SharedPreferences>,
+            context: Context,
+        ) = CoreVariablesManager(sharedPreferences) { systemID -> SalaOnline.variablesNucleo(context, systemID) }
 
         @Provides
         @PerApp

@@ -8,14 +8,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.security.InvalidParameterException
 
-class CoreVariablesManager(private val sharedPreferences: Lazy<SharedPreferences>) {
+class CoreVariablesManager(
+    private val sharedPreferences: Lazy<SharedPreferences>,
+    // Variables añadidas por la app según el momento (por ejemplo, la sala online de Pokemulador).
+    private val extraVariables: (SystemID) -> List<CoreVariable> = { emptyList() },
+) {
     suspend fun getOptionsForCore(
         systemID: SystemID,
         systemCoreConfig: SystemCoreConfig,
     ): List<CoreVariable> {
         val defaultMap = convertCoreVariablesToMap(systemCoreConfig.defaultSettings)
         val coreVariables = retrieveCustomCoreVariables(systemID, systemCoreConfig)
-        val coreVariablesMap = defaultMap + convertCoreVariablesToMap(coreVariables)
+        val extraMap = withContext(Dispatchers.IO) { convertCoreVariablesToMap(extraVariables(systemID)) }
+        val coreVariablesMap = defaultMap + convertCoreVariablesToMap(coreVariables) + extraMap
         return convertMapToCoreVariables(coreVariablesMap)
     }
 

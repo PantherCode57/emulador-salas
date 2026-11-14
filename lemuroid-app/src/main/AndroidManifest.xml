@@ -73,6 +73,12 @@
             android:foregroundServiceType="dataSync"
             android:process=":game" />
 
+        <!-- Mantiene viva la sala online (enlace de Tailscale) mientras se juega. -->
+        <service
+            android:name=".app.mobile.feature.online.SalaService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"

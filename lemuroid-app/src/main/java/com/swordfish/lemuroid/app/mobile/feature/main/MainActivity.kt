@@ -40,6 +40,7 @@ import com.swordfish.lemuroid.app.mobile.feature.games.GamesViewModel
 import com.swordfish.lemuroid.app.mobile.feature.home.HomeScreen
 import com.swordfish.lemuroid.app.mobile.feature.home.HomeViewModel
 import com.swordfish.lemuroid.app.mobile.feature.online.OnlineScreen
+import com.swordfish.lemuroid.app.mobile.feature.online.SalaOnline
 import com.swordfish.lemuroid.app.mobile.feature.search.SearchScreen
 import com.swordfish.lemuroid.app.mobile.feature.search.SearchViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.advanced.AdvancedSettingsScreen
@@ -128,6 +129,8 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
         GlobalScope.safeLaunch {
             reviewManager.initialize(applicationContext)
         }
+        // Si quedó una sala de una sesión anterior (la app se cerró), ya no hay enlace: la borramos.
+        SalaOnline.limpiarSiHuerfana(applicationContext)
 
         setContent {
             val navController = rememberNavController()

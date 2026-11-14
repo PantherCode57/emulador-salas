@@ -10,4 +10,33 @@
     <string name="emudex_your_room">Tu sala</string>
     <string name="emudex_online_description">Muy pronto podrás crear una sala, pasarle el código a tus amigos y jugar juntos aunque estéis en redes distintas.</string>
     <string name="emudex_join_with_code">Unirme con código</string>
+
+    <!-- Salas online -->
+    <string name="emudex_online_solo_3ds">De momento, las salas son para juegos de 3DS. Funcionan con Wi-Fi o con datos, y también con amigos que juegan en PC.</string>
+    <string name="emudex_online_sin_clave">Esta versión de Pokemulador no tiene la clave de Tailscale, así que no puede jugar online.</string>
+    <string name="emudex_crear_sala_titulo">Crear una sala</string>
+    <string name="emudex_crear_sala_texto">Pokemulador te dará un código de 6 letras para que se lo pases a tus amigos.</string>
+    <string name="emudex_entrar">Entrar</string>
+    <string name="emudex_codigo_invalido">El código tiene 6 letras o números.</string>
+    <string name="emudex_sala_amigo">Sala de tu amigo</string>
+    <string name="emudex_fase_conectando">Conectando con Tailscale…</string>
+    <string name="emudex_fase_listo">Sala lista. Pásale el código a tu amigo.</string>
+    <string name="emudex_fase_buscando">Buscando la sala de tu amigo…</string>
+    <string name="emudex_fase_conectado">Conectado a la sala de tu amigo.</string>
+    <string name="emudex_fase_preparando">Preparando la sala…</string>
+    <string name="emudex_fase_error">Algo ha fallado en la sala.</string>
+    <string name="emudex_amigos_uno">1 amigo conectado</string>
+    <string name="emudex_amigos_varios">%1$d amigos conectados</string>
+    <string name="emudex_ruta_directa">conexión directa</string>
+    <string name="emudex_ruta_repetidor">conexión por repetidor</string>
+    <string name="emudex_copiar_codigo">Copiar código</string>
+    <string name="emudex_salir_sala">Salir de la sala</string>
+    <string name="emudex_como_jugar">Cómo jugar</string>
+    <string name="emudex_paso_abrir_juego">Abre tu juego de 3DS desde Pokemulador: se conecta solo a la sala al empezar la partida.</string>
+    <string name="emudex_paso_orden_anfitrion">Abre tu juego antes que tus amigos: la sala existe mientras tú estás jugando.</string>
+    <string name="emudex_paso_orden_invitado">Tu amigo tiene que tener ya su juego abierto antes de que abras el tuyo.</string>
+    <string name="emudex_paso_comunicacion">En el juego, usa la comunicación local (Festival Plaza, PSS…) para intercambiar o combatir.</string>
+    <string name="emudex_paso_reabrir">Si ya tenías el juego abierto antes de entrar en la sala, ciérralo y vuelve a abrirlo.</string>
+    <string name="emudex_sala_notificacion_titulo">Sala online abierta</string>
+    <string name="emudex_sala_notificacion_texto">Código %1$s</string>
 </resources>

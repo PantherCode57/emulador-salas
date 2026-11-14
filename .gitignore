@@ -27,3 +27,5 @@ pc/src-tauri/gen/
 salida/
 herramientas/
 pc/secretos/
+# El enlace para Android lo compila GitHub
+lemuroid-app/src/main/jniLibs/
