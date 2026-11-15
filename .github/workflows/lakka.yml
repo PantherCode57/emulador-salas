@@ -39,7 +39,7 @@ jobs:
 
       - name: Informe
         run: |
-          set -x
+          set +e
           img=Lakka-Generic.x86_64-${LAKKA_VERSION}.img
           mkdir -p informe
           {
@@ -68,9 +68,10 @@ jobs:
             echo "== kernel y modulos"; ls /mnt/sys/usr/lib/modules; sudo find /mnt/sys/usr/lib/modules -name "exfat*" -o -name "*vfat*" | head
             grep -i exfat /mnt/sys/proc/filesystems 2>/dev/null; ls /mnt/sys/usr/sbin | grep -i -E "fsck|mkfs|exfat"
           } > informe/lakka.txt 2>&1
-          tail -c 3000 informe/lakka.txt
+          tail -c 3000 informe/lakka.txt; true
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: informe-lakka
           path: informe/
