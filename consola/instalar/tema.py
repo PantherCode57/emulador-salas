@@ -133,8 +133,8 @@ PANTHER_XML = """<theme>
        vista previa aprobada: columna de tres tarjetas a la izquierda (la elegida en el centro, un 12 %
        más grande y con el borde azul) y, a la derecha, el nombre, «consola · año · género», una línea
        fina, de qué va y la ayuda de los botones. Medidas de lista_exacta.py; el bloque de texto
-       de la derecha va 85 px más abajo que en la vista previa, centrado en la pantalla para una
-       descripción de 4 líneas (la mayoría). -->
+       de la derecha va 65 px más abajo que en la vista previa: en medio de la pantalla y un poco
+       hacia arriba (con 85 px quedaría centrado para una descripción de 4 líneas, la mayoría). -->
   <view name="grid">
     <image name="panther_fondo_lista" extra="true">
       <origin>0 0</origin>
@@ -145,7 +145,7 @@ PANTHER_XML = """<theme>
     </image>
     <image name="panther_linea" extra="true">
       <origin>0 0</origin>
-      <pos>0.453125 0.447917</pos>
+      <pos>0.453125 0.40625</pos>
       <size>0.509375 0.002083</size>
       <path>./linea.png</path>
       <zIndex>35</zIndex>
@@ -226,7 +226,7 @@ PANTHER_XML = """<theme>
       <color>FFFFFFFF</color>
     </text>
     <text name="md_name">
-      <pos>0.453125 0.329167</pos>
+      <pos>0.453125 0.2875</pos>
       <size>0.509375 0.091667</size>
       <fontPath>./letra/selawksb.ttf</fontPath>
       <fontSize>0.054167</fontSize>
@@ -237,7 +237,7 @@ PANTHER_XML = """<theme>
       <zIndex>40</zIndex>
     </text>
     <text name="md_genre">
-      <pos>0.453125 0.398958</pos>
+      <pos>0.453125 0.357292</pos>
       <size>0.509375 0.054167</size>
       <fontPath>./letra/selawk.ttf</fontPath>
       <fontSize>0.03125</fontSize>
@@ -248,8 +248,8 @@ PANTHER_XML = """<theme>
       <zIndex>40</zIndex>
     </text>
     <text name="md_description">
-      <pos>0.453125 0.469792</pos>
-      <size>0.509375 0.438542</size>
+      <pos>0.453125 0.428125</pos>
+      <size>0.509375 0.480208</size>
       <fontPath>./letra/selawk.ttf</fontPath>
       <fontSize>0.033334</fontSize>
       <color>E6E6EEFF</color>
