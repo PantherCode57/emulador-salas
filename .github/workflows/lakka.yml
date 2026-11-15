@@ -1,85 +1,256 @@
 name: Pokemulador USB (Lakka)
 
-# Sistema de arranque para el USB: Lakka recortado con las salas de Pokemulador.
-# Paso 1 (provisional): descargar Lakka 6.1 y sacar un informe de lo que lleva dentro.
+# Sistema de arranque para la memoria USB: Lakka recortado (solo Game Boy, GBA, DS y 3DS) que
+# arranca en la pantalla de salas de Pokemulador. Piezas:
+#   1. mGBA con scripts de Lua (GBA-PK) para Linux x86_64.
+#   2. Azahar con las salas de Pokemulador para Linux x86_64 (tarda: se guarda en caché).
+#   3. El enlace (pc/enlace), el servicio de salas (lakka/servicio) y el núcleo de la pantalla
+#      (lakka/nucleo).
+#   4. La imagen: Lakka 6.1 recortado con todo lo anterior (lakka/imagen/construir.sh).
+#   5. Una prueba: arranca la imagen en QEMU, crea una sala, abre un juego y saca capturas.
+# Todo se compila en Ubuntu 22.04 porque Lakka 6.1 trae glibc 2.38.
 on:
   push:
     branches-ignore: [ master ]
     paths:
       - 'lakka/**'
       - '.github/workflows/lakka.yml'
+      - 'pc/enlace/**'
+      - 'nucleos/**'
+      - 'terceros/gba-pk/**'
   workflow_dispatch:
 
 env:
   LAKKA_VERSION: "6.1"
+  AZAHAR_TAG: "2126.2"
+  MGBA_TAG: "0.10.5"
+  LUA_VERSION: "5.4.7"
 
 jobs:
-  inspeccionar:
-    name: Ver Lakka por dentro
+  nucleo-mgba:
+    name: mGBA (GBA-PK) para Linux
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Buscar núcleo ya compilado
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: nucleo-mgba-linux
+          key: lakka-mgba-${{ env.MGBA_TAG }}-${{ env.LUA_VERSION }}-${{ hashFiles('nucleos/mgba/**', 'lakka/nucleos/mgba-linux.sh') }}
+      - name: Descargar mGBA
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: mgba-emu/mgba
+          ref: ${{ env.MGBA_TAG }}
+          path: mgba
+      - name: Compilar
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build > /dev/null
+          bash lakka/nucleos/mgba-linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lakka-mgba
+          path: nucleo-mgba-linux/mgba_libretro.so
+          retention-days: 7
+
+  nucleo-azahar:
+    name: Azahar (salas) para Linux
+    runs-on: ubuntu-22.04
+    timeout-minutes: 170
+    steps:
+      - uses: actions/checkout@v4
+      - name: Buscar núcleo ya compilado
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: nucleo-azahar-linux
+          key: lakka-azahar-${{ env.AZAHAR_TAG }}-${{ hashFiles('nucleos/azahar/**', 'lakka/nucleos/azahar_entorno.py') }}
+      - name: Descargar Azahar
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: azahar-emu/azahar
+          ref: ${{ env.AZAHAR_TAG }}
+          submodules: recursive
+          path: azahar
+      - name: Añadir salas y compilar
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build libgl-dev libegl-dev > /dev/null
+          python3 nucleos/azahar/aplicar.py azahar
+          python3 lakka/nucleos/azahar_entorno.py azahar
+          cd azahar
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=gcc-12 -DCMAKE_CXX_COMPILER=g++-12 \
+            -DENABLE_LIBRETRO=ON -DENABLE_TESTS=OFF -DENABLE_LTO=OFF -DCITRA_WARNINGS_AS_ERRORS=OFF \
+            "-DCMAKE_SHARED_LINKER_FLAGS=-static-libstdc++ -static-libgcc"
+          cmake --build build --target azahar_libretro -j $(nproc)
+          SO=$(find build -name 'azahar_libretro*.so' | head -1)
+          echo "Núcleo: $SO"
+          strip -s "$SO"
+          mkdir -p ../nucleo-azahar-linux
+          cp "$SO" ../nucleo-azahar-linux/azahar_libretro.so
+          objdump -T ../nucleo-azahar-linux/azahar_libretro.so | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lakka-azahar
+          path: nucleo-azahar-linux/azahar_libretro.so
+          retention-days: 7
+
+  programas:
+    name: Enlace, servicio y pantalla de salas
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: pc/enlace/go.mod
+          cache-dependency-path: |
+            pc/enlace/go.sum
+            lakka/servicio/go.mod
+      - name: Enlace
+        run: |
+          mkdir -p piezas
+          cd pc/enlace
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/enlace .
+      - name: Servicio de salas
+        env:
+          CLAVE: ${{ secrets.POKEMULADOR_TS_KEY }}
+        run: |
+          cd lakka/servicio
+          go mod tidy
+          gofmt -l . ; gofmt -w .
+          go vet ./...
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.claveTailscale=$CLAVE" -o ../../piezas/pokemulador-usb .
+      - name: Pantalla de salas (núcleo)
+        run: |
+          bash lakka/nucleo/compilar.sh
+          cp lakka/nucleo/pokemulador_libretro.so lakka/nucleo/pokemulador_libretro.info lakka/nucleo/azahar_libretro.info piezas/
+          cp terceros/gba-pk/GBA-PK_Multiplayer.lua terceros/gba-pk/pokemulador_final.lua piezas/
+          cp terceros/gba-pk/LICENSE.md piezas/LICENSE-GBA-PK.md
+          ls -la piezas
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lakka-programas
+          path: piezas/
+          retention-days: 7
+
+  imagen:
+    name: Imagen del USB
+    needs: [ nucleo-mgba, nucleo-azahar, programas ]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Herramientas
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools syslinux syslinux-common mtools gdisk dosfstools > /dev/null
+      - name: Lakka en caché
+        id: lakka
+        uses: actions/cache@v4
+        with:
+          path: Lakka-Generic.x86_64-${{ env.LAKKA_VERSION }}.img.gz
+          key: lakka-imagen-${{ env.LAKKA_VERSION }}
+      - name: Descargar Lakka
+        if: steps.lakka.outputs.cache-hit != 'true'
+        run: |
+          f=Lakka-Generic.x86_64-${LAKKA_VERSION}.img.gz
+          curl -fL --retry 3 -o "$f" "https://le.builds.lakka.tv/Generic.x86_64/$f"
+          curl -fsL -o "$f.sha256" "https://le.builds.lakka.tv/Generic.x86_64/$f.sha256"
+          [ "$(cut -d' ' -f1 $f.sha256)" = "$(sha256sum $f | cut -d' ' -f1)" ] || { echo "sha256 no coincide"; exit 1; }
+          rm "$f.sha256"
+      - uses: actions/download-artifact@v4
+        with:
+          path: piezas
+          merge-multiple: true
+      - name: Montar la imagen
+        run: |
+          gunzip -kf Lakka-Generic.x86_64-${LAKKA_VERSION}.img.gz
+          ls -la piezas
+          sudo bash lakka/imagen/construir.sh Lakka-Generic.x86_64-${LAKKA_VERSION}.img piezas pokemulador-usb.img
+          sudo chown $(id -u) pokemulador-usb.img
+          gzip -9 -k pokemulador-usb.img
+          ls -la pokemulador-usb.img*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pokemulador-usb
+          path: pokemulador-usb.img.gz
+          compression-level: 0
+          retention-days: 14
+
+  prueba:
+    name: Prueba en una máquina virtual
+    needs: [ imagen ]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
+      - uses: actions/checkout@v4
       - name: Herramientas
-        run: sudo apt-get update && sudo apt-get install -y squashfs-tools
-
-      - name: Descargar Lakka
         run: |
-          base=https://le.builds.lakka.tv/Generic.x86_64
-          f=Lakka-Generic.x86_64-${LAKKA_VERSION}.img.gz
-          curl -fL --retry 3 -o "$f" "$base/$f"
-          if curl -fsL -o "$f.sha256" "$base/$f.sha256"; then
-            echo "sha256 publicado: $(cat $f.sha256)"
-            sha256sum "$f"
-            [ "$(cut -d' ' -f1 $f.sha256)" = "$(sha256sum $f | cut -d' ' -f1)" ] || { echo "sha256 no coincide"; exit 1; }
-          else
-            echo "no hay .sha256 publicado"; sha256sum "$f"
-          fi
-          gunzip -k "$f"
-          ls -l
-
-      - name: Informe
+          sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-x86 ovmf exfatprogs gdisk > /dev/null
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules > /dev/null
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - uses: actions/download-artifact@v4
+        with:
+          name: pokemulador-usb
+      - name: Preparar un USB de prueba (con parte JUEGOS y un juego de prueba)
         run: |
-          set +e
-          img=Lakka-Generic.x86_64-${LAKKA_VERSION}.img
-          mkdir -p informe
-          {
-            echo "== particiones"; sfdisk -d $img; fdisk -l $img
-            dev=$(sudo losetup -fP --show $img); echo "loop $dev"; lsblk -f $dev || true
-            sudo mkdir -p /mnt/p1 /mnt/p2 /mnt/sys
-            sudo mount ${dev}p1 /mnt/p1; sudo mount ${dev}p2 /mnt/p2
-            echo "== particion 1"; ls -la /mnt/p1; find /mnt/p1 -maxdepth 3 -type f -exec ls -la {} \;
-            for c in /mnt/p1/syslinux.cfg /mnt/p1/EFI/BOOT/syslinux.cfg /mnt/p1/EFI/BOOT/grub.cfg /mnt/p1/extlinux/extlinux.conf; do [ -f $c ] && { echo "== $c"; cat $c; }; done
-            echo "== particion 2"; sudo find /mnt/p2 -maxdepth 3 | head -50
-            sudo mount -o loop,ro /mnt/p1/SYSTEM /mnt/sys
-            echo "== tamaños del sistema"; sudo du -xsh /mnt/sys/*; sudo du -xsh /mnt/sys/usr/* /mnt/sys/usr/lib/* 2>/dev/null | sort -h | tail -40
-            echo "== nucleos"; ls -laS /mnt/sys/usr/lib/libretro/ 2>/dev/null | head -400
-            sudo du -sh /mnt/sys/usr/lib/libretro /mnt/sys/usr/share/retroarch* /mnt/sys/usr/share/libretro* /mnt/sys/usr/lib/kernel-overlays /mnt/sys/usr/lib/firmware 2>/dev/null
-            echo "== share retroarch"; sudo du -sh /mnt/sys/usr/share/retroarch/* 2>/dev/null
-            echo "== firmware"; sudo du -sh /mnt/sys/usr/lib/kernel-overlays/base/lib/firmware/* 2>/dev/null | sort -h | tail -30
-            echo "== servicios"; ls /mnt/sys/usr/lib/systemd/system | head -300
-            for s in retroarch.service retroarch-autostart.service; do [ -f /mnt/sys/usr/lib/systemd/system/$s ] && { echo "== $s"; cat /mnt/sys/usr/lib/systemd/system/$s; }; done
-            echo "== bin"; ls /mnt/sys/usr/bin | head -400
-            for f in /mnt/sys/usr/bin/retroarch.start /mnt/sys/usr/lib/libreelec/fs-resize /mnt/sys/usr/lib/lakka/*; do [ -f $f ] && file $f | grep -q text && { echo "== $f"; cat $f; }; done
-            echo "== init"; sudo cat /mnt/sys/../init 2>/dev/null | head -5 || true
-            echo "== udev automount"; ls /mnt/sys/usr/lib/udev/rules.d/; grep -rl "media" /mnt/sys/usr/lib/udev/rules.d/ | xargs -r cat
-            echo "== retroarch.cfg por defecto"; for c in /mnt/sys/etc/retroarch.cfg /mnt/sys/usr/config/retroarch/retroarch.cfg; do [ -f $c ] && { echo "-- $c"; grep -v '^#' $c | grep -v '^$' | head -200; }; done
-            echo "== usr/config"; find /mnt/sys/usr/config -maxdepth 3 | head -100
-            echo "== bibliotecas clave"; ls /mnt/sys/usr/lib | grep -E "libc\.so|libstdc|libGL|libEGL|libvulkan|libgbm|libdrm|libssl|libcrypto|libz\.|libpng|libjpeg|libasound|libpulse|libSDL|libudev|libusb|libfreetype" ; strings /mnt/sys/usr/lib/libc.so.6 | grep -m1 "GNU C Library"
-            echo "== kernel y modulos"; ls /mnt/sys/usr/lib/modules; sudo find /mnt/sys/usr/lib/modules -name "exfat*" -o -name "*vfat*" | head
-            grep -i exfat /mnt/sys/proc/filesystems 2>/dev/null; ls /mnt/sys/usr/sbin | grep -i -E "fsck|mkfs|exfat"
-            echo "== blkid"; sudo blkid ${dev}p1 ${dev}p2
-            echo "== squashfs"; sudo unsquashfs -s /mnt/p1/SYSTEM | head -20
-            for f in /mnt/p1/firstboot.sh /mnt/p1/retroarch-overrides.txt /mnt/p1/wifi-config.txt /mnt/p1/KERNEL.md5 /mnt/p1/SYSTEM.md5 /mnt/sys/usr/lib/retroarch/retroarch-config /mnt/sys/usr/lib/retroarch/retroarch-env.conf /mnt/sys/usr/lib/udev/rules.d/95-udevil-mount.rules /mnt/sys/usr/lib/systemd/system/udevil-mount@.service /mnt/sys/etc/udevil/udevil.conf /mnt/sys/usr/lib/systemd/system/tmp-assets.mount /mnt/sys/usr/lib/systemd/system/tmp-cores.mount /mnt/sys/usr/lib/systemd/system/retroarch.target /mnt/sys/usr/bin/lakka-shutdown.sh; do echo "== $f"; sudo cat $f; done
-            echo "== retroarch.cfg completo"; grep -v '^#' /mnt/sys/etc/retroarch.cfg | grep -E "^(menu_driver|video_driver|video_context|user_language|savefile|savestate|system_dir|rgui_browser|libretro|core_options|global_core|network_cmd|joypad|input_joypad_driver|input_driver|input_menu_toggle|quit_|video_shader|overlay|playlist|screenshot|config_save|menu_show|pause_|video_fullscreen|video_vsync|audio_sync|cache_dir|log_|frontend_log)" 
-            echo "== mesa"; ls /mnt/sys/usr/lib/dri 2>/dev/null; ls /mnt/sys/usr/lib | grep -i -E "gallium|llvm|swrast"; ls /mnt/sys/usr/share/vulkan/icd.d 2>/dev/null
-            echo "== python"; ls /mnt/sys/usr/lib/python3.11 | head -5
-            echo "== parted"; ls -la /mnt/sys/usr/sbin | grep -E "parted|sgdisk|sfdisk|blkid|partprobe"
-            echo "== targets"; ls /mnt/sys/usr/lib/systemd/system/retroarch.target.wants /mnt/sys/usr/lib/systemd/system/multi-user.target.wants 2>/dev/null
-          } > informe/lakka.txt 2>&1
-          tail -c 3000 informe/lakka.txt; true
-
+          gunzip -f pokemulador-usb.img.gz
+          truncate -s +1G pokemulador-usb.img
+          sgdisk -e pokemulador-usb.img > /dev/null
+          sgdisk -n 3:0:0 -t 3:0700 -c 3:JUEGOS pokemulador-usb.img > /dev/null
+          dev=$(sudo losetup -fP --show pokemulador-usb.img)
+          sudo mkfs.exfat -L JUEGOS ${dev}p3 > /dev/null
+          mkdir -p p1 p3
+          sudo mount ${dev}p3 p3
+          python3 lakka/prueba/rom_prueba.py prueba.gb && sudo cp prueba.gb "p3/Juego de prueba.gb"
+          sudo umount p3
+          # Mensajes del arranque por el puerto serie
+          sudo mount ${dev}p1 p1
+          sudo sed -i 's#grub_portable quiet#grub_portable console=ttyS0,115200 console=tty0#' p1/EFI/BOOT/grub.cfg
+          sudo umount p1
+          sudo losetup -d $dev
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd
+      - name: Arrancar y probar
+        run: |
+          mkdir -p resultado
+          qemu-system-x86_64 -enable-kvm -machine q35 -cpu host -smp 2 -m 3072 \
+            -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+            -drive if=pflash,format=raw,file=vars.fd \
+            -device qemu-xhci -drive if=none,id=usb,format=raw,file=pokemulador-usb.img \
+            -device usb-storage,drive=usb,removable=on -device usb-kbd \
+            -vga std -display none -audiodev none,id=nada \
+            -netdev user,id=red -device e1000,netdev=red \
+            -qmp unix:qmp.sock,server,nowait -serial file:resultado/serie.txt &
+          Q="python3 lakka/prueba/qmp.py qmp.sock"
+          sleep 100; $Q captura resultado/1-inicio.png
+          $Q teclas x; sleep 3; $Q captura resultado/2-juegos.png
+          $Q teclas x; sleep 3; $Q captura resultado/3-partida.png
+          $Q teclas x; sleep 30; $Q captura resultado/4-sala.png
+          $Q teclas x; sleep 20; $Q captura resultado/5-juego.png
+          $Q teclas f1; sleep 5; $Q captura resultado/6-menu.png
+          $Q apagar; sleep 40
+          pkill -f qemu-system || true
+      - name: Registros del USB de prueba
+        if: always()
+        run: |
+          dev=$(sudo losetup -fP --show pokemulador-usb.img)
+          mkdir -p p2 && sudo mount ${dev}p2 p2
+          sudo ls -la p2 p2/pokemulador || true
+          for f in registro.txt retroarch.txt salas.json jugador.json; do echo "== $f"; sudo cat p2/pokemulador/$f 2>/dev/null | tail -80; done
+          sudo mkdir -p resultado/datos
+          sudo cp p2/pokemulador/*.txt p2/pokemulador/*.json resultado/datos/ 2>/dev/null || true
+          sudo chown -R $(id -u) resultado
+          sudo umount p2; sudo losetup -d $dev
+          tail -60 resultado/serie.txt || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: informe-lakka
-          path: informe/
+          name: prueba-usb
+          path: resultado/
+          retention-days: 7
