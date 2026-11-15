@@ -30,5 +30,9 @@ poner("bool", "ShowBatteryIndicator", "true")
 t = re.sub(r'<bool name="ShowBattery" value="[^"]*" />\n?', "", t)
 poner("string", "ShowBattery", "text")
 poner("bool", "networkIcon", "true")
+# Lista de juegos con tarjetas (vista «grid» del tema) solo en los apartados de juegos y en las
+# colecciones; Opciones, Herramientas, etc. se quedan con su lista.
+for sistema in ("gb", "gbc", "gba", "n64", "nds", "ppsspp", "all", "favorites", "recent"):
+    poner("string", f"{sistema}.defaultView", "grid")
 ruta.write_text(t, encoding="utf-8")
 print("ajustes:", ruta)

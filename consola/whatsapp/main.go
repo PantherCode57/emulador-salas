@@ -95,7 +95,10 @@ func main() {
 		log.Fatalf("no se pudo preparar WhatsApp: %v", err)
 	}
 	a.w = w
-	a.dibujar()
+	// El logo, ya mismo en la pantalla (EmulationStation la acaba de soltar) y como primer marco
+	// del núcleo: así no se ve negro mientras arranca RetroArch.
+	a.dibujarCarga()
+	pintarFB(a.l.img)
 	a.srv.enviar(a.l.marco())
 
 	ra, err := abrirRetroArch()
@@ -115,6 +118,9 @@ func main() {
 
 	w.cerrar()
 	ra.cerrar()
+	// Al cerrar, otra vez el logo hasta que vuelve el menú.
+	a.dibujarCarga()
+	pintarFB(a.l.img)
 	log.Printf("hasta luego")
 	time.Sleep(100 * time.Millisecond)
 }
@@ -125,6 +131,7 @@ func dibujarPruebas(f *fuentes, carpeta string) error {
 		return err
 	}
 	a := nuevaApp(f)
+	a.cargaMin, a.cargaMax = time.Time{}, time.Time{} // sin pantalla de carga (se dibuja aparte)
 	a.w = &wa{app: a, chats: map[string]*Chat{}, nombres: map[string]string{}, pedidoNombre: map[string]bool{}, pedidoHistorial: map[string]bool{}, lidPN: map[string]string{}}
 	ahora := time.Now()
 	ej := []struct {
@@ -205,6 +212,11 @@ func dibujarPruebas(f *fuentes, carpeta string) error {
 		}
 		defer out.Close()
 		return png.Encode(out, a.l.img)
+	}
+	a.dibujarCarga()
+	if out, err := os.Create(filepath.Join(carpeta, "0-carga.png")); err == nil {
+		_ = png.Encode(out, a.l.img)
+		out.Close()
 	}
 	pasos := []struct {
 		nombre string

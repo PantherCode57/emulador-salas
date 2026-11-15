@@ -3,6 +3,7 @@ package main
 import (
 	"image"
 	"image/color"
+	"os"
 	"strconv"
 	"time"
 
@@ -11,8 +12,53 @@ import (
 
 func itoa(n int) string { return strconv.Itoa(n) }
 
+// logoCarga: el logo de la pantalla de carga (logo.png junto al programa). No va en el
+// repositorio; si no está, se dibuja un círculo verde.
+var logoCarga = func() image.Image {
+	f, err := os.Open(entorno("WHATSAPP_LOGO", "logo.png"))
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	img, _, err := image.Decode(f)
+	if err != nil {
+		return nil
+	}
+	return img
+}()
+
+// enCarga: al abrir, la pantalla del logo hasta que conecta (como mínimo un segundo, para que no
+// parpadee, y como mucho seis).
+func (a *app) enCarga() bool {
+	ahora := time.Now()
+	if ahora.Before(a.cargaMin) {
+		return true
+	}
+	return (a.estado == waArrancando || a.estado == waConectando) && ahora.Before(a.cargaMax)
+}
+
+// dibujarCarga: el logo de WhatsApp en el centro, como al abrirlo en el móvil.
+func (a *app) dibujarCarga() {
+	l := a.l
+	l.rect(l.img.Bounds(), colFondo)
+	cy := alto/2 - 30
+	if logoCarga != nil {
+		img := ajustarA(logoCarga, 150, 150)
+		b := img.Bounds()
+		l.pegar(img, (ancho-b.Dx())/2, cy-b.Dy()/2)
+	} else {
+		l.circulo(ancho/2, cy, 70, colVerde)
+	}
+	l.centrado(image.Rect(0, cy+90, ancho, cy+124), "WhatsApp", l.f.titulo, colTexto)
+	l.centrado(image.Rect(0, alto-48, ancho, alto-20), "Panther OS", l.f.mini, colSuave)
+}
+
 func (a *app) dibujar() {
 	l := a.l
+	if a.enCarga() {
+		a.dibujarCarga()
+		return
+	}
 	l.rect(l.img.Bounds(), colFondo)
 	sinSesion := a.estado == waArrancando || a.estado == waQR || a.estado == waQRCaducado || a.estado == waDesvinculado
 	switch {

@@ -46,6 +46,10 @@ type app struct {
 	avisoTexto string
 	avisoHasta time.Time
 
+	// Pantalla de carga al abrir (ver enCarga).
+	cargaMin, cargaMax time.Time
+	enCargaAntes       bool
+
 	cambios bool
 
 	// Botones: los que estaban pulsados y cuándo se repiten (para mantener pulsadas las flechas).
@@ -56,6 +60,7 @@ type app struct {
 func nuevaApp(f *fuentes) *app {
 	a := &app{f: f, l: nuevoLienzo(f), tareas: make(chan func(), 256), salir: make(chan struct{}), cambios: true}
 	a.av = nuevosAvatares(a)
+	a.cargaMin, a.cargaMax = time.Now().Add(time.Second), time.Now().Add(6*time.Second)
 	return a
 }
 
@@ -115,6 +120,9 @@ func (a *app) bucle(botones <-chan uint16, ra *retroarch) {
 			a.botones(m)
 		case <-reloj.C:
 			a.repetir()
+			if c := a.enCarga(); c != a.enCargaAntes { // se acaba la pantalla de carga
+				a.enCargaAntes, a.cambios = c, true
+			}
 			if !a.avisoHasta.IsZero() && time.Now().After(a.avisoHasta) {
 				a.avisoHasta = time.Time{}
 				a.avisoTexto = ""
