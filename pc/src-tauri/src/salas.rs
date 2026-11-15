@@ -289,6 +289,39 @@ pub fn partida_compartida_gba(emuladores: &Path, modo: Option<bool>, nombre: &st
     escribir_atomico(&destino, texto.as_bytes()).map_err(|e| format!("No se pudo preparar la partida compartida: {e}"))
 }
 
+// ---------- Cable link de Game Boy (Gambatte) ----------
+
+/// Puerto del cable link de Gambatte: va por la sala igual que la partida compartida de GBA.
+pub const PUERTO_CABLE_GB: u16 = 56400;
+
+/// Opciones del cable link en las opciones de Gambatte de RetroArch (config/Gambatte/Gambatte.opt).
+/// Some(true): tenemos la sala abierta (servidor); Some(false): nos conectamos al anfitrión por
+/// 127.0.0.1 (el enlace lo lleva hasta él); None: sin cable.
+pub fn cable_link_gambatte(emuladores: &Path, modo: Option<bool>) {
+    let opt = emuladores.join("RetroArch").join("config").join("Gambatte").join("Gambatte.opt");
+    let texto = fs::read_to_string(&opt).unwrap_or_default();
+    let mut lineas: Vec<String> = texto
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("gambatte_gb_link_"))
+        .map(String::from)
+        .collect();
+    let modo_texto = match modo {
+        Some(true) => "Network Server",
+        Some(false) => "Network Client",
+        None => "Not Connected",
+    };
+    lineas.push(format!("gambatte_gb_link_mode = \"{modo_texto}\""));
+    lineas.push(format!("gambatte_gb_link_network_port = \"{PUERTO_CABLE_GB}\""));
+    // La IP del servidor va en 12 cifras: 127.000.000.001
+    for (i, cifra) in "127000000001".chars().enumerate() {
+        lineas.push(format!("gambatte_gb_link_network_server_ip_{} = \"{cifra}\"", i + 1));
+    }
+    if let Some(carpeta) = opt.parent() {
+        let _ = fs::create_dir_all(carpeta);
+    }
+    let _ = fs::write(&opt, lineas.join("\n") + "\n");
+}
+
 // ---------- Partidas .sav ----------
 
 /// Carpeta que usa RetroArch para cada núcleo (ordena las partidas por núcleo).

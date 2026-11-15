@@ -277,6 +277,8 @@ private fun SalaActiva(
         when {
             sala.esDe3DS -> TextoSuave(stringResource(R.string.emudex_paso_comunicacion))
             sala.esDeGba -> TextoSuave(stringResource(R.string.emudex_sala_gba_compartida))
+            sala.esDeGameBoy -> TextoSuave(stringResource(R.string.emudex_sala_gb_cable))
+            sala.esDeDs -> TextoSuave(stringResource(R.string.emudex_sala_ds_wifi))
             else -> TextoSuave(stringResource(R.string.emudex_sala_sin_online))
         }
     }

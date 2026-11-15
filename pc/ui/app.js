@@ -233,7 +233,11 @@ function vistaSalaActiva(sala) {
         <li>En el juego, usa la comunicación local (Festival Plaza, PSS…) para intercambiar o combatir.</li>
       </ol>
       <p class="suave">Cada jugador necesita un nombre distinto en Azahar: Emulación › Configurar › Sistema › Nombre de usuario.</p>`
-    : sala.sistema === 'gba'
+    : (sala.sistema === 'gb' || sala.sistema === 'gbc')
+      ? '<p class="suave">El cable link va por la sala: id los dos al Centro Pokémon, subid a la planta de arriba y hablad con la recepcionista para intercambiar o combatir. Los dos tenéis que abrir el juego desde aquí.</p>'
+      : sala.sistema === 'nds'
+      ? '<p class="suave">En DS el online original vuelve a funcionar con servidores de la comunidad (Platino, HeartGold, SoulSilver, Negro, Blanco y sus secuelas; Diamante y Perla puede que no). En el juego: Nintendo WFC › Ajustes, buscad el punto de acceso «melonAP» y conectad. Luego registraos en el Bloc de Amigos y usad el Club Wi-Fi o el GTS. Esto va por Internet, no por la sala.</p>'
+      : sala.sistema === 'gba'
       ? '<p class="suave">En Rojo Fuego, Verde Hoja, Rubí, Zafiro y Esmeralda os veréis andando por el mapa (Rojo Fuego con Verde Hoja; Rubí, Zafiro y Esmeralda entre ellos). Se conecta solo al pulsar Jugar. Basado en GBA-PK Multiplayer, de TheHunterManX.</p>'
       : '<p class="suave">En este juego no hay intercambios ni combates online (solo en 3DS), pero tu amigo verá cómo vas.</p>';
   const amigos = prog.amigos.length

@@ -288,16 +288,20 @@ fn lanzar(app: &AppHandle, data: &AppData, path: &str, sala: Option<SalaGuardada
         .filter(|s| s.partida_propia)
         .map(|s| salas::carpeta_perfil(&datos, &s.codigo));
     let emulators = emulators_dir(app);
-    // GBA desde la sala en la que estamos: partida compartida (os veis por el mapa).
+    // Desde la sala en la que estamos: en GBA, partida compartida (os veis por el mapa); en Game
+    // Boy, cable link. Some(true) si tenemos la sala abierta, Some(false) si es la de un amigo.
+    let modo = sala.as_ref().and_then(|s| {
+        data.sala
+            .lock()
+            .unwrap()
+            .as_ref()
+            .filter(|a| a.codigo == s.codigo)
+            .and_then(|a| a.anfitrion)
+    });
+    if system == "gb" || system == "gbc" {
+        salas::cable_link_gambatte(&emulators, modo);
+    }
     if system == "gba" {
-        let modo = sala.as_ref().and_then(|s| {
-            data.sala
-                .lock()
-                .unwrap()
-                .as_ref()
-                .filter(|a| a.codigo == s.codigo)
-                .and_then(|a| a.anfitrion)
-        });
         let (_, nombre) = jugador(app, data);
         if let Err(e) = salas::partida_compartida_gba(&emulators, modo, &nombre) {
             eprintln!("{e}");

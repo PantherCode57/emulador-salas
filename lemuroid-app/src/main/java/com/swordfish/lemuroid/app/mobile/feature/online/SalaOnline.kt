@@ -53,6 +53,12 @@ object SalaOnline {
 
         val esDeGba: Boolean
             get() = sistema == SystemID.GBA.dbname
+
+        val esDeGameBoy: Boolean
+            get() = sistema == SystemID.GB.dbname || sistema == SystemID.GBC.dbname
+
+        val esDeDs: Boolean
+            get() = sistema == SystemID.NDS.dbname
     }
 
     data class Estado(
@@ -269,18 +275,35 @@ object SalaOnline {
         }
     }
 
-    /** Variables para el núcleo de 3DS. Se llama desde el proceso del juego. */
+    /** Puerto del cable link de Game Boy (Gambatte), que el enlace lleva por la sala. */
+    private const val PUERTO_CABLE_GB = 56400
+
+    /**
+     * Variables para los núcleos cuando estamos en una sala. Se llama desde el proceso del juego.
+     * 3DS: Azahar entra en la sala (o la abre). Game Boy: el cable link de Gambatte va por la sala
+     * (servidor si la tenemos abierta; si no, cliente de 127.0.0.1, que el enlace lleva al anfitrión).
+     */
     fun variablesNucleo(
         context: Context,
         systemID: SystemID,
     ): List<CoreVariable> {
-        if (systemID != SystemID.NINTENDO_3DS) return emptyList()
+        if (systemID != SystemID.NINTENDO_3DS && systemID != SystemID.GB && systemID != SystemID.GBC) return emptyList()
         val json =
             try {
                 JSONObject(File(context.filesDir, ARCHIVO).readText())
             } catch (e: Exception) {
                 return emptyList()
             }
+        if (systemID == SystemID.GB || systemID == SystemID.GBC) {
+            val modo = if (json.optBoolean("anfitrion")) "Network Server" else "Network Client"
+            return listOf(
+                CoreVariable("gambatte_gb_link_mode", modo),
+                CoreVariable("gambatte_gb_link_network_port", PUERTO_CABLE_GB.toString()),
+            ) +
+                "127000000001".mapIndexed { i, cifra ->
+                    CoreVariable("gambatte_gb_link_network_server_ip_${i + 1}", cifra.toString())
+                }
+        }
         return listOf(
             CoreVariable("citra_pkm_room_mode", if (json.optBoolean("anfitrion")) "host" else "join"),
             CoreVariable("citra_pkm_room_port", PUERTO.toString()),

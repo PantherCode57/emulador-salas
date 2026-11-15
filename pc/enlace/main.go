@@ -5,7 +5,7 @@
 //	enlace unirse --codigo K7P2QX   el amigo: abre 127.0.0.1:24872 y lo lleva hasta el anfitrión
 //	enlace sala   --codigo K7P2QX   sala guardada: entra el que llegue y se reparten los papeles
 //	                                (ver sala.go), se pasan el progreso de cada uno y llevan la
-//	                                partida compartida de GBA (ver juego.go)
+//	                                partida compartida de GBA y el cable link de Game Boy (juego.go)
 //
 // La clave (secreto OAuth "tskey-client-…") llega en la variable POKEMULADOR_TS_KEY.
 // Cada línea que escribe en la salida es un JSON con el estado, para que lo lea Pokemulador.
@@ -84,7 +84,7 @@ func main() {
 	progresoPropio := opciones.String("progreso", "", "modo sala: archivo JSON con nuestro progreso")
 	carpetaAmigos := opciones.String("amigos", "", "modo sala: carpeta donde guardar el progreso de los amigos")
 	idPropio := opciones.String("id", "", "modo sala: nuestro identificador en la sala")
-	puertoJuego := opciones.Int("juego", 4096, "modo sala: puerto local de la partida compartida (GBA-PK); 0 la desactiva")
+	puertosJuego := opciones.String("juego", "4096,56400", "modo sala: puertos de juego que van por la sala (GBA-PK, cable link de Game Boy); 0 ninguno")
 	_ = opciones.Parse(os.Args[2:])
 	if *puertoLocal == 0 {
 		*puertoLocal = *puerto
@@ -151,7 +151,7 @@ func main() {
 	case "host":
 		anfitrion(ctx, srv, *puerto)
 	case "sala":
-		sala(ctx, srv, c, *puerto, *puertoLocal, *puertoJuego, nuevosProgresos(*progresoPropio, *carpetaAmigos, *idPropio))
+		sala(ctx, srv, c, *puerto, *puertoLocal, puertosDeJuego(*puertosJuego), nuevosProgresos(*progresoPropio, *carpetaAmigos, *idPropio))
 	default:
 		unirse(ctx, srv, "pkm-"+c, *puerto, *puertoLocal)
 	}

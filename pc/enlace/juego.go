@@ -1,12 +1,11 @@
-// Partida compartida (GBA-PK) por la sala.
+// Conexiones de juego por la sala: la partida compartida de GBA (GBA-PK, puerto 4096) y el cable
+// link de Game Boy (Gambatte, puerto 56400).
 //
-// GBA-PK es un script de mGBA en el que un jugador abre una "partida" (escucha en TCP, puerto
-// 4096) y los demás se conectan a ella. Así os veis andando por el mismo mapa.
-//
-// El que tiene la sala abierta también abre la partida en su emulador. Los amigos se conectan a
-// 127.0.0.1:4096 en su propio dispositivo: el enlace recoge esa conexión y la lleva por Tailscale
-// al puerto de la sala del anfitrión, presentándose con saludoJuego para distinguirla del canal
-// de progreso. El anfitrión la entrega a la partida de su emulador (127.0.0.1:4096).
+// En los dos casos un emulador hace de "servidor" (escucha en TCP) y los demás se conectan a él.
+// El que tiene la sala abierta es el servidor. Los amigos se conectan a 127.0.0.1:<puerto> en su
+// propio dispositivo: el enlace recoge esa conexión y la lleva por Tailscale al puerto de la sala
+// del anfitrión, presentándose con un saludo que dice a qué puerto va (así se distingue del canal
+// de progreso). El anfitrión la entrega a su emulador (127.0.0.1:<puerto>).
 package main
 
 import (
@@ -16,13 +15,22 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"tailscale.com/tsnet"
 )
 
-const saludoJuego = "PKMJUEGO1\n"
+// Saludo: "PKMJ" + puerto con 5 cifras + salto de línea. El de la primera versión (solo GBA-PK)
+// era "PKMJUEGO1\n", que mide lo mismo.
+const (
+	largoSaludo   = 10
+	saludoAntiguo = "PKMJUEGO1\n"
+)
+
+func saludoPara(puerto int) string { return fmt.Sprintf("PKMJ%05d\n", puerto) }
 
 // conLector es una conexión de la que ya se han leído (o espiado) bytes con un bufio.Reader.
 type conLector struct {
@@ -32,54 +40,96 @@ type conLector struct {
 
 func (c conLector) Read(b []byte) (int, error) { return c.r.Read(b) }
 
-// clasificarEntrada mira qué es una conexión que llega a la sala: la partida compartida de un
-// amigo o el canal de progreso de siempre.
-func clasificarEntrada(ctx context.Context, c net.Conn, puertoJuego int, progreso func(net.Conn)) {
+// puertoJuego: en qué puerto de este dispositivo escucha el amigo (local) y a qué puerto del
+// anfitrión va (remoto). Normalmente son el mismo; distintos solo para probar en un mismo equipo.
+type puertoJuego struct{ local, remoto int }
+
+// puertosDeJuego lee la lista de --juego ("4096,56400", o "14096:4096" para probar). 0: ninguno.
+func puertosDeJuego(texto string) []puertoJuego {
+	var puertos []puertoJuego
+	for _, trozo := range strings.Split(texto, ",") {
+		partes := strings.SplitN(strings.TrimSpace(trozo), ":", 2)
+		local, err := strconv.Atoi(partes[0])
+		if err != nil || local <= 0 || local > 65535 {
+			continue
+		}
+		remoto := local
+		if len(partes) == 2 {
+			if remoto, err = strconv.Atoi(partes[1]); err != nil || remoto <= 0 || remoto > 65535 {
+				continue
+			}
+		}
+		puertos = append(puertos, puertoJuego{local, remoto})
+	}
+	return puertos
+}
+
+func admite(lista []puertoJuego, puerto int) bool {
+	for _, p := range lista {
+		if p.remoto == puerto {
+			return true
+		}
+	}
+	return false
+}
+
+// clasificarEntrada mira qué es una conexión que llega a la sala: un juego de un amigo o el canal
+// de progreso de siempre.
+func clasificarEntrada(ctx context.Context, c net.Conn, puertos []puertoJuego, progreso func(net.Conn)) {
 	lector := bufio.NewReaderSize(c, 64<<10)
 	_ = c.SetReadDeadline(time.Now().Add(15 * time.Second))
-	inicio, err := lector.Peek(len(saludoJuego))
+	inicio, err := lector.Peek(largoSaludo)
 	_ = c.SetReadDeadline(time.Time{})
 	if err != nil {
 		c.Close()
 		return
 	}
-	if string(inicio) == saludoJuego {
-		_, _ = lector.Discard(len(saludoJuego))
-		entregarJuego(ctx, conLector{c, lector}, puertoJuego)
+	saludo := string(inicio)
+	if strings.HasPrefix(saludo, "PKMJ") {
+		_, _ = lector.Discard(largoSaludo)
+		puerto := 4096
+		if saludo != saludoAntiguo {
+			puerto, err = strconv.Atoi(strings.TrimSpace(saludo[4:]))
+		}
+		if err != nil || !admite(puertos, puerto) {
+			c.Close()
+			return
+		}
+		entregarJuego(ctx, conLector{c, lector}, puerto)
 		return
 	}
 	progreso(conLector{c, lector})
 }
 
-// entregarJuego lleva la conexión de un amigo a la partida de nuestro emulador.
-func entregarJuego(ctx context.Context, remoto net.Conn, puertoJuego int) {
+// entregarJuego lleva la conexión de un amigo al emulador de este dispositivo.
+func entregarJuego(ctx context.Context, remoto net.Conn, puerto int) {
 	defer remoto.Close()
-	if puertoJuego <= 0 {
-		return
-	}
 	d := net.Dialer{Timeout: 3 * time.Second}
-	local, err := d.DialContext(ctx, "tcp", fmt.Sprintf("127.0.0.1:%d", puertoJuego))
+	local, err := d.DialContext(ctx, "tcp", fmt.Sprintf("127.0.0.1:%d", puerto))
 	if err != nil {
 		return // nuestro juego aún no está abierto: el amigo lo volverá a intentar
 	}
 	unir(ctx, remoto, local)
 }
 
-// servirJuegoLocal deja que el emulador de este dispositivo se conecte a la partida del
-// anfitrión como si estuviera en 127.0.0.1. Dura mientras estemos conectados a la sala.
-func servirJuegoLocal(ctx context.Context, srv *tsnet.Server, anfitrion netip.Addr, puertoSala, puertoJuego int) {
-	if puertoJuego <= 0 {
-		return
+// servirJuegosLocales abre en este dispositivo los puertos de juego que llevan al anfitrión.
+// Duran mientras estemos conectados a la sala.
+func servirJuegosLocales(ctx context.Context, srv *tsnet.Server, anfitrion netip.Addr, puertoSala int, puertos []puertoJuego) {
+	for _, p := range puertos {
+		go servirJuegoLocal(ctx, srv, anfitrion, puertoSala, p)
 	}
+}
+
+func servirJuegoLocal(ctx context.Context, srv *tsnet.Server, anfitrion netip.Addr, puertoSala int, puerto puertoJuego) {
 	var ln net.Listener
 	for intento := 0; ; intento++ {
 		var err error
-		ln, err = net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", puertoJuego))
+		ln, err = net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", puerto.local))
 		if err == nil {
 			break
 		}
 		if intento >= 10 {
-			avisar("aviso", map[string]any{"mensaje": fmt.Sprintf("El puerto %d está ocupado: no se podrá ver al amigo en el juego.", puertoJuego)})
+			avisar("aviso", map[string]any{"mensaje": fmt.Sprintf("El puerto %d está ocupado: ese juego no podrá conectar con tu amigo.", puerto.local)})
 			return
 		}
 		select {
@@ -105,7 +155,7 @@ func servirJuegoLocal(ctx context.Context, srv *tsnet.Server, anfitrion netip.Ad
 			if err != nil {
 				return
 			}
-			if _, err := io.WriteString(remoto, saludoJuego); err != nil {
+			if _, err := io.WriteString(remoto, saludoPara(puerto.remoto)); err != nil {
 				remoto.Close()
 				return
 			}
