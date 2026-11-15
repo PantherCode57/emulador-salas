@@ -14,6 +14,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.swordfish.lemuroid.app.mobile.feature.game.GameActivity
 import com.swordfish.lemuroid.app.mobile.feature.game.GameService
+import com.swordfish.lemuroid.app.mobile.feature.online.SalaJuego
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.AppTheme
 import com.swordfish.lemuroid.app.shared.GameMenuContract
@@ -39,6 +40,7 @@ import com.swordfish.lemuroid.lib.library.db.entity.Game
 import com.swordfish.lemuroid.lib.saves.SavesManager
 import com.swordfish.lemuroid.lib.saves.StatesManager
 import com.swordfish.lemuroid.lib.saves.StatesPreviewManager
+import com.swordfish.lemuroid.lib.storage.DirectoriesManager
 import com.swordfish.touchinput.radial.sensors.TiltConfiguration
 import dagger.Lazy
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -91,6 +93,9 @@ abstract class BaseGameActivity : ImmersiveActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Pokemulador: la partida que toca (la de siempre o la de una sala). Antes que nada,
+        // porque todo lo que guarda o carga el juego en este proceso sale de aquí.
+        DirectoriesManager.perfil = intent.getStringExtra(EXTRA_PERFIL)
         setUpExceptionsHandler()
         GameService.startService(applicationContext, intent)
         game = intent.getSerializableExtra(EXTRA_GAME) as Game
@@ -116,6 +121,10 @@ abstract class BaseGameActivity : ImmersiveActivity() {
         }
 
         baseGameScreenViewModel = viewModel
+        if (baseGameScreenViewModel.salaJuego == null) {
+            baseGameScreenViewModel.salaJuego =
+                intent.getStringExtra(EXTRA_SALA)?.let { SalaJuego(applicationContext, it, game.customName ?: game.title) }
+        }
 
         lifecycle.addObserver(baseGameScreenViewModel)
 
@@ -141,7 +150,9 @@ abstract class BaseGameActivity : ImmersiveActivity() {
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    baseGameScreenViewModel.requestFinish()
+                    // Pokemulador: «atrás» abre el menú (desde ahí se puede salir), así nadie sale
+                    // del juego sin querer y el menú es fácil de encontrar.
+                    baseGameScreenViewModel.showMenu()
                 }
             },
         )
@@ -343,6 +354,16 @@ abstract class BaseGameActivity : ImmersiveActivity() {
         finishTriggered = true
     }
 
+    override fun onResume() {
+        super.onResume()
+        baseGameScreenViewModel.salaJuego?.reanudar()
+    }
+
+    override fun onPause() {
+        baseGameScreenViewModel.salaJuego?.pausar()
+        super.onPause()
+    }
+
     override fun onStop() {
         if (!finishTriggered && !isFinishing && !isChangingConfigurations) {
             baseGameScreenViewModel.requestBackgroundSave()
@@ -423,6 +444,8 @@ abstract class BaseGameActivity : ImmersiveActivity() {
         private const val EXTRA_LOAD_SAVE = "LOAD_SAVE"
         private const val EXTRA_LEANBACK = "LEANBACK"
         private const val EXTRA_SYSTEM_CORE_CONFIG = "EXTRA_SYSTEM_CORE_CONFIG"
+        private const val EXTRA_PERFIL = "POKEMULADOR_PERFIL"
+        private const val EXTRA_SALA = "POKEMULADOR_SALA"
 
         const val REQUEST_PLAY_GAME = 1001
         const val PLAY_GAME_RESULT_SESSION_DURATION = "PLAY_GAME_RESULT_SESSION_DURATION"
@@ -439,6 +462,8 @@ abstract class BaseGameActivity : ImmersiveActivity() {
             game: Game,
             loadSave: Boolean,
             useLeanback: Boolean,
+            perfil: String? = null,
+            sala: String? = null,
         ) {
             val gameActivity =
                 if (useLeanback) {
@@ -452,6 +477,8 @@ abstract class BaseGameActivity : ImmersiveActivity() {
                     putExtra(EXTRA_LOAD_SAVE, loadSave)
                     putExtra(EXTRA_LEANBACK, useLeanback)
                     putExtra(EXTRA_SYSTEM_CORE_CONFIG, systemCoreConfig)
+                    putExtra(EXTRA_PERFIL, perfil)
+                    putExtra(EXTRA_SALA, sala)
                 },
                 REQUEST_PLAY_GAME,
             )

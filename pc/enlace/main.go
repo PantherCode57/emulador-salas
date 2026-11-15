@@ -3,6 +3,8 @@
 //
 //	enlace host   --codigo K7P2QX   el que crea la sala: expone su sala de Azahar (UDP 24872)
 //	enlace unirse --codigo K7P2QX   el amigo: abre 127.0.0.1:24872 y lo lleva hasta el anfitrión
+//	enlace sala   --codigo K7P2QX   sala guardada: entra el que llegue y se reparten los papeles
+//	                                (ver sala.go), y se pasan el progreso de cada uno
 //
 // La clave (secreto OAuth "tskey-client-…") llega en la variable POKEMULADOR_TS_KEY.
 // Cada línea que escribe en la salida es un JSON con el estado, para que lo lea Pokemulador.
@@ -21,7 +23,6 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -79,6 +80,9 @@ func main() {
 	codigo := opciones.String("codigo", "", "código de sala de 6 caracteres")
 	puerto := opciones.Int("puerto", 24872, "puerto UDP de la sala de Azahar")
 	puertoLocal := opciones.Int("local", 0, "al unirse: puerto local para Azahar (por defecto, el mismo que --puerto)")
+	progresoPropio := opciones.String("progreso", "", "modo sala: archivo JSON con nuestro progreso")
+	carpetaAmigos := opciones.String("amigos", "", "modo sala: carpeta donde guardar el progreso de los amigos")
+	idPropio := opciones.String("id", "", "modo sala: nuestro identificador en la sala")
 	_ = opciones.Parse(os.Args[2:])
 	if *puertoLocal == 0 {
 		*puertoLocal = *puerto
@@ -88,7 +92,7 @@ func main() {
 	if !codigoValido(c) {
 		fallar("El código de sala no es válido.")
 	}
-	if modo != "host" && modo != "unirse" {
+	if modo != "host" && modo != "unirse" && modo != "sala" {
 		fallar("Modo desconocido: " + modo)
 	}
 
@@ -107,7 +111,7 @@ func main() {
 	defer os.RemoveAll(dir)
 
 	nombre := "pkm-" + c
-	if modo == "unirse" {
+	if modo != "host" {
 		nombre += "-" + sufijo()
 	}
 	srv := &tsnet.Server{
@@ -118,9 +122,11 @@ func main() {
 		Store:         new(mem.Store),
 		AdvertiseTags: []string{etiqueta},
 		Logf:          func(string, ...any) {},
+		UserLogf:      func(string, ...any) {},
 	}
 	if os.Getenv("POKEMULADOR_DEBUG") != "" {
 		srv.Logf = log.Printf
+		srv.UserLogf = log.Printf
 	}
 	defer srv.Close()
 
@@ -139,70 +145,31 @@ func main() {
 	}
 	cancelarUp()
 
-	if modo == "host" {
+	switch modo {
+	case "host":
 		anfitrion(ctx, srv, *puerto)
-	} else {
+	case "sala":
+		sala(ctx, srv, c, *puerto, *puertoLocal, nuevosProgresos(*progresoPropio, *carpetaAmigos, *idPropio))
+	default:
 		unirse(ctx, srv, "pkm-"+c, *puerto, *puertoLocal)
 	}
+	// Un momento para que lleguen los cierres de conexión a los amigos antes de desconectarnos.
+	time.Sleep(500 * time.Millisecond)
 }
 
 // anfitrion recibe a los amigos por Tailscale y reenvía su tráfico a la sala local de Azahar.
-// Cada amigo usa su propio socket local, así la sala lo ve como un jugador distinto.
 func anfitrion(ctx context.Context, srv *tsnet.Server, puerto int) {
 	ip4, _ := srv.TailscaleIPs()
 	pc, err := srv.ListenPacket("udp", netip.AddrPortFrom(ip4, uint16(puerto)).String())
 	if err != nil {
 		fallar("No se pudo abrir la sala en Tailscale: " + err.Error())
 	}
-	defer pc.Close()
 	go func() {
 		<-ctx.Done()
 		pc.Close()
 	}()
-
-	sala := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: puerto}
 	avisar("listo", map[string]any{"ip": ip4.String()})
-
-	var mu sync.Mutex
-	sesiones := map[string]*net.UDPConn{}
-	buf := make([]byte, 65535)
-	for {
-		n, origen, err := pc.ReadFrom(buf)
-		if err != nil {
-			return
-		}
-		clave := origen.String()
-		mu.Lock()
-		s, existe := sesiones[clave]
-		if !existe {
-			s, err = net.DialUDP("udp", nil, sala)
-			if err != nil {
-				mu.Unlock()
-				continue
-			}
-			sesiones[clave] = s
-			avisar("amigos", map[string]any{"n": len(sesiones)})
-			go func(s *net.UDPConn, origen net.Addr, clave string) {
-				b := make([]byte, 65535)
-				for {
-					_ = s.SetReadDeadline(time.Now().Add(inactividad))
-					m, err := s.Read(b)
-					if err != nil {
-						break
-					}
-					_, _ = pc.WriteTo(b[:m], origen)
-				}
-				s.Close()
-				mu.Lock()
-				delete(sesiones, clave)
-				quedan := len(sesiones)
-				mu.Unlock()
-				avisar("amigos", map[string]any{"n": quedan})
-			}(s, origen, clave)
-		}
-		mu.Unlock()
-		_, _ = s.Write(buf[:n])
-	}
+	reenviarSala(ctx, pc, puerto, func(n int) { avisar("amigos", map[string]any{"n": n}) })
 }
 
 // unirse busca al anfitrión por su nombre en Tailscale y abre 127.0.0.1:puerto para Azahar.

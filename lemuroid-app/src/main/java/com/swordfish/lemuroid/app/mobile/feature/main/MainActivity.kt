@@ -235,7 +235,11 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                         )
                     }
                     composable(MainRoute.ONLINE) {
-                        OnlineScreen(modifier = Modifier.padding(padding))
+                        OnlineScreen(
+                            modifier = Modifier.padding(padding),
+                            retrogradeDb = retrogradeDb,
+                            onJugar = { game, sala -> gameInteractor.onGamePlayEnSala(game, sala.perfil, sala.codigo) },
+                        )
                     }
                     composable(MainRoute.FAVORITES) {
                         FavoritesScreen(

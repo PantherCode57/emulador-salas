@@ -131,7 +131,7 @@ p { margin: 0 0 10px; line-height: 1.5; }
 .volver { background: none; border: 0; color: var(--carcasa); font: inherit; font-size: 14px; cursor: pointer; padding: 0; margin-bottom: 12px; }
 .lista { display: flex; flex-direction: column; gap: 4px; }
 .entrada {
-  display: grid; grid-template-columns: 70px 48px 1fr auto auto; align-items: center; gap: 14px;
+  display: grid; grid-template-columns: 70px 48px 1fr auto auto auto; align-items: center; gap: 14px;
   padding: 8px 12px; border-radius: 10px; cursor: pointer;
 }
 .entrada:hover { background: var(--carcasa); color: var(--pantalla); }
@@ -188,3 +188,46 @@ p { margin: 0 0 10px; line-height: 1.5; }
   position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);
   background: var(--tinta); color: var(--pantalla); padding: 10px 18px; border-radius: 12px; font-size: 14px;
 }
+
+.mas { background: none; border: 0; cursor: pointer; font-size: 20px; line-height: 1; color: var(--carcasa); padding: 4px 6px; border-radius: 8px; }
+.entrada:hover .mas { color: var(--pantalla); }
+.mas:hover { background: var(--carcasa-oscura); color: var(--pantalla); }
+.boton:disabled { opacity: .45; cursor: default; }
+.boton:disabled:hover { background: var(--acento); }
+
+/* Salas guardadas y progreso */
+.fila-sala { display: flex; align-items: center; gap: 14px; }
+.fila-sala > div { flex: 1; min-width: 0; }
+.fila-sala .nombre, .progreso .nombre { font-weight: 700; font-size: 16px; }
+.volver.borrar { margin: 10px 0 0; font-size: 13px; }
+.sala-activa h2 { font-size: 20px; margin: 2px 0 4px; }
+.progreso {
+  display: flex; gap: 14px; align-items: flex-start; background: #fff; border: 2px solid var(--tarjeta-fuerte);
+  border-radius: 14px; padding: 12px; max-width: 640px; margin-bottom: 12px; line-height: 1.5;
+}
+.progreso .captura {
+  width: 180px; max-height: 220px; object-fit: contain; border-radius: 8px; border: 2px solid var(--carcasa-oscura);
+  background: var(--tinta); flex: none;
+}
+
+/* Ventanas */
+.modal {
+  position: fixed; inset: 0; background: rgba(80, 19, 19, .55); display: flex; align-items: center;
+  justify-content: center; padding: 20px; z-index: 10;
+}
+.modal[hidden] { display: none; }
+.modal .caja {
+  background: var(--pantalla); border: 3px solid var(--tinta); border-radius: 18px; padding: 20px 22px;
+  width: min(520px, 100%); max-height: calc(100vh - 40px); overflow-y: auto;
+}
+.campo { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 14px; margin-bottom: 14px; }
+.campo select, .campo input:not([type="radio"]):not(.entrada-codigo) {
+  height: 38px; border-radius: 10px; border: 2px solid var(--carcasa-oscura); background: #fff;
+  font: inherit; font-weight: 400; padding: 0 10px; color: var(--tinta);
+}
+.campo select:focus, .campo input:focus { outline: 2px solid var(--ambar); }
+.opcion {
+  display: flex; gap: 10px; align-items: flex-start; font-weight: 400; background: var(--tarjeta);
+  border-radius: 10px; padding: 10px; cursor: pointer;
+}
+.opcion input { margin-top: 3px; accent-color: var(--acento); }

@@ -34,6 +34,21 @@ class GameInteractor(
         gameLauncher.launchGameAsync(activity.activity(), game, true, useLeanback)
     }
 
+    /** Pokemulador: jugar al juego de una sala, con la partida de esa sala. */
+    fun onGamePlayEnSala(
+        game: Game,
+        perfil: String?,
+        sala: String,
+    ) {
+        if (!ensureNotBusy()) {
+            return
+        }
+        if (!ensureNotificationsPermissionAvailable()) {
+            return
+        }
+        gameLauncher.launchGameAsync(activity.activity(), game, true, useLeanback, perfil, sala)
+    }
+
     fun onGameRestart(game: Game) {
         if (!ensureNotBusy()) {
             return

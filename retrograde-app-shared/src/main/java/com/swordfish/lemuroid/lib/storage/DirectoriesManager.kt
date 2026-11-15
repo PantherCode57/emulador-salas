@@ -20,23 +20,48 @@ class DirectoriesManager(private val appContext: Context) {
             mkdirs()
         }
 
-    fun getStatesDirectory(): File =
-        File(appContext.getExternalFilesDir(null), "states").apply {
+    fun getStatesDirectory(): File = getStatesDirectoryFor(perfil)
+
+    fun getStatesPreviewDirectory(): File = getStatesPreviewDirectoryFor(perfil)
+
+    fun getSavesDirectory(): File = getSavesDirectoryFor(perfil)
+
+    /** Carpeta de partidas guardadas de una partida concreta (null = la de siempre). */
+    fun getSavesDirectoryFor(perfil: String?): File =
+        File(getRaizPartidas(perfil), "saves").apply {
             mkdirs()
         }
 
-    fun getStatesPreviewDirectory(): File =
-        File(appContext.getExternalFilesDir(null), "state-previews").apply {
+    fun getStatesDirectoryFor(perfil: String?): File =
+        File(getRaizPartidas(perfil), "states").apply {
             mkdirs()
         }
 
-    fun getSavesDirectory(): File =
-        File(appContext.getExternalFilesDir(null), "saves").apply {
+    fun getStatesPreviewDirectoryFor(perfil: String?): File =
+        File(getRaizPartidas(perfil), "state-previews").apply {
             mkdirs()
         }
+
+    /** Carpeta con todo lo de una partida aparte (la de una sala). */
+    fun getPerfilDirectory(perfil: String): File = File(File(appContext.getExternalFilesDir(null), PERFILES), perfil)
 
     fun getInternalRomsDirectory(): File =
         File(appContext.getExternalFilesDir(null), "roms").apply {
             mkdirs()
         }
+
+    private fun getRaizPartidas(perfil: String?): File? =
+        if (perfil == null) appContext.getExternalFilesDir(null) else getPerfilDirectory(perfil)
+
+    companion object {
+        private const val PERFILES = "perfiles"
+
+        /**
+         * Partida que usa el juego que se está jugando (Pokemulador: cada sala puede tener la suya).
+         * null es la partida de siempre. Lo fija el proceso del juego al abrirlo; como en ese
+         * proceso solo hay un juego a la vez, vale con una variable para todo el proceso.
+         */
+        @Volatile
+        var perfil: String? = null
+    }
 }

@@ -12,7 +12,7 @@
     <string name="emudex_join_with_code">Unirme con código</string>
 
     <!-- Salas online -->
-    <string name="emudex_online_solo_3ds">De momento, las salas son para juegos de 3DS. Funcionan con Wi-Fi o con datos, y también con amigos que juegan en PC.</string>
+    <string name="emudex_online_solo_3ds">Los intercambios y combates online son en juegos de 3DS, con Wi-Fi o con datos, y también con amigos que juegan en PC. En el resto de juegos la sala sirve para ver cómo va cada uno.</string>
     <string name="emudex_online_sin_clave">Esta versión de Pokemulador no tiene la clave de Tailscale, así que no puede jugar online.</string>
     <string name="emudex_crear_sala_titulo">Crear una sala</string>
     <string name="emudex_crear_sala_texto">Pokemulador te dará un código de 6 letras para que se lo pases a tus amigos.</string>
@@ -39,4 +39,55 @@
     <string name="emudex_paso_reabrir">Si ya tenías el juego abierto antes de entrar en la sala, ciérralo y vuelve a abrirlo.</string>
     <string name="emudex_sala_notificacion_titulo">Sala online abierta</string>
     <string name="emudex_sala_notificacion_texto">Código %1$s</string>
+    <!-- Salas guardadas y partidas -->
+    <string name="emudex_online_intro">Crea una sala para un juego y pásale el código a tu amigo. La sala se queda guardada: entráis cuando queráis, cada uno avanza con su partida y, cuando coincidís, veis cómo va el otro.</string>
+    <string name="emudex_tu_nombre">Tu nombre en las salas</string>
+    <string name="emudex_cambiar">Cambiar</string>
+    <string name="emudex_guardar">Guardar</string>
+    <string name="emudex_mis_salas">Mis salas</string>
+    <string name="emudex_sin_salas">Todavía no tienes salas. Crea una o únete con el código de un amigo.</string>
+    <string name="emudex_codigo_sala">Código %1$s</string>
+    <string name="emudex_codigo_amigo">Código de la sala</string>
+    <string name="emudex_borrar">Borrar</string>
+    <string name="emudex_borrar_sala">Borrar sala</string>
+    <string name="emudex_borrar_sala_titulo">¿Borrar la sala «%1$s»?</string>
+    <string name="emudex_borrar_sala_propia">Se borrará también la partida propia de esta sala. Tu partida de siempre no se toca.</string>
+    <string name="emudex_borrar_sala_normal">Tu partida no se borra: solo la sala y lo que sabías de tus amigos en ella.</string>
+    <string name="emudex_dentro_sala">Estás en la sala</string>
+    <string name="emudex_jugar">Jugar</string>
+    <string name="emudex_fase_buscando_sala">Mirando si tu amigo ya está dentro…</string>
+    <string name="emudex_fase_anfitrion">Sala abierta. Puedes jugar ya: cuando tu amigo entre, os conectáis solos.</string>
+    <string name="emudex_fase_con_amigo">Tu amigo está en la sala contigo.</string>
+    <string name="emudex_fase_esperando_vuelta">Tu amigo no está ahora. Puedes jugar igual: si vuelve, os conectáis solos.</string>
+    <string name="emudex_sala_sin_online">En este juego no hay intercambios ni combates online (solo en 3DS), pero tu amigo verá cómo vas.</string>
+    <string name="emudex_progreso_titulo">Cómo va %1$s</string>
+    <string name="emudex_progreso_tuyo">Cómo vas tú</string>
+    <string name="emudex_progreso_nadie">Todavía no sabes nada de tu amigo en esta sala. Cuando coincidáis dentro, veréis cómo va cada uno, y se queda guardado para luego.</string>
+    <string name="emudex_jugado">%1$s jugado</string>
+    <string name="emudex_ultima_vez">Última vez: %1$s</string>
+    <string name="emudex_nunca">Todavía no ha jugado en la sala</string>
+    <string name="emudex_resumen_amigo">%1$s: %2$s jugado · %3$s</string>
+    <string name="emudex_tiempo_nada">menos de 1 min</string>
+    <string name="emudex_tiempo_minutos">%1$d min</string>
+    <string name="emudex_tiempo_horas">%1$d h %2$d min</string>
+    <string name="emudex_partida_propia_corta">partida de la sala</string>
+    <string name="emudex_partida_siempre_corta">partida de siempre</string>
+    <string name="emudex_elige_juego">Juego</string>
+    <string name="emudex_elige_juego_boton">Elegir juego</string>
+    <string name="emudex_sin_juegos">No hay juegos en tu biblioteca.</string>
+    <string name="emudex_falta_juego">Elige el juego de la sala.</string>
+    <string name="emudex_que_partida">¿Con qué partida juegas en esta sala?</string>
+    <string name="emudex_partida_de_siempre">Mi partida de siempre</string>
+    <string name="emudex_partida_siempre_desc">Lo que avances en la sala también cuenta cuando juegues fuera de ella.</string>
+    <string name="emudex_partida_nueva">Partida nueva solo para esta sala</string>
+    <string name="emudex_partida_nueva_desc">Empiezas de cero aquí y tu partida de siempre se queda tal cual.</string>
+    <string name="emudex_partida_de_sala">Partida de la sala «%1$s»</string>
+    <string name="emudex_nombre_sala">Nombre de la sala (opcional)</string>
+    <string name="emudex_crear">Crear</string>
+    <string name="emudex_juego_no_encontrado">No encuentro el juego de esta sala en tu biblioteca.</string>
+    <string name="emudex_cargar_partida">Cargar partida (.sav)</string>
+    <string name="emudex_sacar_partida">Guardar partida en un archivo (.sav)</string>
+    <string name="emudex_cargar_partida_texto">Elige el archivo .sav que descargaste (en linkcable.app, con «Download save»). Sustituye a la partida de este juego; la que tienes ahora se guarda como copia por si acaso.</string>
+    <string name="emudex_sacar_partida_texto">Se guarda tu partida en un archivo .sav, para llevarla a otro emulador o a linkcable.app (con «Load save»).</string>
+    <string name="emudex_elegir_archivo">Elegir archivo</string>
 </resources>

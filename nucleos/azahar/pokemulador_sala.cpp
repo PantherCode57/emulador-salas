@@ -10,9 +10,15 @@
 // app la publica para los amigos. "join": el núcleo entra en 127.0.0.1:puerto, donde el enlace
 // de la app lleva el tráfico hasta la sala del amigo. Es la misma lógica que usa la app
 // oficial de Azahar para Android (src/android/app/src/main/jni/multiplayer.cpp).
+//
+// Las salas se pueden guardar y cada uno entra cuando quiere, así que el anfitrión puede llegar
+// después que su amigo, o irse y volver. Por eso un hilo vigila cada 5 segundos y, si no estamos
+// dentro de la sala, vuelve a intentar entrar.
 
 #include <chrono>
+#include <condition_variable>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -31,9 +37,52 @@ namespace PokemuladorSala {
 namespace {
 bool red_iniciada = false;
 bool sala_propia = false;
+
+struct DatosSala {
+    std::string nombre;
+    std::string clave;
+    u16 puerto = Network::DefaultRoomPort;
+    std::string consola;
+};
+DatosSala datos;
+
+std::thread vigilante;
+std::mutex mutex_vigilante;
+std::condition_variable aviso_vigilante;
+bool parar_vigilante = false;
+
+void Entrar(Network::RoomMember& member) {
+    member.Join(datos.nombre, datos.consola, "127.0.0.1", datos.puerto, 0, Network::NoPreferredMac,
+                datos.clave);
+}
+
+void Vigilar() {
+    std::unique_lock lock(mutex_vigilante);
+    while (!aviso_vigilante.wait_for(lock, std::chrono::seconds(5),
+                                     [] { return parar_vigilante; })) {
+        auto member = Network::GetRoomMember().lock();
+        if (member && member->GetState() == Network::RoomMember::State::Idle) {
+            LOG_INFO(Frontend, "Pokemulador: volviendo a entrar en la sala");
+            Entrar(*member);
+        }
+    }
+}
+
+void PararVigilante() {
+    if (!vigilante.joinable()) {
+        return;
+    }
+    {
+        std::lock_guard lock(mutex_vigilante);
+        parar_vigilante = true;
+    }
+    aviso_vigilante.notify_all();
+    vigilante.join();
+}
 } // namespace
 
 void Iniciar() {
+    PararVigilante();
     const std::string modo = LibRetro::FetchVariable("citra_pkm_room_mode", "off");
     if (modo != "host" && modo != "join") {
         return;
@@ -78,13 +127,19 @@ void Iniciar() {
         }
     }
 
-    member->Join(nombre, Service::CFG::GetConsoleIdHash(Core::System::GetInstance()), "127.0.0.1",
-                 puerto, 0, Network::NoPreferredMac, clave);
+    datos.nombre = nombre;
+    datos.clave = clave;
+    datos.puerto = puerto;
+    datos.consola = Service::CFG::GetConsoleIdHash(Core::System::GetInstance());
+    Entrar(*member);
+    parar_vigilante = false;
+    vigilante = std::thread(Vigilar);
     LOG_INFO(Frontend, "Pokemulador: sala {} en 127.0.0.1:{}", modo, puerto);
     LibRetro::DisplayMessage(modo == "host" ? "Sala online abierta" : "Entrando en la sala online");
 }
 
 void Detener() {
+    PararVigilante();
     if (!red_iniciada) {
         return;
     }

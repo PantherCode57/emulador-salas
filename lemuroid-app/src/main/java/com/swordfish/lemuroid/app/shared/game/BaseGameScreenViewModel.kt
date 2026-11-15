@@ -12,6 +12,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.swordfish.lemuroid.app.mobile.feature.game.GameService
+import com.swordfish.lemuroid.app.mobile.feature.online.SalaJuego
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
 import com.swordfish.lemuroid.app.shared.game.viewmodel.GameViewModelInput
 import com.swordfish.lemuroid.app.shared.game.viewmodel.GameViewModelRetroGameView
@@ -23,6 +24,7 @@ import com.swordfish.lemuroid.app.shared.input.InputDeviceManager
 import com.swordfish.lemuroid.app.shared.rumble.RumbleManager
 import com.swordfish.lemuroid.app.shared.settings.ControllerConfigsManager
 import com.swordfish.lemuroid.app.shared.settings.HapticFeedbackMode
+import com.swordfish.lemuroid.common.graphics.takeScreenshot
 import com.swordfish.lemuroid.common.longAnimationDuration
 import com.swordfish.lemuroid.lib.controller.ControllerConfig
 import com.swordfish.lemuroid.lib.core.CoreVariablesManager
@@ -38,6 +40,7 @@ import com.swordfish.touchinput.radial.sensors.TiltConfiguration
 import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
 import gg.padkit.inputevents.InputEvent
 import gg.padkit.inputstate.InputState
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -284,12 +287,19 @@ class BaseGameScreenViewModel(
             }
         }
 
+    /** Abre el menú del juego (Pokemulador: también con el botón «atrás» del móvil). */
+    fun showMenu() {
+        if (loadingState.value) return
+        sideEffects.showMenu(tilt, inputs)
+    }
+
     fun requestFinish() {
         if (loadingState.value) return
         viewModelScope.launch {
             withLoading {
                 val snapshot = saves.captureSaveSnapshot(true) ?: return@launch
                 saves.writeSaveSnapshot(snapshot)
+                guardarProgresoSala()
                 sideEffects.requestSuccessfulFinish()
             }
         }
@@ -300,7 +310,22 @@ class BaseGameScreenViewModel(
         GameService.schedule {
             val snapshot = saves.captureSaveSnapshot(false)
             saves.writeSaveSnapshot(snapshot)
+            guardarProgresoSala()
         }
+    }
+
+    /** Pokemulador: si se juega desde una sala, el tiempo y la captura que ven los amigos. */
+    var salaJuego: SalaJuego? = null
+
+    private var progresoPeriodico: Job? = null
+
+    private suspend fun guardarProgresoSala() {
+        val sala = salaJuego ?: return
+        val captura =
+            runCatching {
+                retroGameView.retroGameView?.takeScreenshot(SalaJuego.LADO_CAPTURA, 2)
+            }.getOrNull()
+        sala.guardar(captura)
     }
 
     fun handleVirtualInputEvent(events: List<InputEvent>) {
@@ -309,6 +334,16 @@ class BaseGameScreenViewModel(
 
     override fun onCreate(owner: LifecycleOwner) {
         super.onCreate(owner)
+        if (salaJuego != null && progresoPeriodico == null) {
+            // Si los amigos están en la sala a la vez, que vean cómo vamos mientras jugamos.
+            progresoPeriodico =
+                viewModelScope.launch {
+                    while (true) {
+                        delay(SalaJuego.CADA_CUANTO_MS)
+                        if (!loadingState.value) guardarProgresoSala()
+                    }
+                }
+        }
 
         owner.lifecycle.addObserver(tilt)
         owner.lifecycle.addObserver(inputs)

@@ -1,6 +1,7 @@
 package com.swordfish.lemuroid.app.mobile.feature.main
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -26,12 +27,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AppShortcut
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Divider
@@ -39,6 +42,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
@@ -50,6 +54,7 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,9 +63,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.swordfish.lemuroid.R
+import com.swordfish.lemuroid.app.mobile.feature.online.PartidasArchivo
+import com.swordfish.lemuroid.app.mobile.feature.online.SalaOnline
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.LemuroidGameTexts
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.LemuroidSmallGameImage
 import com.swordfish.lemuroid.lib.library.db.entity.Game
+import kotlinx.coroutines.launch
 import timber.log.Timber
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -127,6 +135,31 @@ private fun ContextActionContent(
     val context = LocalContext.current
     var showCustomNameDialog by remember { mutableStateOf(false) }
 
+    // Pokemulador: cargar una partida .sav (de linkcable.app u otro emulador) o sacar la nuestra.
+    val scope = rememberCoroutineScope()
+    var dialogoPartida by remember { mutableStateOf<AccionPartida?>(null) }
+    var perfilElegido by remember { mutableStateOf<String?>(null) }
+    val importarLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            if (uri != null) {
+                val perfil = perfilElegido
+                scope.launch {
+                    Toast.makeText(context, PartidasArchivo.importar(context, selectedGame, uri, perfil), Toast.LENGTH_LONG).show()
+                    selectedGameState.value = null
+                }
+            }
+        }
+    val exportarLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri: Uri? ->
+            if (uri != null) {
+                val perfil = perfilElegido
+                scope.launch {
+                    Toast.makeText(context, PartidasArchivo.exportar(context, selectedGame, uri, perfil), Toast.LENGTH_LONG).show()
+                    selectedGameState.value = null
+                }
+            }
+        }
+
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
     ) { uri: Uri? ->
@@ -169,6 +202,19 @@ private fun ContextActionContent(
                 selectedGameState.value = null
             },
         )
+
+        if (PartidasArchivo.admiteArchivo(selectedGame)) {
+            ContextActionEntry(
+                label = stringResource(id = R.string.emudex_cargar_partida),
+                icon = Icons.Default.Download,
+                onClick = { dialogoPartida = AccionPartida.IMPORTAR },
+            )
+            ContextActionEntry(
+                label = stringResource(id = R.string.emudex_sacar_partida),
+                icon = Icons.Default.Upload,
+                onClick = { dialogoPartida = AccionPartida.EXPORTAR },
+            )
+        }
 
         if (selectedGame.isFavorite) {
             ContextActionEntry(
@@ -238,6 +284,22 @@ private fun ContextActionContent(
                 },
             )
         }
+    }
+
+    dialogoPartida?.let { accion ->
+        DialogoPartida(
+            game = selectedGame,
+            accion = accion,
+            onDismiss = { dialogoPartida = null },
+            onConfirm = { perfil ->
+                dialogoPartida = null
+                perfilElegido = perfil
+                when (accion) {
+                    AccionPartida.IMPORTAR -> importarLauncher.launch(arrayOf("*/*"))
+                    AccionPartida.EXPORTAR -> exportarLauncher.launch(PartidasArchivo.nombreSugerido(selectedGame))
+                }
+            },
+        )
     }
 
     if (showCustomNameDialog) {
@@ -324,4 +386,68 @@ private fun FakeScrim(modalSheetState: SheetState) {
                     .background(BottomSheetDefaults.ScrimColor),
         )
     }
+}
+
+private enum class AccionPartida { IMPORTAR, EXPORTAR }
+
+/** Elegir a qué partida va el archivo (la de siempre o la de una sala) antes de abrir el selector. */
+@Composable
+private fun DialogoPartida(
+    game: Game,
+    accion: AccionPartida,
+    onDismiss: () -> Unit,
+    onConfirm: (String?) -> Unit,
+) {
+    val context = LocalContext.current
+    val salas = remember(game) { SalaOnline.salasConPartidaPropia(context, game) }
+    var elegido by remember { mutableStateOf<String?>(null) }
+    val opciones =
+        listOf<Pair<String?, String>>(null to stringResource(R.string.emudex_partida_de_siempre)) +
+            salas.map { it.perfil to stringResource(R.string.emudex_partida_de_sala, it.nombre) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                stringResource(
+                    if (accion == AccionPartida.IMPORTAR) R.string.emudex_cargar_partida else R.string.emudex_sacar_partida,
+                ),
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    stringResource(
+                        if (accion == AccionPartida.IMPORTAR) {
+                            R.string.emudex_cargar_partida_texto
+                        } else {
+                            R.string.emudex_sacar_partida_texto
+                        },
+                    ),
+                )
+                if (opciones.size > 1) {
+                    opciones.forEach { (perfil, etiqueta) ->
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { elegido = perfil },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = elegido == perfil, onClick = { elegido = perfil })
+                            Text(etiqueta)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(elegido) }) {
+                Text(stringResource(R.string.emudex_elegir_archivo))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
+        },
+    )
 }
