@@ -1,0 +1,14 @@
+[Unit]
+Description=Animación de arranque de Panther OS
+DefaultDependencies=no
+After=local-fs.target
+Before=emulationstation.service welcome-message.service
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/panther-arranque
+RemainAfterExit=yes
+
+[Install]
+WantedBy=sysinit.target

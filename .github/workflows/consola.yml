@@ -1,0 +1,46 @@
+name: Consola portátil (arm64)
+
+# Programas de la consola portátil (consola/): el WhatsApp, la animación de arranque y el núcleo de
+# la pantalla (lakka/nucleo), compilados en una máquina arm64 de GitHub. Ninguno lleva claves.
+on:
+  push:
+    branches-ignore: [ master ]
+    paths:
+      - 'consola/**'
+      - 'lakka/nucleo/**'
+      - '.github/workflows/consola.yml'
+  workflow_dispatch:
+
+jobs:
+  programas:
+    name: WhatsApp, animación y núcleo de la pantalla
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: consola/whatsapp/go.mod
+          cache-dependency-path: consola/whatsapp/go.sum
+      - name: WhatsApp
+        working-directory: consola/whatsapp
+        run: |
+          go vet ./...
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/whatsapp .
+          ../../piezas/whatsapp -prueba ../../piezas/pantallas
+      - name: Animación de arranque
+        working-directory: consola/arranque
+        run: |
+          go vet ./...
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/panther-arranque .
+      - name: Núcleo de la pantalla
+        run: |
+          bash lakka/nucleo/compilar.sh
+          cp lakka/nucleo/pokemulador_libretro.so piezas/
+      - name: Instalación
+        run: cp consola/instalar/* piezas/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: consola-arm64
+          path: piezas/
+          retention-days: 7
