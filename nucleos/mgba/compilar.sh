@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Compila el núcleo libretro de mGBA de Pokemulador (con scripts de Lua) para Android (arm64) y
-# para Windows (x64). Se lanza desde la raíz del repositorio, con el código de mGBA en ./mgba.
-# Deja los dos archivos en ./nucleo-mgba:
-#   libmgba_libretro_android.so   va dentro del APK en lugar del mGBA de Lemuroid
-#   mgba_libretro.dll             va en pc/emuladores/RetroArch/cores
+# Compila el núcleo libretro de mGBA de Pokemulador (con scripts de Lua) para Android (arm64).
+# Se lanza desde la raíz del repositorio, con el código de mGBA en ./mgba. Deja en ./nucleo-mgba
+# libmgba_libretro_android.so, que va dentro del APK en lugar del mGBA de Lemuroid.
+# El de Windows se compila aparte con Visual Studio (compilar-windows.bat).
 set -euo pipefail
 
 RAIZ=$(pwd)
@@ -55,22 +54,5 @@ compilar_lua lua-android "$TC/aarch64-linux-android24-clang" "$TC/llvm-ar" "-DLU
 SO=$(find build-android -name 'mgba_libretro*.so' | head -1)
 "$TC/llvm-strip" -s "$SO"
 cp "$SO" nucleo-mgba/libmgba_libretro_android.so
-
-# --- Windows x64 (con MinGW) ------------------------------------------------------------------
-sudo apt-get install -y -qq gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 > /dev/null
-compilar_lua lua-windows x86_64-w64-mingw32-gcc x86_64-w64-mingw32-ar ""
-cmake -S mgba -B build-windows "${OPCIONES[@]}" \
-	"-DLUA_LIBRARY=$RAIZ/lua-windows/liblua.a" \
-	-DCMAKE_SYSTEM_NAME=Windows \
-	-DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++ \
-	-DCMAKE_RC_COMPILER=x86_64-w64-mingw32-windres \
-	-DCMAKE_FIND_ROOT_PATH=/usr/x86_64-w64-mingw32 \
-	-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
-	-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
-	"-DCMAKE_SHARED_LINKER_FLAGS=-static -static-libgcc"
-cmake --build build-windows --target mgba_libretro -j "$(nproc)"
-DLL=$(find build-windows -name 'mgba_libretro*.dll' | head -1)
-x86_64-w64-mingw32-strip -s "$DLL"
-cp "$DLL" nucleo-mgba/mgba_libretro.dll
 
 ls -la nucleo-mgba

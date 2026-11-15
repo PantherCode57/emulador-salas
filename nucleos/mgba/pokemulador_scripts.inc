@@ -11,6 +11,7 @@
 #ifdef ENABLE_SCRIPTING
 #include <mgba/core/scripting.h>
 #include <mgba/script/context.h>
+#include <mgba-util/socket.h>
 
 static struct mScriptContext _pkmScripts;
 static bool _pkmScriptsOn = false;
@@ -126,6 +127,9 @@ static void _pkmScriptsStart(const char* sysDir) {
 	}
 	vf->close(vf);
 
+	// En Windows hay que preparar la red (WSAStartup) antes de usar sockets; mGBA lo hace al
+	// arrancar su ventana, pero el núcleo libretro no. En Android y Linux no hace nada.
+	SocketSubsystemInit();
 	mScriptContextInit(&_pkmScripts);
 	mScriptContextAttachStdlib(&_pkmScripts);
 	mScriptContextAttachSocket(&_pkmScripts);
@@ -176,6 +180,7 @@ static void _pkmScriptsStop(void) {
 	_pkmScriptsOn = false;
 	mScriptContextDetachCore(&_pkmScripts);
 	mScriptContextDeinit(&_pkmScripts);
+	SocketSubsystemDeinit();
 }
 #else
 static void _pkmScriptsStart(const char* sysDir) {

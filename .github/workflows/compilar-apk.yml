@@ -92,7 +92,7 @@ jobs:
           ref: ${{ env.MGBA_TAG }}
           path: mgba
 
-      - name: Compilar para Android y Windows
+      - name: Compilar para Android
         if: steps.cache.outputs.cache-hit != 'true'
         run: bash nucleos/mgba/compilar.sh
 
@@ -101,6 +101,48 @@ jobs:
         with:
           name: nucleo-mgba
           path: nucleo-mgba/
+          retention-days: 30
+
+  nucleo-mgba-windows:
+    name: Núcleo GBA para PC (mGBA con partida compartida, Visual Studio)
+    runs-on: windows-2022
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Buscar núcleo ya compilado
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: nucleo-mgba-windows
+          key: nucleo-mgba-windows-${{ env.MGBA_TAG }}-${{ env.LUA_VERSION }}-${{ hashFiles('nucleos/mgba/**') }}
+
+      - name: Descargar mGBA
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: mgba-emu/mgba
+          ref: ${{ env.MGBA_TAG }}
+          path: mgba
+
+      - name: Compilar con Visual Studio
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          python nucleos/mgba/aplicar.py mgba
+          curl -fsSL "https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz" -o lua.tar.gz
+          echo "9fbf5e28ef86c69858f6d3d34eccc32e911c1a28b4120ff3e84aaa70cfbf1e30  lua.tar.gz" | sha256sum -c -
+          tar xzf lua.tar.gz
+          mkdir -p nucleo-mgba-windows
+          cmd //c "nucleos\mgba\compilar-windows.bat $(cygpath -w "$PWD/mgba") $(cygpath -w "$PWD/lua-${LUA_VERSION}/src") $(cygpath -w "$PWD/nucleo-mgba-windows")"
+          ls -la nucleo-mgba-windows/mgba_libretro.dll
+
+      - name: Guardar núcleo
+        uses: actions/upload-artifact@v4
+        with:
+          name: nucleo-mgba-windows
+          path: nucleo-mgba-windows/mgba_libretro.dll
           retention-days: 30
 
   apk:

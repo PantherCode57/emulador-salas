@@ -50,13 +50,14 @@ foreach ($core in $Cores) {
 Copy-Item -Force (Join-Path $pc 'config\pokemulador.cfg') (Join-Path $raDestino 'pokemulador.cfg')
 
 # mGBA de Pokemulador (con scripts de Lua, para la partida compartida de GBA): lo compila GitHub
-# Actions (artefacto "nucleo-mgba" de la última ejecución correcta) y sustituye al de libretro.
+# Actions con Visual Studio (artefacto "nucleo-mgba-windows" de la última ejecución correcta) y
+# sustituye al de libretro.
 $gh = Get-Command gh -ErrorAction SilentlyContinue
 if ($gh) {
     $run = gh run list -R PantherCode57/emulador-salas -w 'Compilar APK' -s success -L 1 --json databaseId --jq '.[0].databaseId'
-    $tmpMgba = Join-Path $descargas 'nucleo-mgba'
+    $tmpMgba = Join-Path $descargas 'nucleo-mgba-windows'
     if (Test-Path $tmpMgba) { Remove-Item -Recurse -Force $tmpMgba }
-    gh run download $run -R PantherCode57/emulador-salas -n nucleo-mgba -D $tmpMgba
+    gh run download $run -R PantherCode57/emulador-salas -n nucleo-mgba-windows -D $tmpMgba
     Copy-Item -Force (Join-Path $tmpMgba 'mgba_libretro.dll') (Join-Path $raDestino 'cores\mgba_libretro.dll')
 } else {
     Write-Warning 'Sin gh: se queda el mGBA normal (no habrá partida compartida en GBA).'
