@@ -45,47 +45,103 @@ def disco(numero):
     return json.loads(r.stdout)
 
 
-def arreglar_gpt(dispositivo, total):
-    """Pone la copia de la cabecera y de la tabla GPT al final del disco (como sgdisk -e)."""
-    with open(dispositivo, "r+b", buffering=0) as d:
-        d.seek(0)
-        mbr = bytearray(d.read(512))
-        cab = bytearray(d.read(512))
-        if cab[:8] != b"EFI PART":
-            raise SystemExit("la imagen no tiene tabla GPT")
-        tam_cab, = struct.unpack_from("<I", cab, 12)
-        lba_tabla, n_entradas, tam_entrada = struct.unpack_from("<QII", cab, 72)
-        bytes_tabla = n_entradas * tam_entrada
-        sectores_tabla = (bytes_tabla + 511) // 512
-        d.seek(lba_tabla * 512)
-        tabla = d.read(sectores_tabla * 512)
+def preparar_gpt(cabeza, total):
+    """Cambia en el primer MiB de la imagen la tabla GPT para que ocupe todo el disco (como
+    sgdisk -e) y devuelve la copia que va al final: (bytes, sector donde empieza)."""
+    if cabeza[512:520] != b"EFI PART":
+        raise SystemExit("la imagen no tiene tabla GPT")
+    cab = bytearray(cabeza[512:1024])
+    tam_cab, = struct.unpack_from("<I", cab, 12)
+    lba_tabla, n_entradas, tam_entrada = struct.unpack_from("<QII", cab, 72)
+    sectores_tabla = (n_entradas * tam_entrada + 511) // 512
+    tabla = bytes(cabeza[lba_tabla * 512:(lba_tabla + sectores_tabla) * 512])
 
-        def con_crc(c):
-            struct.pack_into("<I", c, 16, 0)
-            struct.pack_into("<I", c, 16, zlib.crc32(bytes(c[:tam_cab])) & 0xFFFFFFFF)
-            return c
+    def con_crc(c):
+        struct.pack_into("<I", c, 16, 0)
+        struct.pack_into("<I", c, 16, zlib.crc32(bytes(c[:tam_cab])) & 0xFFFFFFFF)
+        return c
 
-        ultimo_util = total - 1 - sectores_tabla - 1
-        principal = bytearray(cab)
-        struct.pack_into("<Q", principal, 32, total - 1)  # dónde está la copia
-        struct.pack_into("<Q", principal, 48, ultimo_util)
-        con_crc(principal)
-        copia = bytearray(principal)
-        struct.pack_into("<Q", copia, 24, total - 1)  # esta cabecera
-        struct.pack_into("<Q", copia, 32, 1)  # la otra
-        struct.pack_into("<Q", copia, 72, total - 1 - sectores_tabla)  # su tabla
-        con_crc(copia)
-        # MBR protector: que cubra todo el disco.
-        struct.pack_into("<I", mbr, 0x1BE + 12, min(total - 1, 0xFFFFFFFF))
+    ultimo_util = total - 1 - sectores_tabla - 1
+    principal = bytearray(cab)
+    struct.pack_into("<Q", principal, 32, total - 1)  # dónde está la copia
+    struct.pack_into("<Q", principal, 48, ultimo_util)
+    con_crc(principal)
+    copia = bytearray(principal)
+    struct.pack_into("<Q", copia, 24, total - 1)  # esta cabecera
+    struct.pack_into("<Q", copia, 32, 1)  # la otra
+    struct.pack_into("<Q", copia, 72, total - 1 - sectores_tabla)  # su tabla
+    con_crc(copia)
+    cabeza[512:1024] = principal
+    # MBR protector: que cubra todo el disco.
+    struct.pack_into("<I", cabeza, 0x1BE + 12, min(total - 1, 0xFFFFFFFF))
+    anotar("GPT para todo el disco: último sector útil", ultimo_util)
+    return tabla + bytes(copia), total - 1 - sectores_tabla
 
-        d.seek(0)
-        d.write(bytes(mbr))
-        d.write(bytes(principal))
-        d.seek((total - 1 - sectores_tabla) * 512)
-        d.write(tabla)
-        d.seek((total - 1) * 512)
-        d.write(bytes(copia))
-    anotar("GPT movida al final: último sector útil", ultimo_util)
+
+def escribir_imagen(imagen, dispositivo, tam_imagen, total):
+    """Escribe la imagen en el disco. El primer MiB (la tabla de particiones) va al final: si
+    Windows la ve antes, monta las particiones y ya no deja escribir dentro de ellas."""
+    bloque = 4 << 20
+    cabeza = 1 << 20
+    inicio = time.time()
+    disco = DiscoWindows(dispositivo)
+    try:
+        with open(imagen, "rb") as origen:
+            primero = bytearray(origen.read(cabeza))
+            cola, lba_cola = preparar_gpt(primero, total)
+            disco.escribir(lba_cola * 512, cola)
+            posicion = cabeza
+            while True:
+                datos = origen.read(bloque)
+                if not datos:
+                    break
+                if len(datos) % 512:
+                    datos += b"\0" * (512 - len(datos) % 512)
+                disco.escribir(posicion, datos)
+                posicion += len(datos)
+                if posicion % (128 << 20) == 0:
+                    anotar(f"escrito {posicion >> 20} MiB de {tam_imagen >> 20}")
+            disco.escribir(0, bytes(primero))
+    finally:
+        disco.cerrar()
+    anotar(f"imagen escrita: {tam_imagen >> 20} MiB en {time.time() - inicio:.0f} s")
+
+
+class DiscoWindows:
+    """Escritura directa en un disco con CreateFile/WriteFile (lo que usan los grabadores de USB)."""
+
+    def __init__(self, ruta):
+        import ctypes
+        from ctypes import wintypes
+
+        self.k = ctypes.WinDLL("kernel32", use_last_error=True)
+        self.ctypes = ctypes
+        self.k.CreateFileW.restype = wintypes.HANDLE
+        self.k.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+                                       wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+        self.k.SetFilePointerEx.argtypes = [wintypes.HANDLE, ctypes.c_longlong, ctypes.POINTER(ctypes.c_longlong), wintypes.DWORD]
+        self.k.WriteFile.argtypes = [wintypes.HANDLE, wintypes.LPCVOID, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID]
+        self.k.FlushFileBuffers.argtypes = [wintypes.HANDLE]
+        self.k.CloseHandle.argtypes = [wintypes.HANDLE]
+        GENERIC_READ, GENERIC_WRITE = 0x80000000, 0x40000000
+        FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING = 1, 2, 3
+        FILE_FLAG_WRITE_THROUGH = 0x80000000
+        self.h = self.k.CreateFileW(ruta, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                    None, OPEN_EXISTING, FILE_FLAG_WRITE_THROUGH, None)
+        if self.h in (None, ctypes.c_void_p(-1).value):
+            raise SystemExit(f"no se pudo abrir {ruta}: error {ctypes.get_last_error()}")
+
+    def escribir(self, posicion, datos):
+        ctypes = self.ctypes
+        if not self.k.SetFilePointerEx(self.h, posicion, None, 0):
+            raise SystemExit(f"no se pudo ir al byte {posicion}: error {ctypes.get_last_error()}")
+        hechos = ctypes.c_ulong(0)
+        if not self.k.WriteFile(self.h, datos, len(datos), ctypes.byref(hechos), None) or hechos.value != len(datos):
+            raise SystemExit(f"no se pudo escribir en el byte {posicion}: error {ctypes.get_last_error()}")
+
+    def cerrar(self):
+        self.k.FlushFileBuffers(self.h)
+        self.k.CloseHandle(self.h)
 
 
 def main():
@@ -102,27 +158,13 @@ def main():
     diskpart([f"select disk {numero}", "clean"])
     time.sleep(2)
     dispositivo = rf"\\.\PhysicalDrive{numero}"
-    bloque = 4 << 20
-    escrito = 0
-    inicio = time.time()
-    with open(imagen, "rb") as origen, open(dispositivo, "r+b", buffering=0) as destino:
-        while True:
-            datos = origen.read(bloque)
-            if not datos:
-                break
-            if len(datos) % 512:
-                datos += b"\0" * (512 - len(datos) % 512)
-            destino.write(datos)
-            escrito += len(datos)
-            if escrito % (256 << 20) == 0:
-                anotar(f"escrito {escrito >> 20} MiB de {tam_imagen >> 20}")
-    anotar(f"imagen escrita: {escrito >> 20} MiB en {time.time() - inicio:.0f} s")
-
-    arreglar_gpt(dispositivo, tam_esperado // 512)
-    time.sleep(1)
+    escribir_imagen(imagen, dispositivo, tam_imagen, tam_esperado // 512)
+    time.sleep(2)
     diskpart(["rescan"])
     time.sleep(3)
-    diskpart([f"select disk {numero}", "create partition primary", "format fs=exfat label=JUEGOS quick", f"assign letter={letra}"])
+    # La parte del sistema es de tipo EFI (Windows no le da letra); por si acaso, se le quita.
+    diskpart([f"select disk {numero}", "select partition 1", "remove noerr", "select disk " + str(numero),
+              "create partition primary", "format fs=exfat label=JUEGOS quick", f"assign letter={letra} noerr"])
     anotar("hecho")
 
 

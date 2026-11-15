@@ -1,0 +1,7 @@
+18:00:20 disco 2 {'FriendlyName': 'General UDisk', 'BusType': 'USB', 'Size': 8053063680, 'IsBoot': False, 'IsSystem': False}
+18:00:58 diskpart ['select disk 2', 'clean'] -> 0 Microsoft DiskPart versi¢n 10.0.26100.1150 |  | Copyright (C) Microsoft Corporation. | En el equipo: DESKTOP-7LLSG83 |  | El disco 2 es ahora el disco seleccionado. |  | DiskPart ha limpiado el disco satisfactoriamente.
+18:01:00 GPT para todo el disco: último sector útil 15728606
+18:03:27 imagen escrita: 954 MiB en 147 s
+18:05:02 diskpart ['rescan'] -> 0 Microsoft DiskPart versi¢n 10.0.26100.1150 |  | Copyright (C) Microsoft Corporation. | En el equipo: DESKTOP-7LLSG83 |  | Espere mientras DiskPart comprueba su configuraci¢n... |  | DiskPart ha terminado de comprobar su configuraci¢n.
+18:23:35 diskpart ['select disk 2', 'create partition primary', 'format fs=exfat label=JUEGOS quick', 'assign letter=E'] -> 2147755356 Microsoft DiskPart versi¢n 10.0.26100.1150 |  | Copyright (C) Microsoft Corporation. | En el equipo: DESKTOP-7LLSG83 |  | El disco 2 es ahora el disco seleccionado. |  | DiskPart ha creado satisfactoriamente la partici¢n especificada. |  |  |     0 por ciento completado |     0 por ciento completado |     0 por ciento completado |     0 por ciento completado |   100 por ciento completado |  |  | DiskPart formate¢ el volumen correctamente. |  | Error del Servicio de disco virtual: | La letra de unidad especificada no est  libre para poder asignarla.
+18:23:35 PARADO: diskpart falló

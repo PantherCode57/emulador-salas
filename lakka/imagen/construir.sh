@@ -110,7 +110,7 @@ echo "parte del sistema: ${TAM_P1} MiB, datos: ${TAM_DATOS_MB} MiB, total ${TOTA
 rm -f "$SALIDA"
 truncate -s ${TOTAL}M "$SALIDA"
 sgdisk -o "$SALIDA" >/dev/null
-sgdisk -n 1:2048:+${TAM_P1}M -t 1:0700 -c 1:system -A 1:set:2 -A 1:set:63 "$SALIDA" >/dev/null
+sgdisk -n 1:2048:+${TAM_P1}M -t 1:ef00 -c 1:system -A 1:set:2 -A 1:set:63 "$SALIDA" >/dev/null
 sgdisk -n 2:0:+${TAM_DATOS_MB}M -t 2:8300 -c 2:storage "$SALIDA" >/dev/null
 sgdisk -p "$SALIDA"
 NUEVO=$(losetup -fP --show "$SALIDA"); sleep 1

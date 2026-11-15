@@ -509,7 +509,11 @@ func (a *app) lanzar(j Juego, s *Sala) {
 		a.mostrarMensaje("No se pudo abrir el juego: "+err.Error(), a.pant)
 		return
 	}
-	log.Printf("jugando a %s (sala %v, modo %v)", j.Relativa, s != nil, modo)
+	papel := "sin sala"
+	if modo != nil {
+		papel = map[bool]string{true: "sala abierta por nosotros", false: "sala de un amigo"}[*modo]
+	}
+	log.Printf("jugando a %s (%s)", j.Relativa, papel)
 	a.dibujarAviso("Abriendo " + j.Titulo + "…")
 	ahora := time.Now()
 	a.jugando, a.salaJuego = true, s
