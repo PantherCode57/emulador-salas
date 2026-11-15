@@ -22,6 +22,7 @@ type app struct {
 	srv    *servidorPantalla
 	w      *wa
 	media  *medios
+	av     *avatares
 	tareas chan func()
 	salir  chan struct{}
 
@@ -53,7 +54,9 @@ type app struct {
 }
 
 func nuevaApp(f *fuentes) *app {
-	return &app{f: f, l: nuevoLienzo(f), tareas: make(chan func(), 256), salir: make(chan struct{}), cambios: true}
+	a := &app{f: f, l: nuevoLienzo(f), tareas: make(chan func(), 256), salir: make(chan struct{}), cambios: true}
+	a.av = nuevosAvatares(a)
+	return a
 }
 
 // hacer pide que algo se haga en el bucle de la app (desde otro hilo).
@@ -204,7 +207,7 @@ func (a *app) pulsarVisor(b uint16) {
 const filasVisibles = 6
 
 func (a *app) pulsarChats(b uint16) {
-	lista := a.w.ordenados()
+	lista := a.w.visibles()
 	switch b {
 	case bArriba:
 		a.selChat = max(a.selChat-1, 0)
@@ -225,6 +228,7 @@ func (a *app) pulsarChats(b uint16) {
 
 func (a *app) abrir(c *Chat) {
 	a.abierto, a.pant, a.desplazar = c, pChat, 0
+	a.w.pedirAntiguas(c) // si tiene fotos de antes de que se pudieran ver, se piden otra vez
 	if c.NoLeidos > 0 {
 		n := min(c.NoLeidos, len(c.Mensajes))
 		a.w.leido(c, c.Mensajes[len(c.Mensajes)-n:])

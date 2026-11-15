@@ -9,12 +9,10 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"image"
 	"image/color"
-	"image/jpeg"
 	"image/png"
 	"io"
 	"log"
@@ -127,7 +125,7 @@ func dibujarPruebas(f *fuentes, carpeta string) error {
 		return err
 	}
 	a := nuevaApp(f)
-	a.w = &wa{app: a, chats: map[string]*Chat{}, nombres: map[string]string{}, pedidoNombre: map[string]bool{}}
+	a.w = &wa{app: a, chats: map[string]*Chat{}, nombres: map[string]string{}, pedidoNombre: map[string]bool{}, pedidoHistorial: map[string]bool{}, lidPN: map[string]string{}}
 	ahora := time.Now()
 	ej := []struct {
 		jid, nombre string
@@ -195,13 +193,9 @@ func dibujarPruebas(f *fuentes, carpeta string) error {
 		img image.Image
 	}{{a.w.chats["34600000001@s.whatsapp.net"].Mensajes[3], foto}, {a.w.chats["120363000000000001@g.us"].Mensajes[3], sticker}} {
 		w, h := tamCompleta()
-		var buf bytes.Buffer
-		if p.m.Tipo == tipoSticker {
-			_ = png.Encode(&buf, ajustarA(p.img, w, h))
-		} else {
-			_ = jpeg.Encode(&buf, ajustarA(p.img, w, h), nil)
-		}
-		escribirAtomico(a.media.rutaImagen(p.m), buf.Bytes())
+		completa := ajustarA(p.img, w, h)
+		vw, vh := tamVista(p.m)
+		a.media.recordar(p.m.ID, &imagenes{completa: completa, vista: ajustarA(completa, vw, vh)})
 	}
 	guardar := func(nombre string) error {
 		a.dibujar()

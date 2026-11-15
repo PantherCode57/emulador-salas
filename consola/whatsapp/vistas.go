@@ -38,13 +38,38 @@ func (a *app) dibujar() {
 	}
 }
 
+// avatar: la foto de perfil del chat (42×42, redonda) o, si no hay, su inicial en un círculo.
+func (a *app) avatar(c *Chat, x, y int) {
+	l := a.l
+	if a.av != nil {
+		if img := a.av.de(c.JID); img != nil {
+			l.pegar(img, x, y)
+			return
+		}
+	}
+	ini := "?"
+	if rs := []rune(c.Nombre); len(rs) > 0 {
+		ini = string(rs[0])
+	}
+	l.circulo(x+21, y+21, 21, colorDe(c.JID))
+	l.centrado(image.Rect(x, y, x+42, y+42), ini, l.f.negrita, colBlanco)
+}
+
 // cabecera: barra de arriba con título y el punto del estado de la conexión.
-func (a *app) cabecera(titulo, sub string) {
+func (a *app) cabecera(titulo, sub string) { a.cabeceraDe(nil, titulo, sub) }
+
+// cabeceraDe: la cabecera con la foto de perfil del chat a la izquierda.
+func (a *app) cabeceraDe(chat *Chat, titulo, sub string) {
 	l := a.l
 	l.rect(image.Rect(0, 0, ancho, 56), colBarra)
-	l.izquierda(image.Rect(18, 4, ancho-150, 32), titulo, l.f.titulo, colTexto)
+	x := 18
+	if chat != nil {
+		a.avatar(chat, 12, 7)
+		x = 64
+	}
+	l.izquierda(image.Rect(x, 4, ancho-150, 32), titulo, l.f.titulo, colTexto)
 	if sub != "" {
-		l.izquierda(image.Rect(18, 32, ancho-150, 52), sub, l.f.mini, colSuave)
+		l.izquierda(image.Rect(x, 32, ancho-150, 52), sub, l.f.mini, colSuave)
 	}
 	c, t := colVerde, "Conectado"
 	switch a.estado {
@@ -143,7 +168,7 @@ func hora(t time.Time) string {
 
 func (a *app) dibujarChats() {
 	l := a.l
-	lista := a.w.ordenados()
+	lista := a.w.visibles()
 	sub := itoa(len(lista)) + " chats"
 	if len(lista) == 1 {
 		sub = "1 chat"
@@ -169,13 +194,7 @@ func (a *app) dibujarChats() {
 			l.rect(r, colFila)
 			l.rect(image.Rect(0, r.Min.Y, 4, r.Max.Y), colVerde)
 		}
-		// Inicial del nombre en un círculo.
-		ini := "?"
-		if rs := []rune(c.Nombre); len(rs) > 0 {
-			ini = string(rs[0])
-		}
-		l.circulo(38, r.Min.Y+31, 21, colorDe(c.JID))
-		l.centrado(image.Rect(17, r.Min.Y+10, 59, r.Min.Y+52), ini, l.f.negrita, colBlanco)
+		a.avatar(c, 17, r.Min.Y+10)
 		nombre := c.Nombre
 		if nombre == "" {
 			nombre = "…"
@@ -259,9 +278,14 @@ func (a *app) dibujarChat(margenAbajo int) {
 				b.imgW, b.imgH = b.img.Bounds().Dx(), b.img.Bounds().Dy()
 			} else {
 				b.imgW, b.imgH = tamVista(m)
-				b.imgH = b.imgH * 2 / 3
-				b.hueco = "Cargando…"
-				if falta && !cargando {
+				b.imgH = b.imgH / 2
+				b.hueco = "Foto · pulsa Y para verla"
+				if b.sticker {
+					b.hueco = "Sticker · pulsa Y"
+				}
+				if cargando {
+					b.hueco = "Descargando…"
+				} else if falta {
 					b.hueco = "No disponible"
 				}
 			}
@@ -337,9 +361,6 @@ func (a *app) dibujarChat(margenAbajo int) {
 					a.l.huecoFoto(hueco, b.hueco)
 				}
 			})
-			if b.img == nil || b.hueco != "" || (a.media != nil && a.media.esMini(b.m)) {
-				a.media.pedir(b.m) // se ve en pantalla: que se descargue
-			}
 			ty = iy + b.imgH - 2
 		}
 		for _, ln := range b.lineas {
@@ -362,7 +383,7 @@ func (a *app) dibujarChat(margenAbajo int) {
 		l.centrado(zona, "Aún no hay mensajes aquí.", l.f.normal, colSuave)
 	}
 	// La cabecera va encima de lo que se salga por arriba.
-	a.cabecera(c.Nombre, sub)
+	a.cabeceraDe(c, c.Nombre, sub)
 	if margenAbajo == 40 {
 		if len(mediosDe(c)) > 0 {
 			l.pistas([2]string{"A", "Escribir"}, [2]string{"X", "Rápidas"}, [2]string{"Y", "Fotos"}, [2]string{"B", "Volver"})

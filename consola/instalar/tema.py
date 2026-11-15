@@ -21,10 +21,10 @@ PANTHER_XML = """<theme>
   <!-- Panther OS: hora grande y batería en todas las pantallas. -->
   <view name="screen">
     <text name="clock">
-      <pos>0.035 0.0</pos>
-      <size>0.6 0.27</size>
+      <pos>0.065 0.05</pos>
+      <size>0.6 0.25</size>
       <fontPath>./hora.ttf</fontPath>
-      <fontSize>0.25</fontSize>
+      <fontSize>0.23</fontSize>
       <color>FFFFFFFF</color>
       <alignment>left</alignment>
       <verticalAlignment>center</verticalAlignment>

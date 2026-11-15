@@ -104,6 +104,52 @@ type wa struct {
 	sucio        bool
 	nombres      map[string]string // pushnames vistos
 	pedidoNombre map[string]bool
+	// chats a los que ya se ha pedido el historial al móvil
+	pedidoHistorial map[string]bool
+	lidPN           map[string]string // código LID -> número (lo aprendido del historial y los mensajes)
+}
+
+// fotoAntigua: una foto o sticker que llegó antes de que el programa supiera enseñarlos (solo
+// tiene el texto «[Foto]»). Para verla hay que volver a pedir ese mensaje al móvil.
+func fotoAntigua(m *Mensaje) bool {
+	return m.Tipo == "" && (strings.HasPrefix(m.Texto, "[Foto]") || strings.HasPrefix(m.Texto, "[Sticker]"))
+}
+
+// pedirAntiguas pide al móvil (historial bajo demanda) los últimos mensajes de un chat que tenga
+// fotos o stickers antiguos; al llegar, se cambian por las imágenes. Una vez por chat.
+func (w *wa) pedirAntiguas(c *Chat) {
+	if w.cli == nil || w.app.estado != waConectado || w.pedidoHistorial[c.JID] || len(c.Mensajes) == 0 {
+		return
+	}
+	hay := false
+	for _, m := range c.Mensajes {
+		if fotoAntigua(m) {
+			hay = true
+			break
+		}
+	}
+	if !hay {
+		return
+	}
+	chat, err := types.ParseJID(c.JID)
+	if err != nil {
+		return
+	}
+	w.pedidoHistorial[c.JID] = true
+	// El móvil manda los mensajes anteriores al más nuevo que conocemos.
+	ultimo := c.Mensajes[len(c.Mensajes)-1]
+	info := &types.MessageInfo{MessageSource: types.MessageSource{Chat: chat, IsFromMe: ultimo.Mio, IsGroup: c.Grupo},
+		ID: types.MessageID(ultimo.ID), Timestamp: ultimo.Hora}
+	pedido := w.cli.BuildHistorySyncRequest(info, 50)
+	cli := w.cli
+	go func() {
+		if _, err := cli.SendPeerMessage(context.Background(), pedido); err != nil {
+			log.Printf("pedir historial: %v", err)
+			w.app.hacer(func() { delete(w.pedidoHistorial, c.JID) })
+			return
+		}
+		w.app.hacer(func() { w.app.aviso("Pidiendo al móvil las fotos antiguas de este chat…") })
+	}()
 }
 
 func archivoChats() string { return filepath.Join(carpetaDatos, "chats.json") }
@@ -121,7 +167,7 @@ func nuevoWA(a *app) (*wa, error) {
 	if err := c.Upgrade(context.Background()); err != nil {
 		return nil, fmt.Errorf("base de datos: %w", err)
 	}
-	w := &wa{app: a, contenedor: c, chats: map[string]*Chat{}, nombres: map[string]string{}, pedidoNombre: map[string]bool{}}
+	w := &wa{app: a, contenedor: c, chats: map[string]*Chat{}, nombres: map[string]string{}, pedidoNombre: map[string]bool{}, pedidoHistorial: map[string]bool{}, lidPN: map[string]string{}}
 	w.cargar()
 	return w, nil
 }
@@ -149,6 +195,18 @@ func (w *wa) guardar() {
 		return
 	}
 	escribirAtomico(archivoChats(), b)
+}
+
+// visibles: los chats que se enseñan en la lista (los que tienen algún mensaje o sin leer).
+// El historial trae también todos los contactos sin conversación: esos no salen.
+func (w *wa) visibles() []*Chat {
+	var r []*Chat
+	for _, c := range w.ordenados() {
+		if len(c.Mensajes) > 0 || c.NoLeidos > 0 {
+			r = append(r, c)
+		}
+	}
+	return r
 }
 
 func (w *wa) ordenados() []*Chat {
@@ -251,6 +309,9 @@ func (w *wa) evento(evt any) {
 	switch e := evt.(type) {
 	case *events.Connected:
 		w.app.estado = waConectado
+		w.renombrar()
+	case *events.AppStateSyncComplete: // ha llegado la agenda: nombres nuevos
+		w.renombrar()
 	case *events.Disconnected:
 		if w.app.estado == waConectado {
 			w.app.estado = waSinRed
@@ -296,8 +357,17 @@ func (w *wa) mensaje(e *events.Message, enVivo bool) {
 	if texto == "" {
 		return
 	}
+	if !e.Info.SenderAlt.IsEmpty() {
+		w.aprender(e.Info.Sender, e.Info.SenderAlt)
+	}
+	if !e.Info.RecipientAlt.IsEmpty() && !e.Info.IsGroup {
+		w.aprender(e.Info.Chat, e.Info.RecipientAlt)
+	}
 	if e.Info.PushName != "" && !e.Info.IsFromMe {
 		w.nombres[e.Info.Sender.ToNonAD().String()] = e.Info.PushName
+		if !e.Info.SenderAlt.IsEmpty() {
+			w.nombres[e.Info.SenderAlt.ToNonAD().String()] = e.Info.PushName
+		}
 	}
 	c := w.chat(e.Info.Chat)
 	m := &Mensaje{
@@ -315,10 +385,7 @@ func (w *wa) mensaje(e *events.Message, enVivo bool) {
 	}
 	if tipo, pie, sub, mini := medioDe(e.Message); tipo != "" && m.ID != "" && w.app.media != nil {
 		m.Tipo, m.Pie = tipo, w.app.f.limpiar(pie)
-		w.app.media.guardar(m, sub, mini)
-		if enVivo {
-			w.app.media.pedir(m) // las que llegan ahora se descargan ya; las antiguas, al verlas
-		}
+		w.app.media.guardar(m, sub, mini) // no se descarga: solo al abrirla con Y, y a la memoria
 	}
 	nuevo := c.añadir(m)
 	w.sucio = true
@@ -351,6 +418,16 @@ func (w *wa) historial(e *events.HistorySync) {
 			continue
 		}
 		c := w.chat(jid)
+		if pn := conv.GetPnJID(); pn != "" {
+			if p, err := types.ParseJID(pn); err == nil {
+				w.aprender(jid, p)
+			}
+		}
+		if lid := conv.GetLidJID(); lid != "" {
+			if l, err := types.ParseJID(lid); err == nil {
+				w.aprender(l, jid)
+			}
+		}
 		if n := conv.GetName(); n != "" {
 			c.Nombre = w.app.f.limpiar(n)
 		} else if n := conv.GetDisplayName(); n != "" && c.Nombre == "" {
@@ -374,6 +451,7 @@ func (w *wa) historial(e *events.HistorySync) {
 			w.ponerNombre(c, jid, "", false)
 		}
 	}
+	w.renombrar()
 	w.sucio = true
 }
 
@@ -401,13 +479,37 @@ func (w *wa) ponerNombre(c *Chat, jid types.JID, pushName string, deMi bool) {
 	c.Nombre = w.nombreDe(jid, pushName)
 }
 
-func (w *wa) nombreDe(jid types.JID, pushName string) string {
+// candidatos: las formas de llamar a una persona. WhatsApp usa cada vez más un código interno
+// («LID», @lid) en vez del número; la agenda va por número, así que se busca también el número
+// que le corresponde (la tabla de whatsmeow y lo aprendido del historial y de los mensajes).
+func (w *wa) candidatos(jid types.JID) []types.JID {
 	jid = jid.ToNonAD()
+	r := []types.JID{jid}
+	if jid.Server != types.HiddenUserServer {
+		return r
+	}
+	if w.cli != nil && w.cli.Store.LIDs != nil {
+		if pn, err := w.cli.Store.LIDs.GetPNForLID(context.Background(), jid); err == nil && !pn.IsEmpty() {
+			r = append(r, pn.ToNonAD())
+		}
+	}
+	if s := w.lidPN[jid.String()]; s != "" {
+		if pn, err := types.ParseJID(s); err == nil {
+			r = append(r, pn.ToNonAD())
+		}
+	}
+	return r
+}
+
+func (w *wa) nombreDe(jid types.JID, pushName string) string {
+	cs := w.candidatos(jid)
 	if w.cli != nil && w.cli.Store.Contacts != nil {
-		if ci, err := w.cli.Store.Contacts.GetContact(context.Background(), jid); err == nil && ci.Found {
-			for _, n := range []string{ci.FullName, ci.FirstName, ci.PushName, ci.BusinessName} {
-				if n != "" {
-					return w.app.f.limpiar(n)
+		for _, c := range cs {
+			if ci, err := w.cli.Store.Contacts.GetContact(context.Background(), c); err == nil && ci.Found {
+				for _, n := range []string{ci.FullName, ci.FirstName, ci.PushName, ci.BusinessName} {
+					if n != "" {
+						return w.app.f.limpiar(n)
+					}
 				}
 			}
 		}
@@ -415,13 +517,61 @@ func (w *wa) nombreDe(jid types.JID, pushName string) string {
 	if pushName != "" {
 		return w.app.f.limpiar(pushName)
 	}
-	if n := w.nombres[jid.String()]; n != "" {
-		return w.app.f.limpiar(n)
+	for _, c := range cs {
+		if n := w.nombres[c.String()]; n != "" {
+			return w.app.f.limpiar(n)
+		}
 	}
-	if jid.Server == types.DefaultUserServer {
-		return "+" + jid.User
+	for _, c := range cs {
+		if c.Server == types.DefaultUserServer {
+			return "+" + c.User
+		}
 	}
 	return "Contacto"
+}
+
+func sinNombre(n string) bool { return n == "" || n == "Contacto" || strings.HasPrefix(n, "+") }
+
+// renombrar vuelve a buscar el nombre de los chats y remitentes que salían sin nombre (por
+// ejemplo, al llegar la agenda o el historial después de los mensajes).
+func (w *wa) renombrar() {
+	for _, c := range w.chats {
+		if len(c.Mensajes) == 0 {
+			continue
+		}
+		jid, err := types.ParseJID(c.JID)
+		if err != nil {
+			continue
+		}
+		if !c.Grupo && sinNombre(c.Nombre) {
+			if n := w.nombreDe(jid, ""); n != c.Nombre && !(n == "Contacto" && c.Nombre != "") {
+				c.Nombre, w.sucio = n, true
+			}
+		}
+		if c.Grupo && c.Nombre == "" {
+			w.ponerNombre(c, jid, "", false)
+		}
+		for _, m := range c.Mensajes {
+			if c.Grupo && !m.Mio && sinNombre(m.De) && m.Remite != "" {
+				if r, err := types.ParseJID(m.Remite); err == nil {
+					if n := w.nombreDe(r, ""); n != m.De && n != "Contacto" {
+						m.De, w.sucio = n, true
+					}
+				}
+			}
+		}
+	}
+}
+
+// aprender apunta qué número corresponde a cada código LID.
+func (w *wa) aprender(a, b types.JID) {
+	a, b = a.ToNonAD(), b.ToNonAD()
+	if a.Server == types.DefaultUserServer && b.Server == types.HiddenUserServer {
+		a, b = b, a
+	}
+	if a.Server == types.HiddenUserServer && b.Server == types.DefaultUserServer {
+		w.lidPN[a.String()] = b.String()
+	}
 }
 
 // leido avisa al móvil de que has visto los mensajes (los dos ticks azules).

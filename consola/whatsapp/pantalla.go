@@ -134,8 +134,10 @@ type retroarch struct {
 
 func abrirRetroArch() (*retroarch, error) {
 	cfg := filepath.Join(carpetaDatos, "pantalla.cfg")
+	// Sin sonido: la pantalla del WhatsApp no lo necesita (y se oía un ruido raro).
 	_ = os.WriteFile(cfg, []byte("pause_nonactive = \"false\"\nvideo_font_enable = \"false\"\n"+
-		"config_save_on_exit = \"false\"\nmenu_show_load_content_animation = \"false\"\n"), 0o644)
+		"config_save_on_exit = \"false\"\nmenu_show_load_content_animation = \"false\"\n"+
+		"audio_enable = \"false\"\naudio_mute_enable = \"true\"\n"), 0o644)
 	args := []string{"-L", nucleoPantalla, "--appendconfig", cfg}
 	if c := os.Getenv("CONSOLA_RETROARCH_CFG"); c != "" {
 		args = append([]string{"--config", c}, args...)
