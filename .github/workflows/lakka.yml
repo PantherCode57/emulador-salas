@@ -183,6 +183,30 @@ jobs:
           compression-level: 0
           retention-days: 14
 
+  prueba-escritorio:
+    name: Prueba de la pantalla de salas (RetroArch de escritorio)
+    needs: [ programas ]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Herramientas
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq retroarch libretro-gambatte xvfb xdotool imagemagick netcat-openbsd libgl1-mesa-dri > /dev/null
+      - uses: actions/download-artifact@v4
+        with:
+          name: lakka-programas
+          path: piezas
+      - name: Probar
+        env:
+          POKEMULADOR_TS_KEY: ${{ secrets.POKEMULADOR_TS_KEY }}
+        run: bash lakka/prueba/escritorio.sh piezas resultado
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prueba-escritorio
+          path: resultado/
+          retention-days: 7
+
   prueba:
     name: Prueba en una máquina virtual (${{ matrix.grafica }})
     needs: [ imagen ]
