@@ -14,7 +14,9 @@ python3 nucleos/mgba/aplicar.py mgba
 
 # --- Lua, como biblioteca estática ------------------------------------------------------------
 curl -fsSL "https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz" -o lua.tar.gz
-sha256sum lua.tar.gz
+if [ "$LUA_VERSION" = "5.4.7" ]; then
+	echo "9fbf5e28ef86c69858f6d3d34eccc32e911c1a28b4120ff3e84aaa70cfbf1e30  lua.tar.gz" | sha256sum -c -
+fi
 tar xzf lua.tar.gz
 LUA_SRC="$RAIZ/lua-${LUA_VERSION}/src"
 LUA_C=$(ls "$LUA_SRC"/*.c | grep -v -E '/(lua|luac)\.c$')

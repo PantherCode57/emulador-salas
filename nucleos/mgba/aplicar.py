@@ -41,6 +41,29 @@ cambiar(
     "\ttarget_link_libraries(${BINARY_NAME}_libretro ${DEPENDENCY_LIB} ${OS_LIB})\n",
 )
 
+# --- scripting.c: funciones de archivo que el núcleo libretro no tiene --------------------------
+# El núcleo libretro se compila con MINIMAL_CORE=2, sin cargar archivos, guardados rápidos por
+# número ni capturas (eso lo hace el programa que lo usa). Los scripts de mGBA las ofrecen, pero
+# GBA-PK no las usa: aquí no hacen nada.
+cambiar(
+    MGBA / "src" / "core" / "scripting.c",
+    "#include <mgba-util/vfs.h>\n",
+    "#include <mgba-util/vfs.h>\n"
+    "\n"
+    "#if defined(MINIMAL_CORE) && MINIMAL_CORE >= 2\n"
+    "// Pokemulador: el núcleo libretro no tiene estas funciones de archivo.\n"
+    "static bool mCoreLoadFile(struct mCore* core, const char* path) { UNUSED(core); UNUSED(path); return false; }\n"
+    "static bool mCoreAutoloadSave(struct mCore* core) { UNUSED(core); return false; }\n"
+    "static bool mCoreLoadSaveFile(struct mCore* core, const char* path, bool temporary) {\n"
+    "\tUNUSED(core); UNUSED(path); UNUSED(temporary); return false;\n"
+    "}\n"
+    "static bool mCoreSaveState(struct mCore* core, int slot, int flags) { UNUSED(core); UNUSED(slot); UNUSED(flags); return false; }\n"
+    "static bool mCoreLoadState(struct mCore* core, int slot, int flags) { UNUSED(core); UNUSED(slot); UNUSED(flags); return false; }\n"
+    "static void mCoreTakeScreenshot(struct mCore* core) { UNUSED(core); }\n"
+    "static bool mCoreTakeScreenshotVF(struct mCore* core, struct VFile* vf) { UNUSED(core); UNUSED(vf); return false; }\n"
+    "#endif\n",
+)
+
 # --- libretro.c: cargar el script al abrir el juego ---------------------------------------------
 libretro = MGBA / "src" / "platform" / "libretro" / "libretro.c"
 shutil.copy(AQUI / "pokemulador_scripts.inc", libretro.parent / "pokemulador_scripts.inc")
