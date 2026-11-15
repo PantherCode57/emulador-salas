@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -17,19 +18,39 @@ type orden struct {
 	juego bool
 }
 
-// supervisor: siempre hay un RetroArch abierto, el de la pantalla de salas o el de un juego.
+// supervisor: siempre hay un RetroArch abierto, el de la pantalla de salas o el de un juego,
+// hasta que se pide cerrar (opción "Salir" en modo port).
 type supervisor struct {
-	pedidos chan orden
+	pedidos  chan orden
 	alAcabar func(err error, duracion time.Duration)
+	parar    chan struct{}
+	parado   chan struct{}
 }
 
 func nuevoSupervisor(alAcabar func(error, time.Duration)) *supervisor {
-	return &supervisor{pedidos: make(chan orden, 1), alAcabar: alAcabar}
+	return &supervisor{pedidos: make(chan orden, 1), alAcabar: alAcabar,
+		parar: make(chan struct{}), parado: make(chan struct{})}
 }
 
 func ordenPantalla() orden {
-	return orden{args: []string{"-L", filepath.Join(carpetaCores, "pokemulador_libretro.so"),
-		"--appendconfig", archivoConfigPantalla()}}
+	return orden{
+		args: argsRetroArch("-L", filepath.Join(carpetaCores, "pokemulador_libretro.so"),
+			"--appendconfig", archivoConfigPantalla()),
+		env: []string{fmt.Sprintf("POKEMULADOR_ANCHO=%d", ancho), fmt.Sprintf("POKEMULADOR_ALTO=%d", alto)},
+	}
+}
+
+// cerrar cierra el RetroArch que haya abierto y para el supervisor (espera como mucho 12 s).
+func (s *supervisor) cerrar() {
+	select {
+	case <-s.parar:
+	default:
+		close(s.parar)
+	}
+	select {
+	case <-s.parado:
+	case <-time.After(12 * time.Second):
+	}
 }
 
 // jugar cierra lo que haya abierto y abre el juego.
@@ -43,14 +64,27 @@ func (s *supervisor) jugar(o orden) {
 }
 
 func (s *supervisor) bucle() {
+	defer close(s.parado)
 	sig := ordenPantalla()
 	fallosSeguidos := 0
 	for {
+		select {
+		case <-s.parar:
+			return
+		default:
+		}
 		inicio := time.Now()
-		cmd := exec.Command(retroarchBin, sig.args...)
+		cmd := exec.Command(retroarchBin, append([]string{"--verbose"}, sig.args...)...)
 		cmd.Env = append(os.Environ(), sig.env...)
-		salida, errSalida := os.OpenFile(filepath.Join(carpetaDatos, "retroarch.txt"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+		// Registro de RetroArch: se va añadiendo y se vacía al pasar de 1 MB.
+		registroRA := filepath.Join(carpetaDatos, "retroarch.txt")
+		modo := os.O_CREATE | os.O_WRONLY | os.O_APPEND
+		if fi, err := os.Stat(registroRA); err == nil && fi.Size() > 1<<20 {
+			modo |= os.O_TRUNC
+		}
+		salida, errSalida := os.OpenFile(registroRA, modo, 0o644)
 		if errSalida == nil {
+			fmt.Fprintf(salida, "\n===== %s %v\n", time.Now().Format(time.RFC3339), sig.args)
 			cmd.Stdout, cmd.Stderr = salida, salida
 		}
 		cerrarSalida := func() {
@@ -96,9 +130,14 @@ func (s *supervisor) bucle() {
 			default:
 			}
 			sig = ordenPantalla()
-			if fallosSeguidos > 3 {
+			switch {
+			case fallosSeguidos == 4:
+				// La pantalla de salas no arranca: al menos, el menú normal de RetroArch/Lakka.
+				log.Printf("la pantalla de salas no arranca: abro RetroArch sin ella")
+				sig = orden{args: argsRetroArch()}
+			case fallosSeguidos > 4:
 				time.Sleep(10 * time.Second)
-			} else {
+			default:
 				time.Sleep(500 * time.Millisecond)
 			}
 		case o := <-s.pedidos:
@@ -108,6 +147,10 @@ func (s *supervisor) bucle() {
 			}
 			sig = o
 			time.Sleep(300 * time.Millisecond)
+		case <-s.parar:
+			log.Printf("cerrando RetroArch para salir")
+			terminar(cmd, hecho)
+			return
 		}
 	}
 }
@@ -138,9 +181,10 @@ func comandoRetroArch(c string) {
 }
 
 // Ajustes que se añaden a la configuración de RetroArch mientras está abierta la pantalla de
-// salas: solo los comandos de red (para abrir el menú de Lakka desde nuestra pantalla).
+// salas: los comandos de red (para abrir el menú de Lakka desde nuestra pantalla) y que "Cerrar
+// contenido" cierre RetroArch, para que el servicio vuelva a abrir la pantalla de salas.
 func archivoConfigPantalla() string {
 	ruta := filepath.Join(carpetaDatos, "pantalla.cfg")
-	escribirAtomico(ruta, []byte("network_cmd_enable = \"true\"\nnetwork_cmd_port = \"55355\"\npause_nonactive = \"false\"\n"))
+	escribirAtomico(ruta, []byte("network_cmd_enable = \"true\"\nnetwork_cmd_port = \"55355\"\npause_nonactive = \"false\"\nquit_on_close_content = \"1\"\n"))
 	return ruta
 }

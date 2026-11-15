@@ -23,6 +23,7 @@
 #define RETRO_API_VERSION 1
 #define RETRO_ENVIRONMENT_SET_PIXEL_FORMAT 10
 #define RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME 18
+#define RETRO_ENVIRONMENT_SET_GEOMETRY 37
 #define RETRO_ENVIRONMENT_EXPERIMENTAL 0x10000
 #define RETRO_ENVIRONMENT_GET_INPUT_BITMASKS (51 | RETRO_ENVIRONMENT_EXPERIMENTAL)
 #define RETRO_PIXEL_FORMAT_XRGB8888 1
@@ -64,9 +65,11 @@ typedef size_t (*retro_audio_sample_batch_t)(const int16_t *data, size_t frames)
 typedef void (*retro_input_poll_t)(void);
 typedef int16_t (*retro_input_state_t)(unsigned port, unsigned device, unsigned index, unsigned id);
 
-#define ANCHO 960
-#define ALTO 540
-#define TAM_MARCO (ANCHO * ALTO * 4)
+/* Tamaño de la pantalla: 960x540 o el de POKEMULADOR_ANCHO/ALTO (p. ej. 640x480 en una consola).
+ * Si el servicio manda otro tamaño, se cambia sobre la marcha. */
+#define MAX_ANCHO 1920
+#define MAX_ALTO 1080
+#define TAM_MAX (MAX_ANCHO * MAX_ALTO * 4)
 #define FONDO 0x009a3330u
 
 static retro_environment_t entorno;
@@ -75,8 +78,10 @@ static retro_audio_sample_batch_t audio;
 static retro_input_poll_t sondear;
 static retro_input_state_t estado_entrada;
 
-static uint32_t marco[ANCHO * ALTO];
-static uint8_t recibido[TAM_MARCO];
+static unsigned ancho = 960, alto = 540;
+static unsigned nuevo_ancho, nuevo_alto;
+static uint32_t *marco;
+static uint8_t *recibido;
 static uint8_t cabecera[5];
 static size_t llevamos;      /* bytes leídos del mensaje actual (cabecera + píxeles) */
 static size_t tam_pixeles;
@@ -108,9 +113,11 @@ EXPORTAR void retro_get_system_info(struct retro_system_info *info) {
 
 EXPORTAR void retro_get_system_av_info(struct retro_system_av_info *info) {
 	memset(info, 0, sizeof(*info));
-	info->geometry.base_width = info->geometry.max_width = ANCHO;
-	info->geometry.base_height = info->geometry.max_height = ALTO;
-	info->geometry.aspect_ratio = (float)ANCHO / (float)ALTO;
+	info->geometry.base_width = ancho;
+	info->geometry.base_height = alto;
+	info->geometry.max_width = MAX_ANCHO;
+	info->geometry.max_height = MAX_ALTO;
+	info->geometry.aspect_ratio = (float)ancho / (float)alto;
 	info->timing.fps = 60.0;
 	info->timing.sample_rate = 48000.0;
 }
@@ -173,23 +180,49 @@ static void leer(void) {
 		llevamos += (size_t)n;
 		if (llevamos == sizeof(cabecera)) {
 			unsigned w = cabecera[1] | (cabecera[2] << 8), h = cabecera[3] | (cabecera[4] << 8);
-			tam_pixeles = (size_t)w * h * 4;
-			if (cabecera[0] != 'F' || w != ANCHO || h != ALTO) {
+			if (cabecera[0] != 'F' || w == 0 || h == 0 || w > MAX_ANCHO || h > MAX_ALTO) {
 				cerrar();
 				return;
 			}
+			nuevo_ancho = w;
+			nuevo_alto = h;
+			tam_pixeles = (size_t)w * h * 4;
 		} else if (llevamos > sizeof(cabecera) && llevamos == sizeof(cabecera) + tam_pixeles) {
-			memcpy(marco, recibido, TAM_MARCO);
+			if (nuevo_ancho != ancho || nuevo_alto != alto) {
+				ancho = nuevo_ancho;
+				alto = nuevo_alto;
+				struct retro_game_geometry g = {ancho, alto, MAX_ANCHO, MAX_ALTO, (float)ancho / (float)alto};
+				entorno(RETRO_ENVIRONMENT_SET_GEOMETRY, &g);
+			}
+			memcpy(marco, recibido, tam_pixeles);
 			llevamos = 0;
 		}
 	}
 }
 
+static unsigned tam_entorno(const char *var, unsigned defecto, unsigned minimo, unsigned maximo) {
+	const char *v = getenv(var);
+	if (v == NULL)
+		return defecto;
+	long n = strtol(v, NULL, 10);
+	return (n >= (long)minimo && n <= (long)maximo) ? (unsigned)n : defecto;
+}
+
 EXPORTAR void retro_init(void) {
-	for (size_t i = 0; i < ANCHO * ALTO; i++)
+	ancho = tam_entorno("POKEMULADOR_ANCHO", 960, 320, MAX_ANCHO);
+	alto = tam_entorno("POKEMULADOR_ALTO", 540, 240, MAX_ALTO);
+	marco = malloc(TAM_MAX);
+	recibido = malloc(TAM_MAX);
+	for (size_t i = 0; marco != NULL && i < (size_t)ancho * alto; i++)
 		marco[i] = FONDO;
 }
-EXPORTAR void retro_deinit(void) { cerrar(); }
+EXPORTAR void retro_deinit(void) {
+	cerrar();
+	free(marco);
+	free(recibido);
+	marco = NULL;
+	recibido = NULL;
+}
 EXPORTAR void retro_set_controller_port_device(unsigned port, unsigned device) { (void)port; (void)device; }
 EXPORTAR void retro_reset(void) {}
 
@@ -216,12 +249,14 @@ EXPORTAR void retro_run(void) {
 	}
 	if (conexion >= 0)
 		leer();
-	video(marco, ANCHO, ALTO, ANCHO * 4);
+	video(marco, ancho, alto, (size_t)ancho * 4);
 	audio(silencio, 800);
 }
 
 EXPORTAR bool retro_load_game(const struct retro_game_info *game) {
 	(void)game;
+	if (marco == NULL || recibido == NULL)
+		return false;
 	int formato = RETRO_PIXEL_FORMAT_XRGB8888;
 	if (!entorno(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &formato))
 		return false;

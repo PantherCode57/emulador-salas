@@ -116,8 +116,12 @@ func nuevaApp() *app {
 		capturas: make(chan string, 1),
 		cache:    map[string]image.Image{},
 	}
-	a.raiz = carpetaJuegos()
-	escribirLeeme(a.raiz)
+	if d := os.Getenv("POKEMULADOR_JUEGOS"); d != "" {
+		a.raiz = d
+	} else {
+		a.raiz = carpetaJuegos()
+		escribirLeeme(a.raiz)
+	}
 	a.juegos = buscarJuegos(a.raiz)
 	log.Printf("juegos en %s: %d", a.raiz, len(a.juegos))
 	a.ignorarHasta = time.Now().Add(time.Second)
@@ -335,15 +339,33 @@ func (a *app) opcionesInicio() []opcion {
 	ops = append(ops,
 		opcion{"Jugar sin sala", "", "Juega solo, con tu partida de siempre.", a.empezar(fSolo)},
 		opcion{"Mi nombre: " + a.jug.Nombre, "", "Así te verán tus amigos en las salas.", a.empezar(fNombre)},
-		opcion{"Menú de Lakka (Wi-Fi, mandos)", "", "Abre el menú de Lakka. Para conectarte a Internet: Ajustes › Wi-Fi. Para volver aquí, pulsa F1 o mantén Start.", func() { comandoRetroArch("MENU_TOGGLE") }},
-		opcion{"Apagar", "", "Apaga el ordenador. Después ya puedes quitar la memoria USB.", func() {
-			a.preguntar("¿Apagar el ordenador?", func() {
-				a.cerrarTodo()
-				_ = exec.Command("systemctl", "poweroff").Start()
-			})
-		}},
 	)
+	if modoPort {
+		ops = append(ops,
+			opcion{"Menú de RetroArch (mandos, ajustes)", "", "Abre el menú de RetroArch. Para volver aquí, mantén Start o pulsa la combinación de tu consola.", func() { comandoRetroArch("MENU_TOGGLE") }},
+			opcion{"Salir", "", "Cierra Pokemulador y vuelve al menú de la consola. Si estás en una sala, sales de ella.", a.salir})
+	} else {
+		ops = append(ops, opcion{"Menú de Lakka (Wi-Fi, mandos)", "", "Abre el menú de Lakka. Para conectarte a Internet: Ajustes › Wi-Fi. Para volver aquí, pulsa F1 o mantén Start.", func() { comandoRetroArch("MENU_TOGGLE") }})
+	}
+	if ordenApagar != "" {
+		ops = append(ops, opcion{"Apagar", "", "Apaga el aparato. Si es un ordenador con la memoria USB, después ya puedes quitarla.", func() {
+			a.preguntar("¿Apagar?", func() {
+				a.cerrarTodo()
+				a.sup.cerrar()
+				_ = exec.Command("sh", "-c", ordenApagar).Start()
+			})
+		}})
+	}
 	return ops
+}
+
+// salir (modo port): cierra la sala y RetroArch y termina, para volver a EmulationStation.
+func (a *app) salir() {
+	log.Printf("salir")
+	a.dibujarAviso("Cerrando…")
+	a.cerrarTodo()
+	a.sup.cerrar()
+	os.Exit(0)
 }
 
 func (a *app) empezar(f flujo) func() {

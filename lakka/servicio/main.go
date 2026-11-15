@@ -15,6 +15,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -24,13 +25,48 @@ import (
 // La pone el flujo de GitHub al compilar (secreto POKEMULADOR_TS_KEY).
 var claveTailscale = ""
 
-// Rutas del sistema (Lakka) y de nuestros datos. Se pueden cambiar para probar en otro Linux.
+// Rutas del sistema (Lakka) y de nuestros datos. Todo se puede cambiar con variables de entorno,
+// para usarlo en otro Linux (por ejemplo, una consola portátil con RetroArch):
+//
+//	POKEMULADOR_PORT=1          se abre como un "port" (desde EmulationStation): sale una opción
+//	                            "Salir" que lo cierra todo y termina con código 0.
+//	POKEMULADOR_JUEGOS          carpeta de juegos (si no, la parte JUEGOS de la memoria USB).
+//	POKEMULADOR_SISTEMAS        sistemas que se enseñan, p. ej. "gb,gbc,gba" (por defecto todos).
+//	POKEMULADOR_NUCLEO_<SIS>    otro nombre de núcleo para un sistema (POKEMULADOR_NUCLEO_GBA=...).
+//	POKEMULADOR_RETROARCH_CFG   configuración de RetroArch que se le pasa con --config.
+//	POKEMULADOR_APAGAR          orden para apagar ("-" para quitar la opción; en modo port no hay).
+//	POKEMULADOR_ANCHO / _ALTO   tamaño de la pantalla de salas (por defecto 960×540).
 var (
 	carpetaDatos  = entorno("POKEMULADOR_DATOS", "/storage/pokemulador")
 	retroarchBin  = entorno("POKEMULADOR_RETROARCH", "/usr/bin/retroarch")
 	carpetaCores  = entorno("POKEMULADOR_CORES", "/tmp/cores")
 	carpetaPropia = entorno("POKEMULADOR_LIB", "/usr/lib/pokemulador")
+	modoPort      = os.Getenv("POKEMULADOR_PORT") == "1"
+	configRA      = os.Getenv("POKEMULADOR_RETROARCH_CFG")
+	ordenApagar   = ordenDeApagado()
 )
+
+func ordenDeApagado() string {
+	v, hay := os.LookupEnv("POKEMULADOR_APAGAR")
+	switch {
+	case hay && (v == "-" || v == ""):
+		return ""
+	case hay:
+		return v
+	case modoPort:
+		return ""
+	default:
+		return "systemctl poweroff"
+	}
+}
+
+// argsRetroArch añade la configuración propia de RetroArch si la hay.
+func argsRetroArch(args ...string) []string {
+	if configRA != "" {
+		return append([]string{"--config", configRA}, args...)
+	}
+	return args
+}
 
 func entorno(clave, defecto string) string {
 	if v := os.Getenv(clave); v != "" {
@@ -113,7 +149,8 @@ func prepararRegistro() {
 
 func main() {
 	prepararRegistro()
-	log.Printf("Pokemulador USB en marcha")
+	log.Printf("Pokemulador USB en marcha (pantalla %dx%d, port %v)", ancho, alto, modoPort)
+	diagnostico()
 
 	a := nuevaApp()
 	a.sup = nuevoSupervisor(a.finJuego)
@@ -128,6 +165,7 @@ func main() {
 		s := <-salida
 		log.Printf("señal %v: cerrando", s)
 		a.cerrarTodo()
+		a.sup.cerrar() // que RetroArch guarde la partida antes de apagar
 		os.Exit(0)
 	}()
 
@@ -136,3 +174,29 @@ func main() {
 }
 
 func fallo(format string, args ...any) error { return fmt.Errorf(format, args...) }
+
+// diagnostico deja en el registro con qué gráficos cuenta el aparato (para saber por qué no
+// arranca RetroArch si pasa).
+func diagnostico() {
+	if d, err := os.ReadDir("/dev/dri"); err == nil {
+		var nombres []string
+		for _, e := range d {
+			nombres = append(nombres, e.Name())
+		}
+		log.Printf("/dev/dri: %v", nombres)
+	} else {
+		log.Printf("/dev/dri: %v", err)
+	}
+	if b, err := os.ReadFile("/proc/fb"); err == nil {
+		log.Printf("/proc/fb: %q", strings.TrimSpace(string(b)))
+	}
+	if out, err := exec.Command("dmesg").Output(); err == nil {
+		n := 0
+		for _, l := range strings.Split(string(out), "\n") {
+			if b := strings.ToLower(l); (strings.Contains(b, "drm") || strings.Contains(b, "fb0") || strings.Contains(b, "gpu")) && n < 25 {
+				log.Printf("dmesg: %s", strings.TrimSpace(l))
+				n++
+			}
+		}
+	}
+}

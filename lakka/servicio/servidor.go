@@ -49,8 +49,8 @@ func (s *servidorPantalla) escuchar() error {
 func (s *servidorPantalla) enseñar(pixeles []byte) {
 	cab := make([]byte, 5, 5+len(pixeles))
 	cab[0] = 'F'
-	binary.LittleEndian.PutUint16(cab[1:], ancho)
-	binary.LittleEndian.PutUint16(cab[3:], alto)
+	binary.LittleEndian.PutUint16(cab[1:], uint16(ancho))
+	binary.LittleEndian.PutUint16(cab[3:], uint16(alto))
 	s.mu.Lock()
 	s.ultimo = append(cab, pixeles...)
 	s.version++

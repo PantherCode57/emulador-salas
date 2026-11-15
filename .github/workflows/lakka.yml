@@ -184,10 +184,14 @@ jobs:
           retention-days: 14
 
   prueba:
-    name: Prueba en una máquina virtual
+    name: Prueba en una máquina virtual (${{ matrix.grafica }})
     needs: [ imagen ]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        grafica: [ std, virtio ]
     steps:
       - uses: actions/checkout@v4
       - name: Herramientas
@@ -224,7 +228,7 @@ jobs:
             -drive if=pflash,format=raw,file=vars.fd \
             -device qemu-xhci -drive if=none,id=usb,format=raw,file=pokemulador-usb.img \
             -device usb-storage,drive=usb,removable=on -device usb-kbd \
-            -vga std -display none -audiodev none,id=nada \
+            $( [ "${{ matrix.grafica }}" = virtio ] && echo "-vga none -device virtio-vga" || echo "-vga std" )             -display none -audiodev none,id=nada \
             -netdev user,id=red -device e1000,netdev=red \
             -qmp unix:qmp.sock,server,nowait -serial file:resultado/serie.txt &
           Q="python3 lakka/prueba/qmp.py qmp.sock"
@@ -251,6 +255,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: prueba-usb
+          name: prueba-usb-${{ matrix.grafica }}
           path: resultado/
           retention-days: 7

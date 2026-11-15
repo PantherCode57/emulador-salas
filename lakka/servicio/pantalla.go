@@ -5,6 +5,8 @@ import (
 	"image/color"
 	"image/draw"
 	"math"
+	"os"
+	"strconv"
 	"strings"
 
 	xdraw "golang.org/x/image/draw"
@@ -15,11 +17,31 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-// Tamaño de la pantalla de salas (RetroArch la escala a la pantalla real).
-const (
-	ancho = 960
-	alto  = 540
-)
+// Tamaño de la pantalla de salas (RetroArch la escala a la pantalla real). Por defecto 960×540
+// (16:9); en consolas con pantalla 4:3 se pone POKEMULADOR_ANCHO y POKEMULADOR_ALTO (640×480).
+var ancho, alto = tamañoPantalla()
+
+// compacto: pantallas pequeñas (menos de 800 de ancho): letras algo menores y una sola columna.
+var compacto = ancho < 800
+
+func tamañoPantalla() (int, int) {
+	w, h := 960, 540
+	if v, err := strconv.Atoi(os.Getenv("POKEMULADOR_ANCHO")); err == nil && v >= 320 && v <= 1920 {
+		w = v
+	}
+	if v, err := strconv.Atoi(os.Getenv("POKEMULADOR_ALTO")); err == nil && v >= 240 && v <= 1080 {
+		h = v
+	}
+	return w, h
+}
+
+// elegir: un valor para pantallas pequeñas y otro para las normales.
+func elegir(pequena, normal int) int {
+	if compacto {
+		return pequena
+	}
+	return normal
+}
 
 // Colores de Pokemulador (estilo Pokédex, como en el móvil).
 var (
@@ -53,11 +75,11 @@ func cargarFuentes() *fuentes {
 		return c
 	}
 	return &fuentes{
-		grande:  cara(neg, 44),
-		titulo:  cara(neg, 30),
-		normal:  cara(reg, 22),
-		negrita: cara(neg, 22),
-		pequena: cara(reg, 18),
+		grande:  cara(neg, float64(elegir(32, 44))),
+		titulo:  cara(neg, float64(elegir(24, 30))),
+		normal:  cara(reg, float64(elegir(20, 22))),
+		negrita: cara(neg, float64(elegir(20, 22))),
+		pequena: cara(reg, float64(elegir(16, 18))),
 	}
 }
 

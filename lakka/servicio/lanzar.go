@@ -38,8 +38,7 @@ func carpetaCapturas() string { return filepath.Join(carpetaDatos, "capturas") }
 // modo: nil sin sala (o sin saber aún quién la abre), true si tenemos la sala abierta, false si
 // es la de un amigo.
 func prepararJuego(j Juego, s *Sala, modo *bool, jug *Jugador) (orden, error) {
-	sis, ok := sistemas[j.Sistema]
-	if !ok {
+	if _, ok := sistemas[j.Sistema]; !ok {
 		return orden{}, fmt.Errorf("no sé abrir este juego")
 	}
 	if !existe(j.Ruta) {
@@ -123,7 +122,7 @@ func prepararJuego(j Juego, s *Sala, modo *bool, jug *Jugador) (orden, error) {
 	escribirAtomico(cfg, []byte(b.String()))
 
 	return orden{
-		args: []string{"-L", filepath.Join(carpetaCores, sis.nucleo), j.Ruta, "--appendconfig", cfg},
+		args: argsRetroArch("-L", filepath.Join(carpetaCores, nucleoDe(j.Sistema)), j.Ruta, "--appendconfig", cfg),
 		env:  env,
 	}, nil
 }

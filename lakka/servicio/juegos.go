@@ -195,6 +195,29 @@ func tituloDe(nombre string) string {
 	return t
 }
 
+// sistemaPermitido: POKEMULADOR_SISTEMAS limita los sistemas (en consolas que no pueden con DS o
+// 3DS, por ejemplo "gb,gbc,gba").
+func sistemaPermitido(sis string) bool {
+	lista := os.Getenv("POKEMULADOR_SISTEMAS")
+	if strings.TrimSpace(lista) == "" {
+		return true
+	}
+	for _, s := range strings.Split(lista, ",") {
+		if strings.EqualFold(strings.TrimSpace(s), sis) {
+			return true
+		}
+	}
+	return false
+}
+
+// nucleoDe: el archivo del núcleo de un sistema (se puede cambiar con POKEMULADOR_NUCLEO_GBA, …).
+func nucleoDe(sis string) string {
+	if v := os.Getenv("POKEMULADOR_NUCLEO_" + strings.ToUpper(sis)); v != "" {
+		return v
+	}
+	return sistemas[sis].nucleo
+}
+
 func buscarJuegos(raiz string) []Juego {
 	var lista []Juego
 	raiz = filepath.Clean(raiz)
@@ -216,7 +239,7 @@ func buscarJuegos(raiz string) []Juego {
 			return nil
 		}
 		sis, ok := extensiones[strings.ToLower(filepath.Ext(nombre))]
-		if !ok {
+		if !ok || !sistemaPermitido(sis) {
 			return nil
 		}
 		rel, _ := filepath.Rel(raiz, ruta)
