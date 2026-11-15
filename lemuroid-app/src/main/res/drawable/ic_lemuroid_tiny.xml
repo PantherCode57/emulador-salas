@@ -1,18 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icono pequeño de notificaciones de Pokemulador: la lente y las tres luces de la Pokédex. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="114.358dp"
-    android:height="114.358dp"
-    android:viewportWidth="114.358"
-    android:viewportHeight="114.358">
-  <path
-      android:pathData="m69.215,84.452c0,5.628 -4.562,10.191 -10.191,10.191h-3.096c-5.627,0 -10.191,-4.562 -10.191,-10.191v0c0,-5.628 4.564,-10.191 10.191,-10.191h3.096c5.628,0 10.191,4.562 10.191,10.191z"
-      android:strokeWidth="1.37377906"
-      android:fillColor="#ffffff"
-      android:fillType="evenOdd"
-      android:fillAlpha="0.70588237"/>
-  <path
-      android:pathData="m69.215,84.452c0,5.628 -4.562,10.191 -10.191,10.191h-3.096c-5.627,0 -10.191,-4.562 -10.191,-10.191v0c0,-5.628 4.564,-10.191 10.191,-10.191h3.096c5.628,0 10.191,4.562 10.191,10.191zM97.276,57.886A15.974,15.974 0,0 1,81.302 73.861,15.974 15.974,0 0,1 65.328,57.886 15.974,15.974 0,0 1,81.302 41.912,15.974 15.974,0 0,1 97.276,57.886ZM49.327,57.886A15.974,15.974 0,0 1,33.353 73.861,15.974 15.974,0 0,1 17.379,57.886 15.974,15.974 0,0 1,33.353 41.912,15.974 15.974,0 0,1 49.327,57.886ZM22.46,5.741h70.516c8.551,0 15.436,6.884 15.436,15.436v71.75c0,8.551 -6.884,15.436 -15.436,15.436L22.46,108.362c-8.551,0 -15.436,-6.884 -15.436,-15.436L7.024,21.176c0,-8.551 6.884,-15.436 15.436,-15.436z"
-      android:strokeWidth="1.37377906"
-      android:fillColor="#ffffff"
-      android:fillType="evenOdd"
-      android:fillAlpha="1"/>
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Aro de la lente -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M9,3a7,7 0,1 0,0.001 0zM9,5.5a4.5,4.5 0,1 1,-0.001 0z" />
+    <!-- Brillo de la lente -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7.5,7a1.5,1.5 0,1 0,0.001 0z" />
+    <!-- Tres luces -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M18.5,3.5a1.8,1.8 0,1 0,0.001 0zM18.5,8.2a1.8,1.8 0,1 0,0.001 0zM18.5,12.9a1.8,1.8 0,1 0,0.001 0z" />
+    <!-- Pantalla -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,18.5h18v2.5h-18z" />
 </vector>
