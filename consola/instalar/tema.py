@@ -6,8 +6,12 @@ arriba a la izquierda, engranaje, Wi-Fi y batería arriba a la derecha y abajo u
 de colores, una por apartado) y otras listas de juegos (tarjetas en columna y la hora en pequeño).
 Necesita el menú con los cambios de Panther OS (consola/emulationstation/0001-panther.patch): usa
 elementos y propiedades que el menú original no conoce.
-Uso: tema.py <carpeta con fondo.jpg, fondo-lista.jpg, borde-elegida.png, wifi.png, ajustes.png,
-marca-barra.png, bateria/*.png y tarjetas/*.png>
+Las listas copian al píxel la vista previa aprobada: las tarjetas de los juegos ya vienen
+recortadas, con las esquinas redondas y la sombra (<thumbnail> de cada juego), y las medidas salen
+de lista_exacta.py, que calcula dónde pone el menú cada texto. La letra es Selawik (Microsoft,
+licencia SIL OFL), la versión libre de Segoe UI.
+Uso: tema.py <carpeta con fondo.jpg, fondo-lista.jpg, borde-tarjeta.png, linea.png, wifi.png,
+ajustes.png, marca-barra.png, letra/*.ttf, bateria/*.png y tarjetas/*.png>
 Se lanza con EmulationStation parado. No toca el tema original.
 """
 import re
@@ -32,6 +36,7 @@ PANTHER_XML = """<theme>
       <color>FFFFFFFF</color>
       <alignment>left</alignment>
       <verticalAlignment>center</verticalAlignment>
+      <lineSpacing>1.5</lineSpacing>
     </text>
     <text name="date">
       <pos>0.072 0.275</pos>
@@ -41,17 +46,19 @@ PANTHER_XML = """<theme>
       <color>FFFFFFE0</color>
       <alignment>left</alignment>
     </text>
+    <!-- En las listas solo la hora, arriba a la derecha; la batería se aparta fuera de la pantalla. -->
     <text name="clock_lista">
-      <pos>0.80 0.025</pos>
-      <size>0.17 0.085</size>
-      <fontPath>./hora.ttf</fontPath>
-      <fontSize>0.05</fontSize>
+      <pos>0.71875 0.0375</pos>
+      <size>0.25 0.091667</size>
+      <fontPath>./letra/selawksl.ttf</fontPath>
+      <fontSize>0.0625</fontSize>
       <color>FFFFFFFF</color>
       <alignment>right</alignment>
-      <verticalAlignment>center</verticalAlignment>
+      <verticalAlignment>top</verticalAlignment>
+      <lineSpacing>1</lineSpacing>
     </text>
     <batteryIndicator name="batteryIndicator_lista">
-      <pos>0.40 0.025</pos>
+      <pos>0 2</pos>
       <size>0.47 0.085</size>
     </batteryIndicator>
     <!-- Wi-Fi, batería y su porcentaje (ShowBattery = "text"), alineados a la derecha. -->
@@ -122,10 +129,10 @@ PANTHER_XML = """<theme>
       <pos>0 2</pos>
     </helpsystem>
   </view>
-  <!-- Listas de juegos (vista «grid», puesta por apartado con <apartado>.defaultView): columna de
-       tres tarjetas a la izquierda (pantalla de título y el nombre en pequeño; la elegida en el
-       centro, algo más grande y con borde) y, a la derecha y centrados, el nombre, «consola · año ·
-       género» y de qué va. La hora va en pequeño arriba a la derecha (clock_lista). -->
+  <!-- Listas de juegos (vista «grid», puesta por apartado con <apartado>.defaultView), igual que la
+       vista previa aprobada: columna de tres tarjetas a la izquierda (la elegida en el centro, un 12 %
+       más grande y con el borde azul) y, a la derecha, el nombre, «consola · año · género», una línea
+       fina, de qué va y la ayuda de los botones. Medidas de lista_exacta.py. -->
   <view name="grid">
     <image name="panther_fondo_lista" extra="true">
       <origin>0 0</origin>
@@ -134,39 +141,63 @@ PANTHER_XML = """<theme>
       <path>./fondo-lista.jpg</path>
       <zIndex>1</zIndex>
     </image>
+    <image name="panther_linea" extra="true">
+      <origin>0 0</origin>
+      <pos>0.453125 0.270833</pos>
+      <size>0.509375 0.002083</size>
+      <path>./linea.png</path>
+      <zIndex>35</zIndex>
+    </image>
+    <text name="panther_ayuda" extra="true">
+      <text>A  Jugar      B  Volver      Y  Favorito</text>
+      <pos>0.453125 0.934375</pos>
+      <size>0.509375 0.054167</size>
+      <fontPath>./letra/selawk.ttf</fontPath>
+      <fontSize>0.03125</fontSize>
+      <color>BEBEC8FF</color>
+      <alignment>left</alignment>
+      <verticalAlignment>top</verticalAlignment>
+      <lineSpacing>1</lineSpacing>
+      <zIndex>40</zIndex>
+    </text>
     <imagegrid name="gamegrid">
-      <pos>0.03 0.12</pos>
-      <size>0.33 0.86</size>
-      <margin>0 0.025</margin>
+      <pos>-0.01875 0</pos>
+      <size>0.440625 1.018973</size>
+      <margin>0 0.032887</margin>
+      <padding>0.034068 0.02686 0.034068 0</padding>
       <autoLayout>1 3</autoLayout>
-      <autoLayoutSelectedZoom>1.06</autoLayoutSelectedZoom>
-      <imageSource>image</imageSource>
+      <autoLayoutSelectedZoom>1.12</autoLayoutSelectedZoom>
+      <imageSource>thumbnail</imageSource>
       <scrollDirection>verticalCenter</scrollDirection>
       <animateSelection>true</animateSelection>
       <zIndex>30</zIndex>
     </imagegrid>
+    <!-- La imagen de cada tarjeta ya trae las esquinas redondas y la sombra: se pinta tal cual. -->
     <gridtile name="default">
-      <padding>6 6</padding>
-      <imageSizeMode>minSize</imageSizeMode>
+      <padding>0 0</padding>
       <backgroundColor>00000000</backgroundColor>
+      <imageColor>FFFFFFFF</imageColor>
       <selectionMode>image</selectionMode>
     </gridtile>
     <gridtile name="selected">
-      <padding>6 6</padding>
-      <imageSizeMode>minSize</imageSizeMode>
+      <padding>0 0</padding>
       <backgroundColor>00000000</backgroundColor>
+      <imageColor>FFFFFFFF</imageColor>
       <selectionMode>image</selectionMode>
     </gridtile>
-    <!-- Esquinas redondas y, en la elegida, el borde azul por encima de la imagen. -->
     <image name="gridtile.image">
-      <roundCorners>0.07</roundCorners>
+      <pos>0.5 0.5</pos>
+      <size>1 1</size>
+      <color>FFFFFFFF</color>
     </image>
     <image name="gridtile.image:selected">
-      <roundCorners>0.07</roundCorners>
+      <pos>0.5 0.5</pos>
+      <size>1 1</size>
+      <color>FFFFFFFF</color>
     </image>
     <!-- La capa de encima solo existe si está en las tarjetas normales: ahí va oculta. -->
     <image name="gridtile.overlay">
-      <path>./borde-elegida.png</path>
+      <path>./borde-tarjeta.png</path>
       <origin>0.5 0.5</origin>
       <pos>0.5 0.5</pos>
       <size>1 1</size>
@@ -176,37 +207,52 @@ PANTHER_XML = """<theme>
       <visible>true</visible>
     </image>
     <text name="gridtile">
-      <size>1 0.16</size>
-      <fontSize>0.03</fontSize>
-      <color>D2D2DCFF</color>
+      <pos>0 0.914699</pos>
+      <size>1 0.148434</size>
+      <fontPath>./letra/selawk.ttf</fontPath>
+      <fontSize>0.027084</fontSize>
+      <color>CDCDD7FF</color>
       <alignment>center</alignment>
+      <verticalAlignment>top</verticalAlignment>
+      <lineSpacing>1</lineSpacing>
     </text>
     <text name="gridtile:selected">
+      <pos>0 0.906627</pos>
+      <size>1 0.144578</size>
+      <fontPath>./letra/selawksb.ttf</fontPath>
+      <fontSize>0.029167</fontSize>
       <color>FFFFFFFF</color>
     </text>
     <text name="md_name">
-      <pos>0.40 0.22</pos>
-      <size>0.57 0.09</size>
-      <fontSize>0.055</fontSize>
+      <pos>0.453125 0.152083</pos>
+      <size>0.509375 0.091667</size>
+      <fontPath>./letra/selawksb.ttf</fontPath>
+      <fontSize>0.054167</fontSize>
       <color>FFFFFFFF</color>
-      <alignment>center</alignment>
+      <alignment>left</alignment>
+      <verticalAlignment>top</verticalAlignment>
+      <lineSpacing>1</lineSpacing>
       <zIndex>40</zIndex>
     </text>
     <text name="md_genre">
-      <pos>0.40 0.315</pos>
-      <size>0.57 0.05</size>
-      <fontSize>0.032</fontSize>
+      <pos>0.453125 0.221875</pos>
+      <size>0.509375 0.054167</size>
+      <fontPath>./letra/selawk.ttf</fontPath>
+      <fontSize>0.03125</fontSize>
       <color>96C8FFFF</color>
-      <alignment>center</alignment>
+      <alignment>left</alignment>
+      <verticalAlignment>top</verticalAlignment>
+      <lineSpacing>1</lineSpacing>
       <zIndex>40</zIndex>
     </text>
     <text name="md_description">
-      <pos>0.41 0.39</pos>
-      <size>0.55 0.48</size>
-      <fontSize>0.036</fontSize>
+      <pos>0.453125 0.292708</pos>
+      <size>0.509375 0.615625</size>
+      <fontPath>./letra/selawk.ttf</fontPath>
+      <fontSize>0.033334</fontSize>
       <color>E6E6EEFF</color>
-      <alignment>center</alignment>
-      <lineSpacing>1.25</lineSpacing>
+      <alignment>left</alignment>
+      <lineSpacing>1.4118</lineSpacing>
       <zIndex>40</zIndex>
     </text>
     <text name="md_lbl_rating"><pos>0 2</pos><size>0.001 0.001</size></text>
@@ -224,11 +270,9 @@ PANTHER_XML = """<theme>
     <text name="md_players"><pos>0 2</pos><size>0.001 0.001</size></text>
     <datetime name="md_lastplayed"><pos>0 2</pos><size>0.001 0.001</size></datetime>
     <text name="md_playcount"><pos>0 2</pos><size>0.001 0.001</size></text>
+    <!-- La ayuda de los botones es el texto «panther_ayuda» de arriba. -->
     <helpsystem name="help">
-      <pos>0.40 0.93</pos>
-      <textColor>DDDDDDFF</textColor>
-      <iconColor>DDDDDDFF</iconColor>
-      <fontSize>0.028</fontSize>
+      <pos>0 2</pos>
     </helpsystem>
   </view>
 </theme>
