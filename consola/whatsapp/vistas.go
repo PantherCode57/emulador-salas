@@ -28,6 +28,8 @@ func (a *app) dibujar() {
 		a.dibujarTeclado()
 	case a.pant == pRapidas:
 		a.dibujarRapidas()
+	case a.pant == pVisor:
+		a.dibujarVisor()
 	}
 	if a.avisoTexto != "" {
 		r := image.Rect(16, 8, ancho-16, 50)
@@ -218,6 +220,11 @@ type burbuja struct {
 	de     string
 	lineas []string
 	alto   int
+	// Fotos y stickers
+	img        image.Image
+	imgW, imgH int
+	hueco      string // texto del hueco mientras no está la imagen
+	sticker    bool
 }
 
 func (a *app) dibujarChat(margenAbajo int) {
@@ -241,8 +248,31 @@ func (a *app) dibujarChat(margenAbajo int) {
 		if c.Grupo && !m.Mio {
 			b.de = m.De
 		}
-		b.lineas = ajustar(l.f.pequena, m.Texto, anchoMax-24)
+		texto := m.Texto
+		if m.Tipo != "" && a.media != nil {
+			// Foto o sticker: la imagen (si ya está) y debajo el pie de foto.
+			texto = m.Pie
+			b.sticker = m.Tipo == tipoSticker
+			im, cargando, falta := a.media.imagenes(m, false)
+			if im != nil && im.vista != nil {
+				b.img = im.vista
+				b.imgW, b.imgH = b.img.Bounds().Dx(), b.img.Bounds().Dy()
+			} else {
+				b.imgW, b.imgH = tamVista(m)
+				b.imgH = b.imgH * 2 / 3
+				b.hueco = "Cargando…"
+				if falta && !cargando {
+					b.hueco = "No disponible"
+				}
+			}
+		}
+		if texto != "" {
+			b.lineas = ajustar(l.f.pequena, texto, anchoMax-24)
+		}
 		b.alto = len(b.lineas)*al + 26
+		if b.imgH > 0 {
+			b.alto += b.imgH + 6
+		}
 		if b.de != "" {
 			b.alto += al
 		}
@@ -273,19 +303,44 @@ func (a *app) dibujarChat(margenAbajo int) {
 		if b.de != "" {
 			w = max(w, min(medir(l.f.mini, b.de), anchoMax-24))
 		}
+		w = max(w, b.imgW)
 		w += 24
 		x, fondo := 14, colSuyo
 		if b.m.Mio {
 			x, fondo = ancho-14-w, colMio
 		}
 		r := image.Rect(x, y, x+w, y+b.alto)
-		a.recortado(zona, func() { a.l.redondeado(r, 10, fondo) })
+		if !b.sticker { // los stickers van sueltos, sin burbuja, como en el móvil
+			a.recortado(zona, func() { a.l.redondeado(r, 10, fondo) })
+		}
 		ty := y + 4
 		if b.de != "" {
 			ty += al
 			if ty > zona.Min.Y && ty < zona.Max.Y {
 				l.texto(x+12, ty, recortar(l.f.mini, b.de, w-24), l.f.mini, colorDe(b.m.Remite))
 			}
+		}
+		if b.imgH > 0 {
+			iy := ty + 6
+			if b.de == "" {
+				iy = y + 8
+			}
+			ix := x + 12
+			if b.m.Mio && b.sticker {
+				ix = r.Max.X - 12 - b.imgW
+			}
+			hueco := image.Rect(ix, iy, ix+b.imgW, iy+b.imgH)
+			a.recortado(zona, func() {
+				if b.img != nil {
+					a.l.pegar(b.img, ix, iy)
+				} else {
+					a.l.huecoFoto(hueco, b.hueco)
+				}
+			})
+			if b.img == nil || b.hueco != "" || (a.media != nil && a.media.esMini(b.m)) {
+				a.media.pedir(b.m) // se ve en pantalla: que se descargue
+			}
+			ty = iy + b.imgH - 2
 		}
 		for _, ln := range b.lineas {
 			ty += al
@@ -309,8 +364,78 @@ func (a *app) dibujarChat(margenAbajo int) {
 	// La cabecera va encima de lo que se salga por arriba.
 	a.cabecera(c.Nombre, sub)
 	if margenAbajo == 40 {
-		l.pistas([2]string{"A", "Escribir"}, [2]string{"X", "Rápidas"}, [2]string{"↑↓", "Mover"}, [2]string{"B", "Volver"})
+		if len(mediosDe(c)) > 0 {
+			l.pistas([2]string{"A", "Escribir"}, [2]string{"X", "Rápidas"}, [2]string{"Y", "Fotos"}, [2]string{"B", "Volver"})
+		} else {
+			l.pistas([2]string{"A", "Escribir"}, [2]string{"X", "Rápidas"}, [2]string{"↑↓", "Mover"}, [2]string{"B", "Volver"})
+		}
 	}
+}
+
+// mediosDe: las fotos y stickers de un chat, de la más antigua a la más nueva.
+func mediosDe(c *Chat) []*Mensaje {
+	var r []*Mensaje
+	for _, m := range c.Mensajes {
+		if m.Tipo != "" {
+			r = append(r, m)
+		}
+	}
+	return r
+}
+
+// dibujarVisor: una foto o un sticker a pantalla completa, con quién lo manda y su pie.
+func (a *app) dibujarVisor() {
+	l := a.l
+	l.rect(l.img.Bounds(), colNegro)
+	if len(a.visor) == 0 || a.media == nil {
+		a.pant = pChat
+		return
+	}
+	a.visorI = max(0, min(a.visorI, len(a.visor)-1))
+	m := a.visor[a.visorI]
+	zona := image.Rect(0, 0, ancho, alto-64)
+	im, cargando, falta := a.media.imagenes(m, true)
+	if im != nil && im.completa != nil {
+		img := im.completa
+		if b := img.Bounds(); b.Dx() > zona.Dx() || b.Dy() > zona.Dy() || im.mini {
+			img = ajustarA(img, zona.Dx(), zona.Dy())
+		}
+		b := img.Bounds()
+		l.pegar(img, (zona.Dx()-b.Dx())/2, (zona.Dy()-b.Dy())/2)
+		if im.mini && cargando {
+			l.centrado(image.Rect(0, zona.Max.Y-30, ancho, zona.Max.Y), "Descargando…", l.f.mini, colSuave)
+		}
+	} else {
+		t := "Descargando…"
+		if falta && !cargando {
+			t = "Esta foto ya no está disponible"
+		}
+		l.centrado(zona, t, l.f.normal, colSuave)
+	}
+	// Barra de abajo: qué es, de quién, cuándo y el pie.
+	barra := image.Rect(0, alto-64, ancho, alto)
+	l.rect(barra, colBarra)
+	que := "Foto"
+	if m.Tipo == tipoSticker {
+		que = "Sticker"
+	}
+	quien := m.De
+	if m.Mio {
+		quien = "Tú"
+	}
+	linea := que + " " + itoa(a.visorI+1) + " de " + itoa(len(a.visor))
+	for _, p := range []string{quien, hora(m.Hora)} {
+		if p != "" {
+			linea += "  ·  " + p
+		}
+	}
+	l.izquierda(image.Rect(14, barra.Min.Y+4, ancho-14, barra.Min.Y+26), linea, l.f.pequena, colTexto)
+	if m.Pie != "" {
+		l.izquierda(image.Rect(14, barra.Min.Y+24, ancho-200, barra.Min.Y+46), m.Pie, l.f.mini, colSuave)
+	}
+	x := ancho - 196
+	x = l.boton(x, barra.Min.Y+48, "←→", "Otra")
+	l.boton(x, barra.Min.Y+48, "B", "Volver")
 }
 
 // recortado dibuja solo dentro de la zona del chat (para que las burbujas no pisen las barras).

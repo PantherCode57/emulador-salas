@@ -13,6 +13,7 @@ const (
 	pTeclado
 	pRapidas
 	pMenu
+	pVisor // fotos y stickers a pantalla completa
 )
 
 type app struct {
@@ -20,6 +21,7 @@ type app struct {
 	l      *lienzo
 	srv    *servidorPantalla
 	w      *wa
+	media  *medios
 	tareas chan func()
 	salir  chan struct{}
 
@@ -35,6 +37,8 @@ type app struct {
 	confirmar bool // segundo paso para desvincular
 	selRapida int
 	rapidas   []string
+	visor     []*Mensaje // fotos y stickers del chat abierto
+	visorI    int
 
 	tec teclado
 
@@ -69,7 +73,7 @@ func (a *app) aviso(s string) {
 }
 
 func (a *app) chatAbierto() string {
-	if a.abierto != nil && (a.pant == pChat || a.pant == pTeclado || a.pant == pRapidas) {
+	if a.abierto != nil && (a.pant == pChat || a.pant == pTeclado || a.pant == pRapidas || a.pant == pVisor) {
 		return a.abierto.JID
 	}
 	return ""
@@ -181,6 +185,19 @@ func (a *app) pulsar(b uint16) {
 		a.pulsarRapidas(b)
 	case pMenu:
 		a.pulsarMenu(b)
+	case pVisor:
+		a.pulsarVisor(b)
+	}
+}
+
+func (a *app) pulsarVisor(b uint16) {
+	switch b {
+	case bIzquierda, bArriba, bL:
+		a.visorI = max(a.visorI-1, 0)
+	case bDerecha, bAbajo, bR:
+		a.visorI = min(a.visorI+1, len(a.visor)-1)
+	case bB, bY, bStart:
+		a.pant = pChat
 	}
 }
 
@@ -233,6 +250,13 @@ func (a *app) pulsarChat(b uint16) {
 		a.rapidas = cargarRapidas()
 		a.selRapida = 0
 		a.pant = pRapidas
+	case bY: // fotos y stickers del chat, empezando por el último
+		if a.abierto != nil && a.media != nil {
+			if a.visor = mediosDe(a.abierto); len(a.visor) > 0 {
+				a.visorI = len(a.visor) - 1
+				a.pant = pVisor
+			}
+		}
 	case bB:
 		a.pant = pChats
 	case bStart:

@@ -9,8 +9,12 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"image/png"
 	"io"
 	"log"
@@ -82,6 +86,7 @@ func main() {
 	log.Printf("WhatsApp de la consola en marcha (%dx%d)", ancho, alto)
 
 	a := nuevaApp(f)
+	a.media = nuevosMedios(a, filepath.Join(carpetaDatos, "media"))
 	botones := make(chan uint16, 64)
 	a.srv = nuevoServidorPantalla(botones)
 	if err := a.srv.escuchar(); err != nil {
@@ -134,12 +139,13 @@ func dibujarPruebas(f *fuentes, carpeta string) error {
 			{ID: "1", Texto: "¿Vas a venir a cenar?", Hora: ahora.Add(-40 * time.Minute)},
 			{ID: "2", Mio: true, Texto: "Sí, en media hora estoy", Hora: ahora.Add(-35 * time.Minute)},
 			{ID: "3", Texto: "Vale, compra pan de camino por favor, que se nos ha acabado y mañana no abren", Hora: ahora.Add(-3 * time.Minute)},
-			{ID: "4", Texto: "[Foto]: así ha quedado la tarta", Hora: ahora.Add(-2 * time.Minute)},
+			{ID: "4", Texto: "[Foto]: así ha quedado la tarta", Hora: ahora.Add(-2 * time.Minute), Tipo: tipoFoto, Pie: "así ha quedado la tarta"},
 		}},
 		{"120363000000000001@g.us", "Pokemulador 🎮", true, 5, []*Mensaje{
 			{ID: "5", De: "Álex", Remite: "34600000002@s.whatsapp.net", Texto: "¿Quién se apunta a Esmeralda esta noche?", Hora: ahora.Add(-20 * time.Minute)},
 			{ID: "6", De: "Lucía", Remite: "34600000003@s.whatsapp.net", Texto: "Yo! Código de sala: PIKA42", Hora: ahora.Add(-18 * time.Minute)},
 			{ID: "7", Mio: true, Texto: "Voy con la consola nueva 😎", Hora: ahora.Add(-17 * time.Minute)},
+			{ID: "s1", De: "Lucía", Remite: "34600000003@s.whatsapp.net", Texto: "[Sticker]", Hora: ahora.Add(-16 * time.Minute), Tipo: tipoSticker},
 		}},
 		{"34600000004@s.whatsapp.net", "Dani", false, 0, []*Mensaje{
 			{ID: "8", Mio: true, Texto: "Mañana te paso el GTA", Hora: ahora.Add(-26 * time.Hour), Error: true},
@@ -156,6 +162,46 @@ func dibujarPruebas(f *fuentes, carpeta string) error {
 			c.añadir(m)
 		}
 		a.w.chats[c.JID] = c
+	}
+	// Una foto y un sticker inventados, ya «descargados».
+	a.media = nuevosMedios(a, filepath.Join(carpeta, "media"))
+	foto := image.NewRGBA(image.Rect(0, 0, 800, 600))
+	for y := 0; y < 600; y++ {
+		for x := 0; x < 800; x++ {
+			foto.Set(x, y, color.RGBA{uint8(120 + x/8), uint8(60 + y/5), uint8(160 - x/10), 255})
+		}
+	}
+	for y := 200; y < 480; y++ { // la «tarta»
+		for x := 250; x < 550; x++ {
+			if (x-400)*(x-400)/9+(y-340)*(y-340)/4 < 2500 {
+				foto.Set(x, y, color.RGBA{250, 230, 240, 255})
+			}
+		}
+	}
+	sticker := image.NewRGBA(image.Rect(0, 0, 512, 512))
+	for y := 0; y < 512; y++ {
+		for x := 0; x < 512; x++ {
+			if d := (x-256)*(x-256) + (y-256)*(y-256); d < 200*200 {
+				c := color.RGBA{255, 200, 40, 255}
+				if (x-190)*(x-190)+(y-200)*(y-200) < 900 || (x-322)*(x-322)+(y-200)*(y-200) < 900 || (d > 120*120 && d < 140*140 && y > 280) {
+					c = color.RGBA{60, 40, 20, 255}
+				}
+				sticker.Set(x, y, c)
+			}
+		}
+	}
+	for _, p := range []struct {
+		m   *Mensaje
+		img image.Image
+	}{{a.w.chats["34600000001@s.whatsapp.net"].Mensajes[3], foto}, {a.w.chats["120363000000000001@g.us"].Mensajes[3], sticker}} {
+		w, h := tamCompleta()
+		var buf bytes.Buffer
+		if p.m.Tipo == tipoSticker {
+			_ = png.Encode(&buf, ajustarA(p.img, w, h))
+		} else {
+			_ = jpeg.Encode(&buf, ajustarA(p.img, w, h), nil)
+		}
+		escribirAtomico(a.media.rutaImagen(p.m), buf.Bytes())
 	}
 	guardar := func(nombre string) error {
 		a.dibujar()
@@ -184,6 +230,12 @@ func dibujarPruebas(f *fuentes, carpeta string) error {
 		{"6-rapidas", func() { a.pant, a.rapidas, a.selRapida = pRapidas, rapidasPorDefecto, 2 }},
 		{"7-menu", func() { a.pant, a.selMenu = pMenu, 0 }},
 		{"8-aviso", func() { a.pant = pChats; a.estado = waSinRed; a.aviso("Lucía: ¿Echamos una partida en las salas?") }},
+		{"9-visor", func() {
+			a.estado, a.avisoTexto = waConectado, ""
+			a.abierto = a.w.chats["34600000001@s.whatsapp.net"]
+			a.visor, a.visorI, a.pant = mediosDe(a.abierto), 0, pVisor
+		}},
+		{"10-sticker", func() { a.abierto, a.pant, a.desplazar = a.w.chats["120363000000000001@g.us"], pChat, 0 }},
 	}
 	for _, p := range pasos {
 		p.prep()

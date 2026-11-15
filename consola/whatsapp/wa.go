@@ -35,6 +35,8 @@ type Mensaje struct {
 	Texto  string    `json:"texto"`
 	Hora   time.Time `json:"hora"`
 	Error  bool      `json:"error,omitempty"`
+	Tipo   string    `json:"tipo,omitempty"` // "foto" o "sticker" (solo para ver)
+	Pie    string    `json:"pie,omitempty"`  // pie de foto
 }
 
 // Chat: una conversación con sus últimos mensajes.
@@ -310,6 +312,13 @@ func (w *wa) mensaje(e *events.Message, enVivo bool) {
 	}
 	if e.IsEdit {
 		m.Texto += " (editado)"
+	}
+	if tipo, pie, sub, mini := medioDe(e.Message); tipo != "" && m.ID != "" && w.app.media != nil {
+		m.Tipo, m.Pie = tipo, w.app.f.limpiar(pie)
+		w.app.media.guardar(m, sub, mini)
+		if enVivo {
+			w.app.media.pedir(m) // las que llegan ahora se descargan ya; las antiguas, al verlas
+		}
 	}
 	nuevo := c.añadir(m)
 	w.sucio = true
