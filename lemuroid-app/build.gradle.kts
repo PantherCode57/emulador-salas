@@ -24,6 +24,9 @@ android {
     }
     flavorDimensions += listOf("opensource", "cores")
 
+    // GBA-PK Multiplayer (partida compartida de GBA) va dentro de la app, tal cual, con su licencia.
+    sourceSets.getByName("main").assets.srcDir("../terceros/gba-pk")
+
     if (usePlayDynamicFeatures()) {
         println("Building Google Play version. Bundling dynamic features.")
         dynamicFeatures.addAll(

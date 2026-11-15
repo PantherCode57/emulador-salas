@@ -2,6 +2,7 @@ package com.swordfish.lemuroid.app.shared.game
 
 import android.app.Activity
 import com.swordfish.lemuroid.R
+import com.swordfish.lemuroid.app.mobile.feature.online.PartidaCompartidaGba
 import com.swordfish.lemuroid.app.shared.main.GameLaunchTaskHandler
 import com.swordfish.lemuroid.common.displayToast
 import com.swordfish.lemuroid.lib.core.CoresSelection
@@ -33,6 +34,8 @@ class GameLauncher(
             val system = GameSystem.findById(game.systemId)
             val coreConfig = coresSelection.getCoreConfigForSystem(system)
             gameLaunchTaskHandler.handleGameStart(activity.applicationContext)
+            // Pokemulador: en GBA, prepara (o quita) la partida compartida de la sala.
+            PartidaCompartidaGba.preparar(activity.applicationContext, game, sala)
             BaseGameActivity.launchGame(activity, coreConfig, game, loadSave, leanback, perfil, sala)
         }
 

@@ -274,10 +274,10 @@ private fun SalaActiva(
             }
         }
         OutlinedButton(onClick = onSalir) { Text(stringResource(R.string.emudex_salir_sala)) }
-        if (sala.esDe3DS) {
-            TextoSuave(stringResource(R.string.emudex_paso_comunicacion))
-        } else {
-            TextoSuave(stringResource(R.string.emudex_sala_sin_online))
+        when {
+            sala.esDe3DS -> TextoSuave(stringResource(R.string.emudex_paso_comunicacion))
+            sala.esDeGba -> TextoSuave(stringResource(R.string.emudex_sala_gba_compartida))
+            else -> TextoSuave(stringResource(R.string.emudex_sala_sin_online))
         }
     }
 

@@ -288,6 +288,22 @@ fn lanzar(app: &AppHandle, data: &AppData, path: &str, sala: Option<SalaGuardada
         .filter(|s| s.partida_propia)
         .map(|s| salas::carpeta_perfil(&datos, &s.codigo));
     let emulators = emulators_dir(app);
+    // GBA desde la sala en la que estamos: partida compartida (os veis por el mapa).
+    if system == "gba" {
+        let modo = sala.as_ref().and_then(|s| {
+            data.sala
+                .lock()
+                .unwrap()
+                .as_ref()
+                .filter(|a| a.codigo == s.codigo)
+                .and_then(|a| a.anfitrion)
+        });
+        let (_, nombre) = jugador(app, data);
+        if let Err(e) = salas::partida_compartida_gba(&emulators, modo, &nombre) {
+            eprintln!("{e}");
+            let _ = salas::partida_compartida_gba(&emulators, None, &nombre);
+        }
+    }
     let mut command = match retroarch_core(system) {
         Some(core) => {
             let dir = emulators.join("RetroArch");

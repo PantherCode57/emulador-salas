@@ -104,6 +104,11 @@ static struct mScriptTextBuffer* _pkmBufferFactory(void* context) {
 	return buffer;
 }
 
+static void _pkmBuscarMotor(const char* clave, void* valor, void* destino) {
+	UNUSED(clave);
+	*(struct mScriptEngineContext**) destino = valor;
+}
+
 static void _pkmScriptsStart(const char* sysDir) {
 	if (_pkmScriptsOn || !sysDir || !core) {
 		return;
@@ -137,10 +142,23 @@ static void _pkmScriptsStart(const char* sysDir) {
 	core->addCoreCallbacks(core, &callbacks);
 	_pkmScriptsOn = true;
 
-	bool cargado = mScriptContextLoadFile(&_pkmScripts, path);
+	// Como la ventana de scripts de mGBA: el motor de Lua carga el archivo y luego lo ejecuta
+	// (mScriptContextLoadFile solo lo carga).
+	struct mScriptEngineContext* motor = NULL;
+	HashTableEnumerate(&_pkmScripts.engines, _pkmBuscarMotor, &motor);
+	bool cargado = false;
+	const char* error = "no hay motor de Lua";
+	vf = VFileOpen(path, O_RDONLY);
+	if (motor && vf) {
+		cargado = motor->load(motor, path, vf) && motor->run(motor);
+		error = cargado ? "" : motor->getError(motor);
+	}
+	if (vf) {
+		vf->close(vf);
+	}
 	if (logCallback) {
-		logCallback(cargado ? RETRO_LOG_INFO : RETRO_LOG_ERROR, "Pokemulador: script de partida compartida %s: %s\n",
-		            cargado ? "cargado" : "con error", path);
+		logCallback(cargado ? RETRO_LOG_INFO : RETRO_LOG_ERROR, "Pokemulador: script de partida compartida %s: %s %s\n",
+		            cargado ? "en marcha" : "con error", path, error ? error : "");
 	}
 }
 

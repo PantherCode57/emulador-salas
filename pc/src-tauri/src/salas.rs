@@ -253,6 +253,42 @@ pub fn cfg_retroarch_perfil(perfil: &Path) -> PathBuf {
     cfg
 }
 
+// ---------- Partida compartida de GBA (GBA-PK) ----------
+
+/// Escribe (o quita) el script de la partida compartida que carga el núcleo de mGBA de Pokemulador.
+/// `modo`: Some(true) si tenemos la sala abierta (abrimos la partida), Some(false) si entramos en la
+/// del amigo, None para jugar sin partida compartida. Ver terceros/gba-pk/LEEME.md.
+pub fn partida_compartida_gba(emuladores: &Path, modo: Option<bool>, nombre: &str) -> Result<(), String> {
+    let destino = emuladores
+        .join("RetroArch")
+        .join("system")
+        .join("pokemulador")
+        .join("multijugador.lua");
+    let Some(anfitrion) = modo else {
+        let _ = fs::remove_file(&destino);
+        return Ok(());
+    };
+    let carpeta = emuladores.join("GBA-PK");
+    let base = fs::read_to_string(carpeta.join("GBA-PK_Multiplayer.lua"))
+        .map_err(|e| format!("Falta GBA-PK en la instalación: {e}"))?;
+    let final_ = fs::read_to_string(carpeta.join("pokemulador_final.lua"))
+        .map_err(|e| format!("Falta GBA-PK en la instalación: {e}"))?
+        .replace("__MODO__", if anfitrion { "h" } else { "c" });
+    // GBA-PK admite hasta 10 caracteres; nos quedamos con letras, números y espacios.
+    let mut nombre: String = nombre
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == ' ')
+        .take(10)
+        .collect::<String>()
+        .trim()
+        .to_string();
+    if nombre.is_empty() {
+        nombre = "Jugador".into();
+    }
+    let texto = base.replacen("local Nickname = \"\"", &format!("local Nickname = \"{nombre}\""), 1) + "\n" + &final_;
+    escribir_atomico(&destino, texto.as_bytes()).map_err(|e| format!("No se pudo preparar la partida compartida: {e}"))
+}
+
 // ---------- Partidas .sav ----------
 
 /// Carpeta que usa RetroArch para cada núcleo (ordena las partidas por núcleo).

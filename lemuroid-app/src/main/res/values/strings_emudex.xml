@@ -12,7 +12,7 @@
     <string name="emudex_join_with_code">Unirme con código</string>
 
     <!-- Salas online -->
-    <string name="emudex_online_solo_3ds">Los intercambios y combates online son en juegos de 3DS, con Wi-Fi o con datos, y también con amigos que juegan en PC. En el resto de juegos la sala sirve para ver cómo va cada uno.</string>
+    <string name="emudex_online_solo_3ds">En 3DS podéis intercambiar y combatir; en Rojo Fuego, Verde Hoja, Rubí, Zafiro y Esmeralda, además, os veis andando por el mapa. Funciona con Wi-Fi o con datos, y también con amigos que juegan en PC. En el resto de juegos la sala sirve para ver cómo va cada uno.</string>
     <string name="emudex_online_sin_clave">Esta versión de Pokemulador no tiene la clave de Tailscale, así que no puede jugar online.</string>
     <string name="emudex_crear_sala_titulo">Crear una sala</string>
     <string name="emudex_crear_sala_texto">Pokemulador te dará un código de 6 letras para que se lo pases a tus amigos.</string>
@@ -59,6 +59,7 @@
     <string name="emudex_fase_anfitrion">Sala abierta. Puedes jugar ya: cuando tu amigo entre, os conectáis solos.</string>
     <string name="emudex_fase_con_amigo">Tu amigo está en la sala contigo.</string>
     <string name="emudex_fase_esperando_vuelta">Tu amigo no está ahora. Puedes jugar igual: si vuelve, os conectáis solos.</string>
+    <string name="emudex_sala_gba_compartida">En Rojo Fuego, Verde Hoja, Rubí, Zafiro y Esmeralda os veréis andando por el mapa (Rojo Fuego con Verde Hoja; Rubí, Zafiro y Esmeralda entre ellos). Se conecta solo al abrir el juego desde aquí. Basado en GBA-PK Multiplayer, de TheHunterManX.</string>
     <string name="emudex_sala_sin_online">En este juego no hay intercambios ni combates online (solo en 3DS), pero tu amigo verá cómo vas.</string>
     <string name="emudex_progreso_titulo">Cómo va %1$s</string>
     <string name="emudex_progreso_tuyo">Cómo vas tú</string>

@@ -211,8 +211,13 @@ func (p *progresos) atender(ctx context.Context, c net.Conn, anfitrion bool, alC
 		c.Close()
 	}()
 
-	// Lo primero, nuestro progreso y (si somos el anfitrión) el de los demás amigos.
+	// Lo primero, un saludo, nuestro progreso y (si somos el anfitrión) el de los demás amigos.
 	go func() {
+		hola, _ := json.Marshal(map[string]any{"tipo": "hola"})
+		if cx.enviar(hola) != nil {
+			c.Close()
+			return
+		}
 		if linea := p.lineaPropia(); linea != nil {
 			if cx.enviar(linea) != nil {
 				c.Close()
@@ -225,7 +230,6 @@ func (p *progresos) atender(ctx context.Context, c net.Conn, anfitrion bool, alC
 				return
 			}
 		}
-		hola, _ := json.Marshal(map[string]any{"tipo": "hola"})
 		for {
 			select {
 			case <-ctxConn.Done():
@@ -331,7 +335,7 @@ func buscarAnfitrionContando(ctx context.Context, srv *tsnet.Server, lc *local.C
 	return netip.Addr{}, nil, probados
 }
 
-func sala(ctx context.Context, srv *tsnet.Server, codigo string, puerto, puertoLocal int, prog *progresos) {
+func sala(ctx context.Context, srv *tsnet.Server, codigo string, puerto, puertoLocal, puertoJuego int, prog *progresos) {
 	lc, err := srv.LocalClient()
 	if err != nil {
 		fallar("Tailscale no responde: " + err.Error())
@@ -361,18 +365,18 @@ func sala(ctx context.Context, srv *tsnet.Server, codigo string, puerto, puertoL
 
 	if conn == nil {
 		avisar("rol", map[string]any{"rol": "host"})
-		ip, conn = salaAnfitrion(ctx, srv, lc, codigo, puerto, propia, prog)
+		ip, conn = salaAnfitrion(ctx, srv, lc, codigo, puerto, puertoJuego, propia, prog)
 		if conn == nil {
 			return
 		}
 	}
 	avisar("rol", map[string]any{"rol": "unirse"})
-	salaAmigo(ctx, srv, lc, codigo, ip, conn, puerto, puertoLocal, propia, prog)
+	salaAmigo(ctx, srv, lc, codigo, ip, conn, puerto, puertoLocal, puertoJuego, propia, prog)
 }
 
 // salaAnfitrion abre la sala. Devuelve la conexión con otro anfitrión si resulta que hay dos y
 // nos toca pasar a ser su amigo.
-func salaAnfitrion(ctx context.Context, srv *tsnet.Server, lc *local.Client, codigo string, puerto int, propia netip.Addr, prog *progresos) (netip.Addr, net.Conn) {
+func salaAnfitrion(ctx context.Context, srv *tsnet.Server, lc *local.Client, codigo string, puerto, puertoJuego int, propia netip.Addr, prog *progresos) (netip.Addr, net.Conn) {
 	ctxSala, cerrar := context.WithCancel(ctx)
 	defer cerrar()
 
@@ -399,7 +403,7 @@ func salaAnfitrion(ctx context.Context, srv *tsnet.Server, lc *local.Client, cod
 			if err != nil {
 				return
 			}
-			go prog.atender(ctxSala, c, true, contar)
+			go clasificarEntrada(ctxSala, c, puertoJuego, func(c net.Conn) { prog.atender(ctxSala, c, true, contar) })
 		}
 	}()
 
@@ -513,7 +517,7 @@ func (d *destinoUDP) escribir(b []byte) {
 
 // salaAmigo entra en la sala de otro. Si el anfitrión se va, seguimos buscando por si vuelve
 // (o entra otro de la sala y la abre él).
-func salaAmigo(ctx context.Context, srv *tsnet.Server, lc *local.Client, codigo string, ip netip.Addr, conn net.Conn, puerto, puertoLocal int, propia netip.Addr, prog *progresos) {
+func salaAmigo(ctx context.Context, srv *tsnet.Server, lc *local.Client, codigo string, ip netip.Addr, conn net.Conn, puerto, puertoLocal, puertoJuego int, propia netip.Addr, prog *progresos) {
 	// El puerto local puede seguir ocupado un momento si veníamos de tener la sala abierta.
 	var local *net.UDPConn
 	for intento := 0; ; intento++ {
@@ -577,7 +581,11 @@ func salaAmigo(ctx context.Context, srv *tsnet.Server, lc *local.Client, codigo 
 			avisar("conectado", map[string]any{"ip": ip.String()})
 			avisar("amigos", map[string]any{"n": 1})
 			go informarRuta(ctxRuta, lc, ip)
+			// Mientras estemos conectados, nuestro emulador puede entrar en la partida compartida.
+			ctxJuego, pararJuego := context.WithCancel(ctx)
+			go servirJuegoLocal(ctxJuego, srv, ip, puerto, puertoJuego)
 			prog.atender(ctx, conn, false, func() {})
+			pararJuego()
 			pararRuta()
 			ctxRuta, pararRuta = context.WithCancel(ctx)
 			if ctx.Err() != nil {

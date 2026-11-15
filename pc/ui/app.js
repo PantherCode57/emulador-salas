@@ -233,7 +233,9 @@ function vistaSalaActiva(sala) {
         <li>En el juego, usa la comunicación local (Festival Plaza, PSS…) para intercambiar o combatir.</li>
       </ol>
       <p class="suave">Cada jugador necesita un nombre distinto en Azahar: Emulación › Configurar › Sistema › Nombre de usuario.</p>`
-    : '<p class="suave">En este juego no hay intercambios ni combates online (solo en 3DS), pero tu amigo verá cómo vas.</p>';
+    : sala.sistema === 'gba'
+      ? '<p class="suave">En Rojo Fuego, Verde Hoja, Rubí, Zafiro y Esmeralda os veréis andando por el mapa (Rojo Fuego con Verde Hoja; Rubí, Zafiro y Esmeralda entre ellos). Se conecta solo al pulsar Jugar. Basado en GBA-PK Multiplayer, de TheHunterManX.</p>'
+      : '<p class="suave">En este juego no hay intercambios ni combates online (solo en 3DS), pero tu amigo verá cómo vas.</p>';
   const amigos = prog.amigos.length
     ? prog.amigos.map((p) => tarjetaProgreso(`Cómo va ${p.nombre || p.id}`, p)).join('')
     : '<div class="alerta">Todavía no sabes nada de tu amigo en esta sala. Cuando coincidáis dentro, veréis cómo va cada uno, y se queda guardado para luego.</div>';

@@ -50,6 +50,9 @@ object SalaOnline {
 
         val esDe3DS: Boolean
             get() = sistema == SystemID.NINTENDO_3DS.dbname
+
+        val esDeGba: Boolean
+            get() = sistema == SystemID.GBA.dbname
     }
 
     data class Estado(
