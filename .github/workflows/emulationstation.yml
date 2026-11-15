@@ -29,7 +29,10 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
             git ca-certificates build-essential cmake pkg-config \
             libsdl2-dev libsdl2-mixer-dev libcurl4-openssl-dev libfreetype-dev rapidjson-dev \
-            libfreeimage-dev libvlc-dev libegl-dev libgles-dev libasound2-dev > /dev/null
+            libfreeimage-dev libvlc-dev libegl-dev libgles-dev libasound2-dev libdrm-dev > /dev/null
+          # Renderer_GLES10.cpp incluye <go2/audio.h> (libgo2) pero no usa nada de ella: basta una
+          # cabecera vacía. El menú de la consola tampoco enlaza con libgo2.
+          mkdir -p /usr/local/include/go2 && echo '#pragma once' > /usr/local/include/go2/audio.h
       - uses: actions/checkout@v4
         with:
           path: panther
