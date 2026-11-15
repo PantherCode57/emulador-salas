@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Ajustes de EmulationStation para el tema de Panther OS: tema, hora, batería y Wi-Fi.
+"""Ajustes de EmulationStation para el tema de Panther OS: tema, hora, batería, Wi-Fi, apartados
+que se abren directamente y apartados ocultos.
 Se lanza con EmulationStation parado (si no, al cerrarse guardaría sus ajustes encima)."""
 import re
 import shutil
@@ -34,5 +35,15 @@ poner("bool", "networkIcon", "true")
 # colecciones; Opciones, Herramientas, etc. se quedan con su lista.
 for sistema in ("gb", "gbc", "gba", "n64", "nds", "ppsspp", "all", "favorites", "recent"):
     poner("string", f"{sistema}.defaultView", "grid")
+# Con el menú de Panther OS: WhatsApp y Salas se abren sin pasar por su lista (si tienen un solo
+# .sh) y la pantalla de Wi-Fi usa el fondo de las listas.
+poner("string", "PantherDirectLaunch", "whatsapp,salas")
+poner("string", "PantherWifiBackground", "/roms/themes/es-theme-panther/_panther/fondo-lista.jpg")
+# La tarjeta de RetroArch (/opt/cmds) sobra: las opciones del sistema están en el engranaje de arriba.
+m = re.search(r'<string name="HiddenSystems" value="([^"]*)" />', t)
+ocultos = [x for x in (m.group(1).split(";") if m else []) if x]
+if "retroarch" not in ocultos:
+    ocultos.append("retroarch")
+poner("string", "HiddenSystems", ";".join(ocultos))
 ruta.write_text(t, encoding="utf-8")
 print("ajustes:", ruta)

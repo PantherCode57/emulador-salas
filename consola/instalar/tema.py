@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Tema «es-theme-panther» para EmulationStation (dArkOS4Clone en la XF35H).
 
-Es una copia de es-theme-nes-box (las listas de juegos se quedan igual) con otra pantalla de
-apartados: foto de fondo, hora grande arriba a la izquierda, batería y Wi-Fi arriba a la derecha, y
-abajo una barra horizontal de tarjetas de colores (una por apartado).
-Uso: tema.py <carpeta con fondo.jpg, wifi.png, bateria/*.png y tarjetas/*.png>
+Es una copia de es-theme-nes-box con otra pantalla de apartados (foto de fondo, hora grande y fecha
+arriba a la izquierda, engranaje, Wi-Fi y batería arriba a la derecha y abajo una barra de tarjetas
+de colores, una por apartado) y otras listas de juegos (tarjetas en columna y la hora en pequeño).
+Necesita el menú con los cambios de Panther OS (consola/emulationstation/0001-panther.patch): usa
+elementos y propiedades que el menú original no conoce.
+Uso: tema.py <carpeta con fondo.jpg, fondo-lista.jpg, borde-elegida.png, wifi.png, ajustes.png,
+marca-barra.png, bateria/*.png y tarjetas/*.png>
 Se lanza con EmulationStation parado. No toca el tema original.
 """
 import re
@@ -18,7 +21,8 @@ piezas = Path(sys.argv[1])
 
 PANTHER_XML = """<theme>
   <formatVersion>7</formatVersion>
-  <!-- Panther OS: hora grande y batería en todas las pantallas. -->
+  <!-- Panther OS: en la pantalla principal, hora grande y fecha a la izquierda; en las listas de
+       juegos («_lista»), la hora en pequeño arriba a la derecha y la batería a su izquierda. -->
   <view name="screen">
     <text name="clock">
       <pos>0.065 0.05</pos>
@@ -29,6 +33,27 @@ PANTHER_XML = """<theme>
       <alignment>left</alignment>
       <verticalAlignment>center</verticalAlignment>
     </text>
+    <text name="date">
+      <pos>0.072 0.275</pos>
+      <size>0.6 0.07</size>
+      <fontPath>./hora.ttf</fontPath>
+      <fontSize>0.05</fontSize>
+      <color>FFFFFFE0</color>
+      <alignment>left</alignment>
+    </text>
+    <text name="clock_lista">
+      <pos>0.80 0.025</pos>
+      <size>0.17 0.085</size>
+      <fontPath>./hora.ttf</fontPath>
+      <fontSize>0.05</fontSize>
+      <color>FFFFFFFF</color>
+      <alignment>right</alignment>
+      <verticalAlignment>center</verticalAlignment>
+    </text>
+    <batteryIndicator name="batteryIndicator_lista">
+      <pos>0.40 0.025</pos>
+      <size>0.47 0.085</size>
+    </batteryIndicator>
     <!-- Wi-Fi, batería y su porcentaje (ShowBattery = "text"), alineados a la derecha. -->
     <batteryIndicator name="batteryIndicator">
       <pos>0.5 0.025</pos>
@@ -45,8 +70,21 @@ PANTHER_XML = """<theme>
       <empty>./bateria/empty.png</empty>
     </batteryIndicator>
   </view>
-  <!-- Pantalla de apartados: foto, barra de tarjetas abajo y nada más encima. -->
+  <!-- Pantalla de apartados: foto, barra de tarjetas abajo y nada más encima. Con ↑ se elige la
+       barra de arriba: el engranaje (opciones del sistema) o el Wi-Fi (pantalla de Wi-Fi). -->
   <view name="system">
+    <image name="topbar_ajustes">
+      <path>./ajustes.png</path>
+      <pos>0.71 0.025</pos>
+      <size>0.064 0.085</size>
+    </image>
+    <image name="topbar_marca">
+      <path>./marca-barra.png</path>
+    </image>
+    <text name="topbar_texto">
+      <fontSize>0.034</fontSize>
+      <color>FFFFFFFF</color>
+    </text>
     <image name="background" extra="true">
       <origin>0 0</origin>
       <pos>0 0</pos>
@@ -72,6 +110,8 @@ PANTHER_XML = """<theme>
       <logoSize>0.17 0.13</logoSize>
       <logoScale>1.15</logoScale>
       <maxLogoCount>5</maxLogoCount>
+      <!-- las tarjetas no elegidas, opacas (sin el cambio del menú quedaban a medio transparentar) -->
+      <minLogoOpacity>1</minLogoOpacity>
       <zIndex>40</zIndex>
     </carousel>
     <text name="systemInfo">
@@ -83,9 +123,9 @@ PANTHER_XML = """<theme>
     </helpsystem>
   </view>
   <!-- Listas de juegos (vista «grid», puesta por apartado con <apartado>.defaultView): columna de
-       tarjetas a la izquierda (pantalla de título y el nombre en pequeño; la elegida en el centro,
-       algo más grande y con borde) y, a la derecha y centrados, el nombre, «consola · año · género»
-       y de qué va. Empieza por debajo de la hora, que es la misma en todas las pantallas. -->
+       tres tarjetas a la izquierda (pantalla de título y el nombre en pequeño; la elegida en el
+       centro, algo más grande y con borde) y, a la derecha y centrados, el nombre, «consola · año ·
+       género» y de qué va. La hora va en pequeño arriba a la derecha (clock_lista). -->
   <view name="grid">
     <image name="panther_fondo_lista" extra="true">
       <origin>0 0</origin>
@@ -95,10 +135,10 @@ PANTHER_XML = """<theme>
       <zIndex>1</zIndex>
     </image>
     <imagegrid name="gamegrid">
-      <pos>0.03 0.33</pos>
-      <size>0.33 0.66</size>
-      <margin>0 0.03</margin>
-      <autoLayout>1 2</autoLayout>
+      <pos>0.03 0.12</pos>
+      <size>0.33 0.86</size>
+      <margin>0 0.025</margin>
+      <autoLayout>1 3</autoLayout>
       <autoLayoutSelectedZoom>1.06</autoLayoutSelectedZoom>
       <imageSource>image</imageSource>
       <scrollDirection>verticalCenter</scrollDirection>
@@ -145,7 +185,7 @@ PANTHER_XML = """<theme>
       <color>FFFFFFFF</color>
     </text>
     <text name="md_name">
-      <pos>0.40 0.30</pos>
+      <pos>0.40 0.22</pos>
       <size>0.57 0.09</size>
       <fontSize>0.055</fontSize>
       <color>FFFFFFFF</color>
@@ -153,7 +193,7 @@ PANTHER_XML = """<theme>
       <zIndex>40</zIndex>
     </text>
     <text name="md_genre">
-      <pos>0.40 0.395</pos>
+      <pos>0.40 0.315</pos>
       <size>0.57 0.05</size>
       <fontSize>0.032</fontSize>
       <color>96C8FFFF</color>
@@ -161,8 +201,8 @@ PANTHER_XML = """<theme>
       <zIndex>40</zIndex>
     </text>
     <text name="md_description">
-      <pos>0.41 0.47</pos>
-      <size>0.55 0.40</size>
+      <pos>0.41 0.39</pos>
+      <size>0.55 0.48</size>
       <fontSize>0.036</fontSize>
       <color>E6E6EEFF</color>
       <alignment>center</alignment>

@@ -1,0 +1,1492 @@
+diff --git a/es-app/CMakeLists.txt b/es-app/CMakeLists.txt
+index b10e2ed7..91176809 100644
+--- a/es-app/CMakeLists.txt
++++ b/es-app/CMakeLists.txt
+@@ -39,6 +39,7 @@ set(ES_HEADERS
+ 	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiThemeInstall.h
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiCollectionSystemsOptions.h    
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiTools.h    
++    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiPantherWifi.h
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiJoystickCalibration.h
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiVolumeKeyCalibration.h
+ 
+@@ -104,6 +105,7 @@ set(ES_SOURCES
+ 	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiThemeInstall.cpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiCollectionSystemsOptions.cpp    
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiTools.cpp
++    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiPantherWifi.cpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiArkOS4CloneSettings.cpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiJoystickCalibration.cpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiVolumeKeyCalibration.cpp
+diff --git a/es-app/src/guis/GuiPantherWifi.cpp b/es-app/src/guis/GuiPantherWifi.cpp
+new file mode 100644
+index 00000000..20190e18
+--- /dev/null
++++ b/es-app/src/guis/GuiPantherWifi.cpp
+@@ -0,0 +1,691 @@
++#include "guis/GuiPantherWifi.h"
++
++#include "guis/GuiMsgBox.h"
++#include "guis/GuiTextEditPopupKeyboard.h"
++#include "guis/arkos4clone/ArkOSUtil.h"
++#include "guis/arkos4clone/WifiManager.h"
++#include "components/ImageComponent.h"
++#include "renderers/Renderer.h"
++#include "math/Misc.h"
++#include "utils/FileSystemUtil.h"
++#include "utils/StringUtil.h"
++#include "Settings.h"
++#include "Window.h"
++
++#include <algorithm>
++#include <chrono>
++#include <cstdio>
++#include <cstdlib>
++#include <set>
++#include <sstream>
++#include <thread>
++
++// ---- NetworkManager ------------------------------------------------------------------------
++
++static std::string q(const std::string& arg)
++{
++	return ArkOSUtil::shellQuote(arg);
++}
++
++static bool runOk(const std::string& cmd)
++{
++	return system((cmd + " >/dev/null 2>&1").c_str()) == 0;
++}
++
++static std::vector<std::string> lineas(const std::string& text)
++{
++	std::vector<std::string> out;
++	std::istringstream stream(text);
++	std::string line;
++	while (std::getline(stream, line))
++	{
++		if (!line.empty() && line.back() == '\r')
++			line.pop_back();
++
++		if (!line.empty())
++			out.push_back(line);
++	}
++	return out;
++}
++
++// nmcli -t separa con «:» y escapa «\:» y «\\»
++static std::vector<std::string> campos(const std::string& line)
++{
++	std::vector<std::string> out;
++	std::string cur;
++	for (size_t i = 0; i < line.size(); i++)
++	{
++		char c = line[i];
++		if (c == '\\' && i + 1 < line.size())
++		{
++			cur += line[++i];
++			continue;
++		}
++
++		if (c == ':')
++		{
++			out.push_back(cur);
++			cur.clear();
++			continue;
++		}
++
++		cur += c;
++	}
++	out.push_back(cur);
++	return out;
++}
++
++static GuiPantherWifi::Estado leerEstado(bool rescan)
++{
++	GuiPantherWifi::Estado e;
++	e.enabled = WifiManager::isWifiEnabled();
++	if (!e.enabled)
++		return e;
++
++	std::set<std::string> saved;
++	for (auto& line : lineas(ArkOSUtil::executeCommand("nmcli -t -f NAME,TYPE connection show 2>/dev/null")))
++	{
++		auto f = campos(line);
++		if (f.size() >= 2 && f[1] == "802-11-wireless")
++			saved.insert(f[0]);
++	}
++
++	for (auto& line : lineas(ArkOSUtil::executeCommand("nmcli -t -f NAME,TYPE connection show --active 2>/dev/null")))
++	{
++		auto f = campos(line);
++		if (f.size() >= 2 && f[1] == "802-11-wireless")
++		{
++			e.activeName = f[0];
++			break;
++		}
++	}
++
++	std::string cmd = std::string("sudo nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY device wifi list --rescan ") + (rescan ? "yes" : "auto") + " 2>/dev/null";
++
++	std::vector<GuiPantherWifi::Red> redes;
++	for (auto& line : lineas(ArkOSUtil::executeCommand(cmd)))
++	{
++		auto f = campos(line);
++		if (f.size() < 4 || f[1].empty())
++			continue;
++
++		GuiPantherWifi::Red red;
++		red.ssid = f[1];
++		red.signal = atoi(f[2].c_str());
++		red.secure = !(f[3].empty() || f[3] == "--");
++		red.active = f[0].find('*') != std::string::npos;
++		red.saved = saved.count(red.ssid) > 0;
++
++		auto it = std::find_if(redes.begin(), redes.end(), [&red](const GuiPantherWifi::Red& r) { return r.ssid == red.ssid; });
++		if (it == redes.end())
++			redes.push_back(red);
++		else
++		{
++			it->signal = std::max(it->signal, red.signal);
++			it->active = it->active || red.active;
++			it->secure = it->secure || red.secure;
++		}
++	}
++
++	for (auto& red : redes)
++	{
++		if (red.active)
++		{
++			e.activeSsid = red.ssid;
++			e.activeSignal = red.signal;
++		}
++		else
++			e.redes.push_back(red);
++	}
++
++	if (e.activeSsid.empty() && !e.activeName.empty())
++	{
++		e.activeSsid = e.activeName;
++		e.activeSignal = 60;
++	}
++
++	// las guardadas primero, luego por cobertura
++	std::stable_sort(e.redes.begin(), e.redes.end(), [](const GuiPantherWifi::Red& a, const GuiPantherWifi::Red& b)
++	{
++		if (a.saved != b.saved)
++			return a.saved;
++		return a.signal > b.signal;
++	});
++
++	if (!e.activeSsid.empty())
++		e.ip = WifiManager::getIpAddress();
++
++	return e;
++}
++
++static std::string corta(const std::string& text, size_t max)
++{
++	if (text.size() <= max)
++		return text;
++
++	std::string out = text.substr(0, max);
++	while (!out.empty() && (((unsigned char)out.back()) & 0xC0) == 0x80)
++		out.pop_back();
++	if (!out.empty() && ((unsigned char)out.back()) >= 0xC0)
++		out.pop_back();
++
++	return out + "…";
++}
++
++// ---- Pantalla ------------------------------------------------------------------------------
++
++GuiPantherWifi::GuiPantherWifi(Window* window) : GuiComponent(window),
++	mAlive(std::make_shared<bool>(true)), mBusy(false), mMessageTime(0), mLoaded(false), mCursor(-1), mScroll(0), mBackground(nullptr)
++{
++	const float W = (float)Renderer::getScreenWidth();
++	const float H = (float)Renderer::getScreenHeight();
++	setSize(W, H);
++
++	mFontTitle = Font::get((int)(H * 0.065f), FONT_PATH_REGULAR);
++	mFontName = Font::get((int)(H * 0.044f), FONT_PATH_REGULAR);
++	mFontSmall = Font::get((int)(H * 0.032f), FONT_PATH_REGULAR);
++	mFontLabel = Font::get((int)(H * 0.029f), FONT_PATH_REGULAR);
++
++	std::string fondo = Settings::getInstance()->getString("PantherWifiBackground");
++	if (!fondo.empty() && Utils::FileSystem::exists(fondo))
++	{
++		mBackground = new ImageComponent(window, false);
++		mBackground->setImage(fondo);
++		mBackground->setOrigin(0, 0);
++		mBackground->setPosition(0, 0);
++		mBackground->setResize(W, H);
++	}
++
++	refresh(false);
++}
++
++GuiPantherWifi::~GuiPantherWifi()
++{
++	*mAlive = false;
++	delete mBackground;
++}
++
++void GuiPantherWifi::showMessage(const std::string& text, int ms)
++{
++	mMessage = text;
++	mMessageTime = ms;
++}
++
++void GuiPantherWifi::runJob(const std::string& busyText, bool rescan, const std::function<bool()>& work, const std::function<void(bool)>& done)
++{
++	if (mBusy)
++		return;
++
++	mBusy = true;
++	mBusyText = busyText;
++
++	Window* window = mWindow;
++	auto alive = mAlive;
++	std::thread([this, window, alive, rescan, work, done]()
++	{
++		bool ok = work ? work() : true;
++		Estado estado = leerEstado(rescan);
++
++		// «this» sólo se usa en el hilo del menú y si la pantalla sigue abierta
++		window->postToUiThread([this, alive, ok, estado, done](Window*)
++		{
++			if (!*alive)
++				return;
++
++			mBusy = false;
++			mBusyText.clear();
++			applyEstado(estado);
++
++			if (done)
++				done(ok);
++		});
++	}).detach();
++}
++
++void GuiPantherWifi::applyEstado(const Estado& estado)
++{
++	bool first = !mLoaded;
++
++	std::string sel;
++	if (mCursor >= 0 && mCursor < (int)mEstado.redes.size())
++		sel = mEstado.redes[mCursor].ssid;
++
++	mEstado = estado;
++	mLoaded = true;
++
++	int count = (int)mEstado.redes.size();
++	if (mCursor >= 0)
++	{
++		int found = -1;
++		for (int i = 0; i < count; i++)
++			if (mEstado.redes[i].ssid == sel)
++				found = i;
++
++		mCursor = found >= 0 ? found : std::min(mCursor, count - 1);
++	}
++
++	if (first && count > 0)
++		mCursor = 0;
++
++	mScroll = std::max(0, std::min(mScroll, count - 1));
++}
++
++void GuiPantherWifi::refresh(bool rescan)
++{
++	runJob(rescan ? "Buscando redes…" : (mLoaded ? "Actualizando…" : "Buscando redes…"), rescan, nullptr, nullptr);
++}
++
++void GuiPantherWifi::toggle()
++{
++	bool enable = !mEstado.enabled;
++	runJob(enable ? "Encendiendo el Wi-Fi…" : "Apagando el Wi-Fi…", enable, [enable]()
++	{
++		WifiManager::toggleWifi(enable);
++		if (enable)
++			std::this_thread::sleep_for(std::chrono::seconds(4));
++
++		runOk("touch /tmp/es-wifi-changed");
++		return true;
++	}, nullptr);
++}
++
++void GuiPantherWifi::connect(const Red& red)
++{
++	if (red.saved)
++	{
++		std::string ssid = red.ssid;
++		bool secure = red.secure;
++		runJob("Conectando a " + corta(ssid, 18) + "…", false, [ssid]()
++		{
++			bool ok = runOk("sudo nmcli --wait 25 connection up id " + q(ssid));
++			runOk("touch /tmp/es-wifi-changed");
++			return ok;
++		}, [this, ssid, secure](bool ok)
++		{
++			if (ok)
++				showMessage("Conectado a " + corta(ssid, 24));
++			else if (secure)
++			{
++				showMessage("No se pudo conectar. Escribe otra vez la contraseña.");
++				askPassword(ssid, true);
++			}
++			else
++				showMessage("No se pudo conectar a " + corta(ssid, 24));
++		});
++		return;
++	}
++
++	if (!red.secure)
++	{
++		connectWithPassword(red.ssid, "", false);
++		return;
++	}
++
++	askPassword(red.ssid, false);
++}
++
++void GuiPantherWifi::askPassword(const std::string& ssid, bool replaceSaved)
++{
++	auto alive = mAlive;
++	mWindow->pushGui(new GuiTextEditPopupKeyboard(mWindow, "Contraseña de " + corta(ssid, 20), "", [this, alive, ssid, replaceSaved](const std::string& password)
++	{
++		if (!*alive)
++			return;
++
++		if (password.size() < 8)
++		{
++			showMessage("La contraseña tiene que tener al menos 8 letras o números");
++			return;
++		}
++
++		connectWithPassword(ssid, password, replaceSaved);
++	}, false, "CONECTAR"));
++}
++
++void GuiPantherWifi::connectWithPassword(const std::string& ssid, const std::string& password, bool replaceSaved)
++{
++	runJob("Conectando a " + corta(ssid, 18) + "…", false, [ssid, password, replaceSaved]()
++	{
++		if (replaceSaved)
++			runOk("sudo nmcli connection delete id " + q(ssid));
++
++		std::string cmd = "sudo nmcli --wait 30 device wifi connect " + q(ssid);
++		if (!password.empty())
++			cmd += " password " + q(password);
++
++		bool ok = runOk(cmd);
++		if (!ok)
++			runOk("sudo nmcli connection delete id " + q(ssid)); // no dejar una red guardada a medias
++
++		runOk("touch /tmp/es-wifi-changed");
++		return ok;
++	}, [this, ssid](bool ok)
++	{
++		showMessage(ok ? "Conectado a " + corta(ssid, 24) : "No se pudo conectar. Revisa la contraseña.");
++	});
++}
++
++void GuiPantherWifi::forget()
++{
++	if (mEstado.activeName.empty())
++		return;
++
++	std::string name = mEstado.activeName;
++	auto alive = mAlive;
++	mWindow->pushGui(new GuiMsgBox(mWindow, "¿Olvidar la red " + corta(name, 24) + "?\nPara volver a usarla tendrás que escribir la contraseña.",
++		"OLVIDAR", [this, alive, name]()
++		{
++			if (!*alive)
++				return;
++
++			runJob("Olvidando " + corta(name, 18) + "…", false, [name]()
++			{
++				bool ok = runOk("sudo nmcli connection delete id " + q(name));
++				runOk("touch /tmp/es-wifi-changed");
++				return ok;
++			}, [this, name](bool ok)
++			{
++				showMessage(ok ? "Red olvidada" : "No se pudo olvidar " + corta(name, 24));
++			});
++		},
++		"CANCELAR", nullptr));
++}
++
++bool GuiPantherWifi::input(InputConfig* config, Input input)
++{
++	if (input.value == 0)
++		return true;
++
++	int count = (int)mEstado.redes.size();
++
++	if (config->isMappedTo(BUTTON_BACK, input))
++	{
++		delete this;
++		return true;
++	}
++
++	if (config->isMappedLike("up", input))
++	{
++		if (mCursor > -1)
++			mCursor--;
++	}
++	else if (config->isMappedLike("down", input))
++	{
++		if (mCursor < count - 1)
++			mCursor++;
++	}
++	else if (config->isMappedTo(BUTTON_OK, input))
++	{
++		if (mBusy)
++			showMessage("Espera un momento…", 1500);
++		else if (mCursor < 0)
++			toggle();
++		else if (mCursor < count)
++			connect(mEstado.redes[mCursor]);
++	}
++	else if (config->isMappedTo("x", input))
++	{
++		if (mBusy)
++			showMessage("Espera un momento…", 1500);
++		else if (!mEstado.activeName.empty())
++			forget();
++	}
++	else if (config->isMappedTo("y", input))
++	{
++		if (mBusy)
++			showMessage("Espera un momento…", 1500);
++		else if (mEstado.enabled)
++			refresh(true);
++	}
++
++	return true;
++}
++
++void GuiPantherWifi::update(int deltaTime)
++{
++	GuiComponent::update(deltaTime);
++
++	if (mMessageTime > 0)
++	{
++		mMessageTime -= deltaTime;
++		if (mMessageTime <= 0)
++			mMessage.clear();
++	}
++}
++
++void GuiPantherWifi::drawText(const std::shared_ptr<Font>& font, const std::string& text, float x, float y, unsigned int color, float width, Alignment align)
++{
++	if (text.empty() || font == nullptr)
++		return;
++
++	char key[128];
++	snprintf(key, sizeof(key), "%p|%.1f|%.1f|%.1f|%d|%08x|", (void*)font.get(), x, y, width, (int)align, color);
++	std::string k = std::string(key) + text;
++
++	auto it = mTexts.find(k);
++	if (it == mTexts.end())
++	{
++		if (mTexts.size() > 120)
++			mTexts.clear();
++
++		it = mTexts.emplace(k, std::unique_ptr<TextCache>(font->buildTextCache(text, Vector2f(x, y), color, width, align, 1.0f))).first;
++	}
++
++	font->renderTextCache(it->second.get());
++}
++
++void GuiPantherWifi::drawSignal(float x, float y, float h, int signal, unsigned int color)
++{
++	int bars = signal < 0 ? 0 : signal >= 75 ? 4 : signal >= 50 ? 3 : signal >= 25 ? 2 : 1;
++	float bw = h * 0.18f;
++	float gap = h * 0.1f;
++
++	for (int i = 0; i < 4; i++)
++	{
++		float bh = h * (0.35f + 0.65f * i / 3.0f);
++		unsigned int c = i < bars ? color : ((color & 0xFFFFFF00) | 0x40);
++		Renderer::drawRect(x + i * (bw + gap), y + h - bh, bw, bh, c);
++	}
++}
++
++void GuiPantherWifi::drawHints(const std::vector<std::pair<std::string, std::string>>& hints, float centerX, float y)
++{
++	float fh = mFontSmall->getHeight(1.0f);
++	float bh = fh * 1.05f;
++	float gap = bh * 0.35f;
++	float sep = bh * 1.1f;
++
++	std::vector<float> widths;
++	float total = 0;
++	for (auto& h : hints)
++	{
++		float tw = mFontSmall->sizeText(h.second, 1.0f).x();
++		widths.push_back(tw);
++		total += bh + gap + tw;
++	}
++	total += sep * (hints.size() > 0 ? hints.size() - 1 : 0);
++
++	float x = Math::round(centerX - total / 2.0f);
++	for (size_t i = 0; i < hints.size(); i++)
++	{
++		Renderer::drawRoundRect(x, y, bh, bh, bh / 2.0f, 0xFFFFFFE6);
++		drawText(mFontSmall, hints[i].first, x, y + (bh - fh) / 2.0f, 0x111827FF, bh, ALIGN_CENTER);
++		x += bh + gap;
++		drawText(mFontSmall, hints[i].second, x, y + (bh - fh) / 2.0f, 0xFFFFFFD0);
++		x += widths[i] + sep;
++	}
++}
++
++void GuiPantherWifi::render(const Transform4x4f& parentTrans)
++{
++	const float W = (float)Renderer::getScreenWidth();
++	const float H = (float)Renderer::getScreenHeight();
++	Transform4x4f t = parentTrans * getTransform();
++
++	Renderer::setMatrix(t);
++	Renderer::drawRect(0.0f, 0.0f, W, H, 0x0B1220FF);
++
++	if (mBackground != nullptr)
++	{
++		mBackground->render(t);
++		Renderer::setMatrix(t);
++		Renderer::drawRect(0.0f, 0.0f, W, H, 0x0B1220B4);
++	}
++
++	const float mx = Math::round(W * 0.06f);
++	const float cw = W - mx * 2;
++	const float pad = Math::round(W * 0.03f);
++	const float nameH = mFontName->getHeight(1.0f);
++	const float smallH = mFontSmall->getHeight(1.0f);
++	const bool on = mEstado.enabled;
++
++	// --- Título e interruptor
++	float ty = Math::round(H * 0.05f);
++	float th = mFontTitle->getHeight(1.0f);
++	drawText(mFontTitle, "Wi-Fi", mx, ty, 0xFFFFFFFF);
++
++	float sw = Math::round(W * 0.105f);
++	float sh = Math::round(H * 0.062f);
++	float sx = mx + cw - sw;
++	float sy = Math::round(ty + (th - sh) / 2.0f);
++	if (mCursor < 0)
++	{
++		Renderer::drawRoundRect(sx - 5, sy - 5, sw + 10, sh + 10, (sh + 10) / 2.0f, 0x3B82F6FF);
++		Renderer::drawRoundRect(sx - 2, sy - 2, sw + 4, sh + 4, (sh + 4) / 2.0f, 0x0B1220FF);
++	}
++	Renderer::drawRoundRect(sx, sy, sw, sh, sh / 2.0f, on ? 0x3B82F6FF : 0x4B5563FF);
++	float k = sh - 6;
++	Renderer::drawRoundRect(on ? sx + sw - 3 - k : sx + 3, sy + 3, k, k, k / 2.0f, 0xFFFFFFFF);
++	drawText(mFontSmall, on ? "Activado" : "Desactivado", sx - W * 0.32f, sy + (sh - smallH) / 2.0f, 0xFFFFFFB0, W * 0.3f, ALIGN_RIGHT);
++
++	// --- Red conectada
++	float cy = Math::round(H * 0.165f);
++	float ch = Math::round(H * 0.15f);
++	Renderer::drawRoundRect(mx, cy, cw, ch, H * 0.025f, 0x111827E6);
++
++	bool connected = on && !mEstado.activeSsid.empty();
++	std::string name, sub;
++	if (!mLoaded)
++	{
++		name = "Wi-Fi";
++		sub = "Comprobando…";
++	}
++	else if (!on)
++	{
++		name = "Wi-Fi apagado";
++		sub = "Pulsa A en el interruptor para encenderlo";
++	}
++	else if (connected)
++		name = mEstado.activeSsid;
++	else
++	{
++		name = "Sin conexión";
++		sub = "Elige una red de la lista";
++	}
++
++	float iconH = Math::round(ch * 0.38f);
++	drawSignal(mx + pad, cy + (ch - iconH) / 2.0f, iconH, connected ? mEstado.activeSignal : -1, 0xFFFFFFFF);
++
++	float tx = mx + pad + iconH * 1.02f + pad * 0.8f;
++	float block = nameH + smallH * 1.1f;
++	float ny = Math::round(cy + (ch - block) / 2.0f);
++	float subY = Math::round(ny + nameH + smallH * 0.1f);
++	drawText(mFontName, corta(name, connected ? 22 : 30), tx, ny, 0xFFFFFFFF);
++
++	Renderer::setMatrix(t);
++	if (connected)
++	{
++		float wC = mFontSmall->sizeText("Conectado", 1.0f).x();
++		drawText(mFontSmall, "Conectado", tx, subY, 0x4ADE80FF);
++		if (!mEstado.ip.empty())
++			drawText(mFontSmall, " · IP " + mEstado.ip, tx + wC, subY, 0xFFFFFFB0);
++
++		float bh = smallH * 1.05f;
++		float hw = bh + bh * 0.35f + mFontSmall->sizeText("Olvidar", 1.0f).x();
++		drawHints({ { "X", "Olvidar" } }, mx + cw - pad - hw / 2.0f, Math::round(cy + (ch - bh) / 2.0f));
++	}
++	else
++		drawText(mFontSmall, sub, tx, subY, 0xFFFFFFB0);
++
++	// --- Redes disponibles
++	float ly = Math::round(H * 0.355f);
++	drawText(mFontLabel, "REDES DISPONIBLES", mx + 4, ly, 0xFFFFFF99);
++	if (mBusy && !mBusyText.empty())
++		drawText(mFontLabel, mBusyText, mx, ly, 0x93C5FDFF, cw - 4, ALIGN_RIGHT);
++
++	float listY = Math::round(H * 0.405f);
++	float rh = Math::round(H * 0.088f);
++	float gap = Math::round(H * 0.014f);
++	int rows = std::max(1, (int)((H * 0.885f - listY + gap) / (rh + gap)));
++	int count = (int)mEstado.redes.size();
++
++	if (mCursor >= 0)
++	{
++		if (mCursor < mScroll)
++			mScroll = mCursor;
++		if (mCursor >= mScroll + rows)
++			mScroll = mCursor - rows + 1;
++	}
++	mScroll = std::max(0, std::min(mScroll, std::max(0, count - rows)));
++
++	if (!mLoaded || !on || count == 0)
++	{
++		std::string empty = !mLoaded ? "Buscando redes…" : !on ? "Enciende el Wi-Fi para ver las redes" :
++			mBusy ? "Buscando redes…" : "No hay redes a la vista. Pulsa Y para buscar otra vez.";
++		drawText(mFontSmall, empty, mx, listY + rh * 0.6f, 0xFFFFFF99, cw, ALIGN_CENTER);
++	}
++
++	float lockW = mFontName->sizeText("", 1.0f).x();
++	for (int i = mScroll; i < std::min(count, mScroll + rows); i++)
++	{
++		const Red& red = mEstado.redes[i];
++		float ry = listY + (i - mScroll) * (rh + gap);
++		bool sel = (i == mCursor);
++
++		Renderer::setMatrix(t);
++		if (sel)
++			Renderer::drawRoundRect(mx - 3, ry - 3, cw + 6, rh + 6, H * 0.02f + 3, 0x3B82F6FF);
++		Renderer::drawRoundRect(mx, ry, cw, rh, H * 0.02f, sel ? 0x1E293BF5 : 0x111827D9);
++
++		float ih = Math::round(rh * 0.42f);
++		drawSignal(mx + pad, ry + (rh - ih) / 2.0f, ih, red.signal, 0xFFFFFFFF);
++
++		float nx = mx + pad + ih * 1.02f + pad * 0.8f;
++		drawText(mFontName, corta(red.ssid, 24), nx, Math::round(ry + (rh - nameH) / 2.0f), 0xFFFFFFFF);
++
++		float rx = mx + cw - pad;
++		if (red.secure)
++		{
++			drawText(mFontName, "", rx - lockW, Math::round(ry + (rh - nameH) / 2.0f), 0xFFFFFFC0, lockW, ALIGN_RIGHT);
++			rx -= lockW + pad * 0.6f;
++		}
++		if (red.saved)
++			drawText(mFontSmall, "Guardada", rx - W * 0.25f, Math::round(ry + (rh - smallH) / 2.0f), 0xFFFFFF88, W * 0.25f, ALIGN_RIGHT);
++	}
++
++	if (count > rows)
++	{
++		float trackH = rows * (rh + gap) - gap;
++		float thumbH = std::max(rh * 0.6f, trackH * rows / count);
++		float thumbY = listY + (trackH - thumbH) * mScroll / std::max(1, count - rows);
++		Renderer::setMatrix(t);
++		Renderer::drawRoundRect(mx + cw + 6, listY, 4, trackH, 2, 0xFFFFFF26);
++		Renderer::drawRoundRect(mx + cw + 6, thumbY, 4, thumbH, 2, 0xFFFFFFB0);
++	}
++
++	// --- Ayuda de botones o aviso
++	float hy = Math::round(H * 0.915f);
++	Renderer::setMatrix(t);
++	if (!mMessage.empty())
++	{
++		float mw = std::min(cw, mFontSmall->sizeText(mMessage, 1.0f).x() + smallH * 1.6f);
++		float mh = smallH * 1.4f;
++		float my = hy - (mh - smallH * 1.05f) / 2.0f;
++		Renderer::drawRoundRect(W / 2.0f - mw / 2.0f, my, mw, mh, mh / 2.0f, 0x000000C8);
++		drawText(mFontSmall, mMessage, W / 2.0f - mw / 2.0f, Math::round(my + (mh - smallH) / 2.0f), 0xFFFFFFFF, mw, ALIGN_CENTER);
++	}
++	else if (mCursor < 0)
++		drawHints({ { "A", on ? "Apagar" : "Encender" }, { "Y", "Buscar redes" }, { "B", "Volver" } }, W / 2.0f, hy);
++	else
++		drawHints({ { "A", "Conectar" }, { "Y", "Buscar redes" }, { "B", "Volver" } }, W / 2.0f, hy);
++}
+diff --git a/es-app/src/guis/GuiPantherWifi.h b/es-app/src/guis/GuiPantherWifi.h
+new file mode 100644
+index 00000000..e262182c
+--- /dev/null
++++ b/es-app/src/guis/GuiPantherWifi.h
+@@ -0,0 +1,85 @@
++#pragma once
++#ifndef ES_APP_GUIS_GUIPANTHERWIFI_H
++#define ES_APP_GUIS_GUIPANTHERWIFI_H
++
++#include "GuiComponent.h"
++#include "resources/Font.h"
++
++#include <functional>
++#include <map>
++#include <memory>
++#include <string>
++#include <vector>
++
++class ImageComponent;
++class TextCache;
++
++// Panther OS: pantalla de Wi-Fi propia. Arriba el título con el interruptor, debajo la red
++// conectada y la lista de redes disponibles. A conecta, X olvida la red conectada, Y busca redes
++// y B vuelve. Todo lo que habla con NetworkManager va en otro hilo para no congelar el menú.
++class GuiPantherWifi : public GuiComponent
++{
++public:
++	struct Red
++	{
++		std::string ssid;
++		int signal = 0;
++		bool secure = false;
++		bool saved = false;
++		bool active = false;
++	};
++
++	struct Estado
++	{
++		bool enabled = false;
++		std::vector<Red> redes;
++		std::string activeName; // nombre de la conexión activa en NetworkManager
++		std::string activeSsid;
++		int activeSignal = 0;
++		std::string ip;
++	};
++
++	GuiPantherWifi(Window* window);
++	~GuiPantherWifi();
++
++	bool input(InputConfig* config, Input input) override;
++	void update(int deltaTime) override;
++	void render(const Transform4x4f& parentTrans) override;
++	std::vector<HelpPrompt> getHelpPrompts() override { return std::vector<HelpPrompt>(); }
++
++private:
++	// Trabajo en segundo plano: «work» no puede tocar la pantalla; «done» corre ya en el hilo del menú.
++	void runJob(const std::string& busyText, bool rescan, const std::function<bool()>& work, const std::function<void(bool)>& done);
++	void applyEstado(const Estado& estado);
++
++	void refresh(bool rescan);
++	void toggle();
++	void connect(const Red& red);
++	void askPassword(const std::string& ssid, bool replaceSaved);
++	void connectWithPassword(const std::string& ssid, const std::string& password, bool replaceSaved);
++	void forget();
++	void showMessage(const std::string& text, int ms = 3500);
++
++	void drawText(const std::shared_ptr<Font>& font, const std::string& text, float x, float y, unsigned int color, float width = 0, Alignment align = ALIGN_LEFT);
++	void drawSignal(float x, float y, float h, int signal, unsigned int color);
++	void drawHints(const std::vector<std::pair<std::string, std::string>>& hints, float centerX, float y);
++
++	std::shared_ptr<bool>	mAlive;
++	bool					mBusy;
++	std::string				mBusyText;
++	std::string				mMessage;
++	int						mMessageTime;
++	bool					mLoaded;
++	Estado					mEstado;
++	int						mCursor; // -1 = interruptor, 0.. = redes disponibles
++	int						mScroll;
++
++	ImageComponent*			mBackground;
++	std::shared_ptr<Font>	mFontTitle;
++	std::shared_ptr<Font>	mFontName;
++	std::shared_ptr<Font>	mFontSmall;
++	std::shared_ptr<Font>	mFontLabel;
++	std::map<std::string, std::unique_ptr<TextCache>> mTexts;
++};
++
++#endif // ES_APP_GUIS_GUIPANTHERWIFI_H
+diff --git a/es-app/src/views/SystemView.cpp b/es-app/src/views/SystemView.cpp
+index 67a23327..71a813fd 100644
+--- a/es-app/src/views/SystemView.cpp
++++ b/es-app/src/views/SystemView.cpp
+@@ -17,6 +17,41 @@
+ #include "guis/GuiTextEditPopupKeyboard.h"
+ #include "guis/GuiTextEditPopup.h"
+ #include "SystemScreenSaver.h"
++#include "guis/GuiTools.h"
++#include "guis/GuiPantherWifi.h"
++#include "guis/arkos4clone/WifiManager.h"
++#include "components/ControllerActivityComponent.h"
++#include "components/BatteryIndicatorComponent.h"
++#include "FileData.h"
++#include <thread>
++#include <mutex>
++#include <atomic>
++
++// Panther OS: nombre de la red Wi-Fi para la etiqueta de la barra de arriba. Se pide en otro hilo
++// para no frenar el menú; «?» = todavía no se sabe, «\x01» = Wi-Fi apagado.
++static std::mutex			sPantherSsidLock;
++static std::string			sPantherSsid = "?";
++static std::atomic<bool>	sPantherSsidBusy(false);
++
++static void pantherRefreshSsid()
++{
++	if (sPantherSsidBusy.exchange(true))
++		return;
++
++	std::thread([]()
++	{
++		std::string ssid = "\x01";
++		if (WifiManager::isWifiEnabled())
++			ssid = Utils::String::trim(WifiManager::getCurrentWifiSSID());
++
++		{
++			std::lock_guard<std::mutex> lock(sPantherSsidLock);
++			sPantherSsid = ssid;
++		}
++
++		sPantherSsidBusy = false;
++	}).detach();
++}
+ 
+ // buffer values for scrolling velocity (left, stopped, right)
+ const int logoBuffersLeft[] = { -5, -2, -1 };
+@@ -64,6 +99,10 @@ SystemView::~SystemView()
+ 		mClockScreenSaver = nullptr;
+ 	}
+ 
++	delete mTopGear;
++	delete mTopMark;
++	delete mTopText;
++
+ 	clearEntries();
+ }
+ 
+@@ -365,6 +404,21 @@ void SystemView::showQuickSearch()
+ 
+ bool SystemView::input(InputConfig* config, Input input)
+ {
++	// Panther OS: con la barra de arriba elegida, ←→ cambian entre engranaje y Wi-Fi
++	if (mTopBar >= 0 && input.value != 0)
++	{
++		if (config->isMappedLike("left", input))
++			pantherTopBarFocus(0);
++		else if (config->isMappedLike("right", input))
++			pantherTopBarFocus(1);
++		else if (config->isMappedLike("down", input) || config->isMappedTo(BUTTON_BACK, input))
++			pantherTopBarFocus(-1);
++		else if (config->isMappedTo(BUTTON_OK, input))
++			pantherOpenTopBarItem();
++
++		return true;
++	}
++
+ 	if(input.value != 0)
+ 	{
+ 		if (config->isMappedTo("y", input))
+@@ -430,6 +484,12 @@ bool SystemView::input(InputConfig* config, Input input)
+ 		case HORIZONTAL:
+ 		case HORIZONTAL_WHEEL:
+ 		default:
++			if (config->isMappedLike("up", input) && mTopGear != nullptr)
++			{
++				stopScrolling();
++				pantherTopBarFocus(1);
++				return true;
++			}
+ 			if (config->isMappedLike("left", input))
+ 			{
+ 				listInput(-1);
+@@ -479,7 +539,8 @@ bool SystemView::input(InputConfig* config, Input input)
+ 		if(config->isMappedTo(BUTTON_OK, input))
+ 		{
+ 			stopScrolling();
+-			ViewController::get()->goToGameList(getSelected());
++			if (!pantherDirectLaunch(getSelected()))
++				ViewController::get()->goToGameList(getSelected());
+ 			return true;
+ 		}
+ 
+@@ -610,6 +671,18 @@ void SystemView::update(int deltaTime)
+ 	listUpdate(deltaTime);
+ 	updateExtras([this, deltaTime](GuiComponent* p) { p->update(deltaTime); });
+ 	GuiComponent::update(deltaTime);
++
++	if (mTopBar >= 0)
++	{
++		mTopRefresh -= deltaTime;
++		if (mTopRefresh <= 0)
++		{
++			mTopRefresh = 3000;
++			pantherRefreshSsid();
++		}
++
++		pantherUpdateTopLabel();
++	}
+ }
+ 
+ void SystemView::onCursorChanged(const CursorState& /*state*/)
+@@ -838,6 +911,167 @@ void SystemView::render(const Transform4x4f& parentTrans)
+ 	}
+ 
+ 	renderExtras(trans, minMax.second, INT16_MAX);
++
++	renderTopBar(trans);
++}
++
++// ---- Panther OS: barra de arriba -------------------------------------------------------------
++
++void SystemView::pantherTopBarFocus(int item)
++{
++	if (mTopBar == item)
++		return;
++
++	if (mTopBar < 0 && item >= 0)
++		mTopRefresh = 0; // al entrar se pregunta enseguida por la red
++
++	mTopBar = item;
++	pantherUpdateTopLabel();
++	updateHelpPrompts();
++}
++
++void SystemView::pantherUpdateTopLabel()
++{
++	if (mTopText == nullptr)
++		return;
++
++	std::string label = "Ajustes";
++	if (mTopBar == 1)
++	{
++		std::string ssid;
++		{
++			std::lock_guard<std::mutex> lock(sPantherSsidLock);
++			ssid = sPantherSsid;
++		}
++
++		if (ssid == "?")
++			label = "Wi-Fi";
++		else if (ssid == "\x01")
++			label = "Wi-Fi · Apagado";
++		else if (ssid.empty())
++			label = "Wi-Fi · Sin conexión";
++		else
++			label = "Wi-Fi · " + ssid;
++	}
++
++	if (label != mTopLabel)
++	{
++		mTopLabel = label;
++		mTopText->setText(label);
++	}
++}
++
++void SystemView::pantherOpenTopBarItem()
++{
++	if (mTopBar == 0)
++		mWindow->pushGui(new GuiTools(mWindow));
++	else if (mTopBar == 1)
++		mWindow->pushGui(new GuiPantherWifi(mWindow));
++}
++
++bool SystemView::pantherDirectLaunch(SystemData* system)
++{
++	if (system == nullptr || system->getRootFolder() == nullptr)
++		return false;
++
++	bool listed = false;
++	for (auto name : Utils::String::split(Settings::getInstance()->getString("PantherDirectLaunch"), ','))
++		if (Utils::String::trim(name) == system->getName())
++			listed = true;
++
++	if (!listed)
++		return false;
++
++	auto games = system->getRootFolder()->getFilesRecursive(GAME, true);
++	if (games.size() != 1)
++		return false;
++
++	ViewController::get()->launch(games.at(0));
++	return true;
++}
++
++void SystemView::renderTopBar(const Transform4x4f& trans)
++{
++	if (mTopGear == nullptr || mWindow->getGuiStackSize() > 1)
++		return;
++
++	// El Wi-Fi es el icono de red de la barra de estado; el engranaje va a su izquierda.
++	Vector4f net(0, 0, 0, 0);
++	auto status = mWindow->getBatteryIndicator();
++	if (status != nullptr)
++		net = status->getNetworkIconRect();
++
++	Vector4f gear, wifi;
++	if (net.z() > 0)
++	{
++		gear = Vector4f(net.x() - net.z() * 1.6f, net.y(), net.z(), net.w());
++		wifi = net;
++	}
++	else
++	{
++		Vector3f pos = mTopGear->getPosition();
++		Vector2f sz = mTopGear->getSize();
++		gear = Vector4f(pos.x(), pos.y(), sz.x(), sz.y());
++		wifi = Vector4f(pos.x() + sz.x() * 1.6f, pos.y(), sz.x(), sz.y());
++	}
++
++	if (gear != mTopGearRect && gear.z() > 0)
++	{
++		mTopGearRect = gear;
++		mTopGear->setOrigin(0, 0);
++		mTopGear->setPosition(gear.x(), gear.y());
++		mTopGear->setResize(gear.z(), gear.w());
++	}
++
++	Transform4x4f t = Transform4x4f::Identity();
++	t.translate(Vector3f(trans.translation().x(), trans.translation().y(), 0));
++
++	if (mTopBar >= 0)
++	{
++		const Vector4f& r = (mTopBar == 0) ? gear : wifi;
++		float pad = r.w() * 0.22f;
++		float bx = r.x() - pad;
++		float by = r.y() - pad;
++		float bw = r.z() + pad * 2;
++		float bh = r.w() + pad * 2;
++
++		Renderer::setMatrix(t);
++		Renderer::drawRoundRect(bx, by, bw, bh, bh * 0.22f, 0xFFFFFF30);
++
++		if (mTopMark != nullptr)
++		{
++			if (mTopMarkSize != Vector2f(bw, bh))
++			{
++				mTopMarkSize = Vector2f(bw, bh);
++				mTopMark->setOrigin(0, 0);
++				mTopMark->setResize(bw, bh);
++			}
++
++			mTopMark->setPosition(bx, by);
++			mTopMark->render(t);
++		}
++
++		if (mTopText != nullptr && !mTopLabel.empty())
++		{
++			Vector2f ts = mTopText->getFont()->sizeText(mTopLabel);
++			float pw = ts.x() + ts.y() * 1.2f;
++			float ph = ts.y() * 1.4f;
++			float margin = Renderer::getScreenWidth() * 0.02f;
++			float px = r.x() + r.z() / 2.0f - pw / 2.0f;
++			px = Math::min(px, Renderer::getScreenWidth() - margin - pw);
++			px = Math::max(px, margin);
++			float py = by + bh + ts.y() * 0.25f;
++
++			Renderer::setMatrix(t);
++			Renderer::drawRoundRect(px, py, pw, ph, ph / 2.0f, 0x000000B8);
++
++			mTopText->setPosition(px, py);
++			mTopText->setSize(pw, ph);
++			mTopText->render(t);
++		}
++	}
++
++	mTopGear->render(t);
+ }
+ 
+ std::vector<HelpPrompt> SystemView::getHelpPrompts()
+@@ -850,6 +1084,14 @@ std::vector<HelpPrompt> SystemView::getHelpPrompts()
+ 		return prompts;
+ 	}
+ 
++	if (mTopBar >= 0)
++	{
++		prompts.push_back(HelpPrompt("left/right", "ELEGIR"));
++		prompts.push_back(HelpPrompt(BUTTON_OK, "ABRIR"));
++		prompts.push_back(HelpPrompt(BUTTON_BACK, "VOLVER"));
++		return prompts;
++	}
++
+ 	if (mCarousel.type == VERTICAL || mCarousel.type == VERTICAL_WHEEL)
+ 		prompts.push_back(HelpPrompt("up/down", _("CHOOSE")));
+ 	else
+@@ -915,6 +1157,47 @@ void  SystemView::getViewElements(const std::shared_ptr<ThemeData>& theme)
+ 		mStaticBackground = nullptr;
+ 	}
+ 
++	// Panther OS: barra de arriba (engranaje, marco de la elegida y texto de la etiqueta)
++	if (theme->getElement("system", "topbar_ajustes", "image"))
++	{
++		if (mTopGear == nullptr)
++			mTopGear = new ImageComponent(mWindow, false);
++
++		mTopGear->applyTheme(theme, "system", "topbar_ajustes", ThemeFlags::ALL);
++		mTopGearRect = Vector4f(0, 0, 0, 0);
++	}
++	else if (mTopGear != nullptr)
++	{
++		delete mTopGear;
++		mTopGear = nullptr;
++		mTopBar = -1;
++	}
++
++	if (theme->getElement("system", "topbar_marca", "image"))
++	{
++		if (mTopMark == nullptr)
++			mTopMark = new ImageComponent(mWindow, false);
++
++		mTopMark->applyTheme(theme, "system", "topbar_marca", ThemeFlags::PATH | ThemeFlags::COLOR);
++		mTopMarkSize = Vector2f(0, 0);
++	}
++	else if (mTopMark != nullptr)
++	{
++		delete mTopMark;
++		mTopMark = nullptr;
++	}
++
++	if (mTopText == nullptr)
++	{
++		mTopText = new TextComponent(mWindow, "", Font::get(FONT_SIZE_SMALL), 0xFFFFFFFF, ALIGN_CENTER);
++		mTopText->setVerticalAlignment(ALIGN_CENTER);
++	}
++
++	if (theme->getElement("system", "topbar_texto", "text"))
++		mTopText->applyTheme(theme, "system", "topbar_texto", ThemeFlags::FONT_PATH | ThemeFlags::FONT_SIZE | ThemeFlags::COLOR);
++
++	mTopLabel = "";
++
+ 	const ThemeData::ThemeElement* fixedVideoBackgroundElem = theme->getElement("system", "staticBackgroundVideo", "video");
+ 	if (fixedVideoBackgroundElem && (!fixedVideoBackgroundElem->has("visible") || fixedVideoBackgroundElem->get<bool>("visible")))
+ 	{		
+@@ -1033,8 +1316,9 @@ void SystemView::renderCarousel(const Transform4x4f& trans)
+ 		scale = Math::min(mCarousel.logoScale, Math::max(1.0f, scale));
+ 		scale /= mCarousel.logoScale;
+ 
+-		int opacity = (int)Math::round(0x80 + ((0xFF - 0x80) * (1.0f - fabs(distance))));
+-		opacity = Math::max((int) 0x80, opacity);
++		int minOpacity = (int)Math::round(Math::clamp(mCarousel.minLogoOpacity, 0.0f, 1.0f) * 0xFF);
++		int opacity = (int)Math::round(minOpacity + ((0xFF - minOpacity) * (1.0f - fabs(distance))));
++		opacity = Math::max(minOpacity, opacity);
+ 
+ 		const std::shared_ptr<GuiComponent> &comp = mEntries.at(index).data.logo;
+ 		if (mCarousel.type == VERTICAL_WHEEL || mCarousel.type == HORIZONTAL_WHEEL) {
+@@ -1286,6 +1570,7 @@ void  SystemView::getDefaultElements(void)
+ 	mCarousel.color = 0xFFFFFFD8;
+ 	mCarousel.colorEnd = 0xFFFFFFD8;
+ 	mCarousel.colorGradientHorizontal = true;
++	mCarousel.minLogoOpacity = 0.5f;
+ 	mCarousel.logoScale = 1.2f;
+ 	mCarousel.logoRotation = 7.5;
+ 	mCarousel.logoRotationOrigin.x() = -5;
+@@ -1352,6 +1637,8 @@ void SystemView::getCarouselFromTheme(const ThemeData::ThemeElement* elem)
+ 		mCarousel.colorGradientHorizontal = elem->get<std::string>("gradientType").compare("horizontal");
+ 	if (elem->has("logoScale"))
+ 		mCarousel.logoScale = elem->get<float>("logoScale");
++	if (elem->has("minLogoOpacity"))
++		mCarousel.minLogoOpacity = elem->get<float>("minLogoOpacity");
+ 	if (elem->has("logoSize"))
+ 		mCarousel.logoSize = elem->get<Vector2f>("logoSize") * mSize;
+ 	if (elem->has("logoPos"))
+@@ -1402,6 +1689,7 @@ void SystemView::onHide()
+ {
+ 	GuiComponent::onHide();
+ 	mShowing = false;
++	mTopBar = -1;
+ 	updateExtras([this](GuiComponent* p) { p->onHide(); });
+ 
+ 	if (mStaticVideoBackground)
+@@ -1411,6 +1699,7 @@ void SystemView::onHide()
+ void SystemView::onScreenSaverActivate()
+ {
+ 	mScreensaverActive = true;
++	mTopBar = -1;
+ 	updateExtras([this](GuiComponent* p) { p->onScreenSaverActivate(); });
+ 
+ 	if (mStaticVideoBackground)
+diff --git a/es-app/src/views/SystemView.h b/es-app/src/views/SystemView.h
+index a5c1142c..75a312de 100644
+--- a/es-app/src/views/SystemView.h
++++ b/es-app/src/views/SystemView.h
+@@ -7,6 +7,7 @@
+ #include "components/TextComponent.h"
+ #include "resources/Font.h"
+ #include "GuiComponent.h"
++#include "math/Vector4f.h"
+ #include <memory>
+ #include <functional>
+ 
+@@ -43,6 +44,7 @@ struct SystemViewCarousel
+ 	unsigned int color;
+ 	unsigned int colorEnd;
+ 	bool colorGradientHorizontal;
++	float minLogoOpacity; // Panther OS: opacidad de las tarjetas que no están elegidas (0..1)
+ 	int maxLogoCount; // number of logos shown on the carousel
+ 	Vector2f logoSize;
+ 	Vector2f logoPos;
+@@ -119,6 +121,22 @@ private:
+ 
+ 	ClockScreenSaver* mClockScreenSaver;
+ 	bool mClockSaverActive;
++
++	// Panther OS: barra de arriba de la pantalla principal (engranaje y Wi-Fi) y apertura directa
++	void pantherTopBarFocus(int item);
++	void pantherUpdateTopLabel();
++	void pantherOpenTopBarItem();
++	void renderTopBar(const Transform4x4f& trans);
++	bool pantherDirectLaunch(SystemData* system);
++
++	int					mTopBar = -1; // -1 sin foco, 0 engranaje, 1 Wi-Fi
++	ImageComponent*		mTopGear = nullptr;
++	ImageComponent*		mTopMark = nullptr;
++	TextComponent*		mTopText = nullptr;
++	Vector4f			mTopGearRect = Vector4f(0, 0, 0, 0);
++	Vector2f			mTopMarkSize = Vector2f(0, 0);
++	int					mTopRefresh = 0;
++	std::string			mTopLabel;
+ };
+ 
+ #endif // ES_APP_VIEWS_SYSTEM_VIEW_H
+diff --git a/es-app/src/views/ViewController.cpp b/es-app/src/views/ViewController.cpp
+index 46b47ae4..19d1c413 100644
+--- a/es-app/src/views/ViewController.cpp
++++ b/es-app/src/views/ViewController.cpp
+@@ -101,6 +101,8 @@ void ViewController::goToSystemView(SystemData* system, bool forceImmediate)
+ 	mState.viewing = SYSTEM_SELECT;
+ 	mState.system = system;
+ 
++	mWindow->setGamelistMode(false); // Panther OS
++
+ 	auto systemList = getSystemListView();
+ 	systemList->setPosition(getSystemId(system) * (float)Renderer::getScreenWidth(), systemList->getPosition().y());
+ 
+@@ -166,6 +168,8 @@ void ViewController::goToGameList(SystemData* system, bool forceImmediate)
+ 	mState.viewing = GAME_LIST;
+ 	mState.system = system;
+ 
++	mWindow->setGamelistMode(true); // Panther OS
++
+ 	if (mCurrentView)
+ 		mCurrentView->onHide();
+ 
+diff --git a/es-core/src/ThemeData.cpp b/es-core/src/ThemeData.cpp
+index f0d92f56..0bcbdd02 100644
+--- a/es-core/src/ThemeData.cpp
++++ b/es-core/src/ThemeData.cpp
+@@ -239,6 +239,7 @@ std::map<std::string, std::map<std::string, ThemeData::ElementPropertyType>> The
+ 		{ "colorEnd", COLOR },
+ 		{ "gradientType", STRING },
+ 		{ "logoScale", FLOAT },
++		{ "minLogoOpacity", FLOAT }, // Panther OS
+ 		{ "logoRotation", FLOAT },
+ 		{ "logoRotationOrigin", NORMALIZED_PAIR },
+ 		{ "logoSize", NORMALIZED_PAIR },
+diff --git a/es-core/src/Window.cpp b/es-core/src/Window.cpp
+index ce6a6a46..39fe2f3e 100644
+--- a/es-core/src/Window.cpp
++++ b/es-core/src/Window.cpp
+@@ -21,6 +21,18 @@
+ #include "components/VolumeInfoComponent.h"
+ #include "components/BrightnessInfoComponent.h"
+ 
++// Panther OS: fecha en español para la pantalla principal («Domingo, 15 de noviembre»).
++static std::string pantherFecha(const struct tm& t)
++{
++	static const char* dias[] = { "Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado" };
++	static const char* meses[] = { "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre" };
++
++	if (t.tm_wday < 0 || t.tm_wday > 6 || t.tm_mon < 0 || t.tm_mon > 11)
++		return "";
++
++	return std::string(dias[t.tm_wday]) + ", " + std::to_string(t.tm_mday) + " de " + meses[t.tm_mon];
++}
++
+ Window::Window() : mNormalizeNextUpdate(false), mFrameTimeElapsed(0), mFrameCountElapsed(0), mAverageDeltaTime(10),
+   mAllowSleep(true), mSleeping(false), mTimeSinceLastInput(0), mScreenSaver(NULL), mRenderScreenSaver(false), mInfoPopup(NULL), mClockElapsed(0),
+   mIgnoreKeys(false)// batocera
+@@ -124,6 +136,15 @@ bool Window::init(bool initRenderer)
+ 		mClock->setColor(0x777777FF);
+ 	}
+ 
++	if (mDate == nullptr)
++	{
++		mDate = std::make_shared<TextComponent>(this);
++		mDate->setFont(Font::get(FONT_SIZE_SMALL));
++		mDate->setHorizontalAlignment(ALIGN_LEFT);
++		mDate->setVerticalAlignment(ALIGN_TOP);
++		mDate->setColor(0xFFFFFFFF);
++	}
++
+ 	if (Settings::getInstance()->getBool("VolumePopup") && (mVolumeInfo == nullptr))
+ 		mVolumeInfo = std::make_shared<VolumeInfoComponent>(this);
+ 
+@@ -340,6 +361,9 @@ void Window::update(int deltaTime)
+ #endif
+ 
+ 				mClock->setText(clockBuf);
++
++				if (mDate)
++					mDate->setText(pantherFecha(clockTstruct));
+ 			}
+ 
+ 			mClockElapsed = 1000; // next update in 1000ms
+@@ -412,6 +436,9 @@ void Window::render()
+ 	if (Settings::getInstance()->getBool("DrawClock") && mClock && (mGuiStack.size() < 2 || !Renderer::isSmallScreen()))
+ 	{
+ 		mClock->render(transform);
++
++		if (mDate && mHasDate && !mGamelistMode)
++			mDate->render(transform);
+ 	//	Renderer::setMatrix(Transform4x4f::Identity());
+ 		/*
+ 		if (mClockFont == nullptr)
+@@ -845,6 +872,42 @@ void Window::onThemeChanged(const std::shared_ptr<ThemeData>& theme)
+ 	if (mBackgroundOverlay)
+ 		mBackgroundOverlay->setImage(ThemeData::getMenuTheme()->Background.fadePath);
+ 
++	mStatusTheme = theme;
++
++	if (Settings::getInstance()->getBool("VolumePopup"))
++		mVolumeInfo = std::make_shared<VolumeInfoComponent>(this);
++
++	if (Settings::getInstance()->getBool("BrightnessPopup"))
++		mBrightnessInfo = std::make_shared<BrightnessInfoComponent>(this);
++
++	if (mBatteryIndicator)
++		mBatteryIndicator->applyTheme(theme, "screen", "batteryIndicator", ThemeFlags::ALL);
++
++	applyStatusTheme();
++}
++
++// Panther OS: la pantalla principal usa «clock», «date» y «batteryIndicator»; las listas de juegos
++// usan «clock_lista» y la posición de «batteryIndicator_lista» si el tema las define.
++void Window::setGamelistMode(bool enabled)
++{
++	if (mGamelistMode == enabled)
++		return;
++
++	mGamelistMode = enabled;
++	applyStatusTheme();
++}
++
++void Window::applyStatusTheme()
++{
++	if (mStatusTheme == nullptr)
++		return;
++
++	const std::shared_ptr<ThemeData>& theme = mStatusTheme;
++
++	std::string clockName = "clock";
++	if (mGamelistMode && theme->getElement("screen", "clock_lista", "text"))
++		clockName = "clock_lista";
++
+ 	if (mClock)
+ 	{
+ 		mClock->setFont(Font::get(FONT_SIZE_SMALL));
+@@ -867,15 +930,26 @@ void Window::onThemeChanged(const std::shared_ptr<ThemeData>& theme)
+ 		mClock->setPosition(Renderer::getScreenWidth()*0.94, Renderer::getScreenHeight()*0.9965 - mClock->getFont()->getHeight());
+ 		mClock->setSize(Renderer::getScreenWidth()*0.05, 0);
+ 
+-		mClock->applyTheme(theme, "screen", "clock", ThemeFlags::ALL ^ (ThemeFlags::TEXT));
++		mClock->applyTheme(theme, "screen", clockName, ThemeFlags::ALL ^ (ThemeFlags::TEXT));
+ 	}
+ 
+-	if (Settings::getInstance()->getBool("VolumePopup"))
+-		mVolumeInfo = std::make_shared<VolumeInfoComponent>(this);
+-
+-	if (Settings::getInstance()->getBool("BrightnessPopup"))
+-		mBrightnessInfo = std::make_shared<BrightnessInfoComponent>(this);
++	mHasDate = theme->getElement("screen", "date", "text") != nullptr;
++	if (mDate && mHasDate)
++	{
++		mDate->setFont(Font::get(FONT_SIZE_SMALL));
++		mDate->setColor(0xFFFFFFFF);
++		mDate->setHorizontalAlignment(ALIGN_LEFT);
++		mDate->setVerticalAlignment(ALIGN_TOP);
++		mDate->applyTheme(theme, "screen", "date", ThemeFlags::ALL ^ (ThemeFlags::TEXT));
++	}
+ 
++	// Sólo se mueve la batería: volver a aplicar su tema reinicia el estado de la red y la batería.
+ 	if (mBatteryIndicator)
+-		mBatteryIndicator->applyTheme(theme, "screen", "batteryIndicator", ThemeFlags::ALL);
++	{
++		std::string batteryName = "batteryIndicator";
++		if (mGamelistMode && theme->getElement("screen", "batteryIndicator_lista", "batteryIndicator"))
++			batteryName = "batteryIndicator_lista";
++
++		mBatteryIndicator->GuiComponent::applyTheme(theme, "screen", batteryName, ThemeFlags::POSITION | ThemeFlags::SIZE);
++	}
+ }
+diff --git a/es-core/src/Window.h b/es-core/src/Window.h
+index ae8a05de..8ac89585 100644
+--- a/es-core/src/Window.h
++++ b/es-core/src/Window.h
+@@ -103,6 +103,11 @@ public:
+ 	void onThemeChanged(const std::shared_ptr<ThemeData>& theme);
+ 
+ 	std::shared_ptr<BatteryIndicatorComponent>	getBatteryIndicator() { return mBatteryIndicator; }
++
++	// Panther OS: la hora, la fecha y la barra de estado cambian entre la pantalla principal y
++	// las listas de juegos (elementos «clock_lista» y «batteryIndicator_lista» del tema).
++	void setGamelistMode(bool enabled);
++	bool isGamelistMode() const { return mGamelistMode; }
+ 	
+ private:
+ 	void processPostedFunctions();
+@@ -148,6 +153,13 @@ private:
+ 	std::shared_ptr<VolumeInfoComponent> mVolumeInfo;
+ 	std::shared_ptr<BrightnessInfoComponent> mBrightnessInfo;
+ 	std::shared_ptr<BatteryIndicatorComponent>	mBatteryIndicator;
++
++	// Panther OS
++	void applyStatusTheme();
++	std::shared_ptr<ThemeData> mStatusTheme;
++	std::shared_ptr<TextComponent> mDate;
++	bool mGamelistMode = false;
++	bool mHasDate = false;
+ 	
+ 	bool mNormalizeNextUpdate;
+ 
+diff --git a/es-core/src/components/ControllerActivityComponent.cpp b/es-core/src/components/ControllerActivityComponent.cpp
+index 81be6810..fa48f55c 100644
+--- a/es-core/src/components/ControllerActivityComponent.cpp
++++ b/es-core/src/components/ControllerActivityComponent.cpp
+@@ -314,6 +314,14 @@ void ControllerActivityComponent::render(const Transform4x4f& parentTrans)
+ 		}
+ 	}*/
+ 	
++	// Panther OS: guardar dónde va el icono de red para la barra de arriba de la pantalla principal
++	bool panterRed = (mView & NETWORK) && ((mNetworkState == 3 && mNetworkShareImage != nullptr) || (mNetworkState == 4 && mNetworkServiceImage != nullptr) ||
++		(mNetworkState == 2 && mNetworkImage != nullptr) || (mNetworkState == 1 && mNetworkActiveImage != nullptr) || (mNetworkState == 0 && mNetworkOffImage != nullptr));
++	if (panterRed)
++		mNetworkIconRect = Vector4f(trans.translation().x() + x, trans.translation().y(), szW, szH);
++	else
++		mNetworkIconRect = Vector4f(0, 0, 0, 0);
++
+ 	if ((mView & NETWORK) && mNetworkState == 3 && mNetworkShareImage != nullptr)
+ 		x += renderTexture(x, szW, mNetworkShareImage, mColorShift);
+ 	else if ((mView & NETWORK) && mNetworkState == 4 && mNetworkServiceImage != nullptr)
+diff --git a/es-core/src/components/ControllerActivityComponent.h b/es-core/src/components/ControllerActivityComponent.h
+index 7846fcc9..564c4bf5 100644
+--- a/es-core/src/components/ControllerActivityComponent.h
++++ b/es-core/src/components/ControllerActivityComponent.h
+@@ -8,6 +8,7 @@
+ #include "GuiComponent.h"
+ #include "resources/Font.h"
+ #include "platform.h"
++#include "math/Vector4f.h"
+ 
+ class TextureResource;
+ 
+@@ -56,7 +57,12 @@ public:
+ 	// Start fast network checking (after WiFi enabled, check every second until connected)
+ 	void startFastNetworkCheck();
+ 
++	// Panther OS: dónde se dibujó el icono de red la última vez (en pantalla; ancho 0 si no hay icono).
++	const Vector4f& getNetworkIconRect() const { return mNetworkIconRect; }
++
+ protected:
++	Vector4f mNetworkIconRect = Vector4f(0, 0, 0, 0);
++
+ 	virtual void	init();
+ 
+ 	unsigned int	mView;
