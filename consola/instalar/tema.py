@@ -124,8 +124,16 @@ PANTHER_XML = """<theme>
     <image name="gridtile.image:selected">
       <roundCorners>0.07</roundCorners>
     </image>
-    <image name="gridtile.overlay:selected">
+    <!-- La capa de encima solo existe si está en las tarjetas normales: ahí va oculta. -->
+    <image name="gridtile.overlay">
       <path>./borde-elegida.png</path>
+      <origin>0.5 0.5</origin>
+      <pos>0.5 0.5</pos>
+      <size>1 1</size>
+      <visible>false</visible>
+    </image>
+    <image name="gridtile.overlay:selected">
+      <visible>true</visible>
     </image>
     <text name="gridtile">
       <size>1 0.16</size>

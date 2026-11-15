@@ -1,0 +1,61 @@
+name: Consola portátil: menú (EmulationStation)
+
+# El menú de la consola (EmulationStation-fcamod de lcdyk0517, el que trae dArkOS4Clone 20261008,
+# compilado el 5/10/2026 desde el commit 501afbab11) con los cambios de Panther OS que haya en
+# consola/emulationstation/*.patch. Se compila en Debian 13 (el sistema de la consola) para arm64;
+# la consola tiene libEGL.so.1 y libGLESv2.so.2 apuntando a su libMali, así que enlaza igual.
+on:
+  push:
+    branches-ignore: [ master ]
+    paths:
+      - 'consola/emulationstation/**'
+      - '.github/workflows/emulationstation.yml'
+  workflow_dispatch:
+
+env:
+  ES_REPO: lcdyk0517/EmulationStation-fcamod
+  ES_COMMIT: 501afbab11
+
+jobs:
+  menu:
+    name: EmulationStation para arm64 (Debian 13)
+    runs-on: ubuntu-24.04-arm
+    container: debian:trixie
+    timeout-minutes: 60
+    steps:
+      - name: Herramientas
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            git ca-certificates build-essential cmake pkg-config \
+            libsdl2-dev libsdl2-mixer-dev libcurl4-openssl-dev libfreetype-dev rapidjson-dev \
+            libfreeimage-dev libvlc-dev libegl-dev libgles-dev libasound2-dev > /dev/null
+      - uses: actions/checkout@v4
+        with:
+          path: panther
+      - name: Código del menú
+        run: |
+          git clone --quiet https://github.com/${ES_REPO}.git es
+          cd es && git checkout --quiet ${ES_COMMIT} && git submodule update --init --quiet
+          git log --oneline -1
+      - name: Cambios de Panther OS
+        run: |
+          cd es
+          for p in ../panther/consola/emulationstation/*.patch; do
+            [ -e "$p" ] || continue
+            echo "== $p"; git apply --verbose "$p"
+          done
+      - name: Compilar
+        run: |
+          cd es
+          cmake -S . -B build -DGLES=ON -DCMAKE_BUILD_TYPE=Release > /dev/null
+          cmake --build build -j "$(nproc)"
+          strip -s emulationstation
+          ls -la emulationstation
+          mkdir -p ../salida && cp emulationstation ../salida/
+          if [ -d ../panther/consola/emulationstation/resources ]; then cp -r ../panther/consola/emulationstation/resources ../salida/; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: emulationstation-arm64
+          path: salida/
+          retention-days: 7
