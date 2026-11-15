@@ -39,11 +39,19 @@ for sistema in ("gb", "gbc", "gba", "n64", "nds", "ppsspp", "all", "favorites", 
 # .sh) y la pantalla de Wi-Fi usa el fondo de las listas.
 poner("string", "PantherDirectLaunch", "whatsapp,salas")
 poner("string", "PantherWifiBackground", "/roms/themes/es-theme-panther/_panther/fondo-lista.jpg")
-# La tarjeta de RetroArch (/opt/cmds) sobra: las opciones del sistema están en el engranaje de arriba.
+# Pantalla principal: solo Favoritos, WhatsApp y Emuladores (las consolas), en ese orden y quietas.
+# Fuera RetroArch (las opciones están en el engranaje), «Todos» y lo que trae el sistema que no son
+# juegos del usuario (PICO-8 de prueba, ScummVM, Java, Wolfenstein, ALG y PyMO).
 m = re.search(r'<string name="HiddenSystems" value="([^"]*)" />', t)
 ocultos = [x for x in (m.group(1).split(";") if m else []) if x]
-if "retroarch" not in ocultos:
-    ocultos.append("retroarch")
+for s in ("retroarch", "pico-8", "scummvm", "j2me", "wolf", "alg", "pymo"):
+    if s not in ocultos:
+        ocultos.append(s)
 poner("string", "HiddenSystems", ";".join(ocultos))
+poner("string", "CollectionSystemsAuto", "favorites")
+poner("string", "PantherSystemOrder", "favorites,whatsapp,Emuladores,salas")
+poner("string", "Emuladores.defaultView", "grid")
+# Carpeta de piezas del tema para las pantallas propias (letra, fondo, bordes).
+poner("string", "PantherPiezas", "/roms/themes/es-theme-panther/_panther")
 ruta.write_text(t, encoding="utf-8")
 print("ajustes:", ruta)

@@ -3,6 +3,7 @@
 EmulationStation parado (si no, al cerrarse guardaría sus ajustes encima).
 
 - Nombres cortos en español para los sistemas que se usan.
+- Las consolas, dentro de la tarjeta «Emuladores», con su marca, año y descripción.
 - Apartados propios «WhatsApp» y «Salas» (carpetas /roms/whatsapp y /roms/salas, con scripts .sh).
 - Idioma de los menús: español.
 Antes de cambiar nada guarda una copia (*.panther-original) de cada archivo, una sola vez.
@@ -18,6 +19,22 @@ NOMBRES = {
     "n64": "Nintendo 64",
     "nds": "Nintendo DS",
     "ppsspp": "PSP",  # el sistema de /roms/psp se llama así en dArkOS
+}
+
+# Las consolas van dentro de la tarjeta «Emuladores» (grupo de EmulationStation). La lista enseña
+# «marca · año · N juegos» y esta descripción (las dos cosas las lee el menú de Panther OS).
+EMULADORES = {
+    "gb": ("Nintendo", 1989, "La primera portátil de Nintendo. Aquí están Pokémon Rojo, Azul y Amarillo, "
+                             "donde empezó todo."),
+    "gbc": ("Nintendo", 1998, "La Game Boy con pantalla a color. Aquí están Pokémon Oro, Plata y Cristal, "
+                              "el Pinball, el Puzzle Challenge y el juego de cartas."),
+    "gba": ("Nintendo", 2001, "La portátil de 32 bits de Nintendo. Aquí están Pokémon Esmeralda, Rubí, Zafiro, "
+                              "Rojo Fuego y Verde Hoja, el Mundo Misterioso y el Pinball."),
+    "n64": ("Nintendo", 1996, "La consola de Nintendo de los 64 bits. Aquí están Super Mario 64, Pokémon Stadium, "
+                              "Pokémon Snap y Pokémon Puzzle League."),
+    "nds": ("Nintendo", 2004, "La portátil de dos pantallas de Nintendo. Aquí están Pokémon Negro, Pokémon "
+                              "Diamante y Super Mario 64 DS."),
+    "ppsspp": ("Sony", 2004, "La portátil de Sony. Aquí está Grand Theft Auto: Vice City Stories."),
 }
 
 NUEVOS = """	<system>
@@ -62,6 +79,12 @@ def sistemas(ruta: Path):
         nombre = re.search(r"<name>(.*?)</name>", bloque).group(1).strip()
         if nombre in NOMBRES:
             bloque = re.sub(r"<fullname>.*?</fullname>", f"<fullname>{NOMBRES[nombre]}</fullname>", bloque, count=1)
+        if nombre in EMULADORES:
+            marca, anio, texto = EMULADORES[nombre]
+            bloque = re.sub(r"\s*<(group|manufacturer|release|description)>.*?</\1>", "", bloque, flags=re.S)
+            extra = (f"\n\t\t<group>Emuladores</group>\n\t\t<manufacturer>{marca}</manufacturer>"
+                     f"\n\t\t<release>{anio}</release>\n\t\t<description>{texto}</description>")
+            bloque = re.sub(r"(</fullname>)", lambda m: m.group(1) + extra, bloque, count=1)
         return bloque
 
     t = re.sub(r"<system>.*?</system>", cambiar, t, flags=re.S)

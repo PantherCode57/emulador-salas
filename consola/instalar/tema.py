@@ -10,8 +10,11 @@ Las listas copian al píxel la vista previa aprobada: las tarjetas de los juegos
 recortadas, con las esquinas redondas y la sombra (<thumbnail> de cada juego), y las medidas salen
 de lista_exacta.py, que calcula dónde pone el menú cada texto. La letra es Selawik (Microsoft,
 licencia SIL OFL), la versión libre de Segoe UI.
-Uso: tema.py <carpeta con fondo.jpg, fondo-lista.jpg, borde-tarjeta.png, linea.png, wifi.png,
-ajustes.png, marca-barra.png, letra/*.ttf, bateria/*.png y tarjetas/*.png>
+En la pantalla principal solo hay tres tarjetas en fila fija (Favoritos, WhatsApp y Emuladores);
+las consolas van dentro de Emuladores, cada una con su tarjeta de la lista (consolas/<tema>.png).
+Uso: tema.py <carpeta con fondo.jpg, fondo-lista.jpg, borde-tarjeta.png, borde-ajustes.png,
+linea.png, wifi.png, ajustes.png, marca-barra.png, letra/*.ttf, bateria/*.png, tarjetas/*.png y
+consolas/*.png>
 Se lanza con EmulationStation parado. No toca el tema original.
 """
 import re
@@ -107,16 +110,18 @@ PANTHER_XML = """<theme>
       <pos>0 2</pos>
       <size>0.001 0.001</size>
     </image>
+    <!-- Tres tarjetas quietas y centradas (fixedRow): se mueve solo la elegida, que crece. El
+         carrusel mide 0.6 de ancho, así que de una tarjeta a la siguiente hay 0.2 (128 px). -->
     <carousel name="systemcarousel">
       <type>horizontal</type>
-      <pos>0 0.775</pos>
-      <size>1 0.21</size>
+      <pos>0.2 0.775</pos>
+      <size>0.6 0.21</size>
       <color>00000000</color>
       <logoAlignment>center</logoAlignment>
-      <!-- 0.17 × 1.15 = 0.1955 < 1/5: la elegida crece sin montarse sobre las vecinas. -->
       <logoSize>0.17 0.13</logoSize>
       <logoScale>1.15</logoScale>
-      <maxLogoCount>5</maxLogoCount>
+      <maxLogoCount>3</maxLogoCount>
+      <fixedRow>true</fixedRow>
       <!-- las tarjetas no elegidas, opacas (sin el cambio del menú quedaban a medio transparentar) -->
       <minLogoOpacity>1</minLogoOpacity>
       <zIndex>40</zIndex>
@@ -280,6 +285,14 @@ PANTHER_XML = """<theme>
 </theme>
 """
 
+# Emuladores: la lista es de consolas, así que la ayuda dice «Abrir» en vez de «Jugar».
+AYUDA_EMULADORES = """  <view name="grid">
+    <text name="panther_ayuda">
+      <text>A  Abrir      B  Volver      Y  Favorito</text>
+    </text>
+  </view>
+"""
+
 LOGO_NUEVO = """<theme>
   <formatVersion>7</formatVersion>
   <include>./../theme.xml</include>
@@ -307,6 +320,10 @@ raiz.write_text(t, encoding="utf-8")
 for tarjeta in sorted((p / "tarjetas").glob("*.png")):
     sistema = tarjeta.stem
     ruta = f"./../_panther/tarjetas/{tarjeta.name}"
+    # Las consolas ya no salen en la pantalla principal: su «logo» es la tarjeta de la lista de
+    # Emuladores (el menú la usa como imagen de cada consola).
+    if (p / "consolas" / tarjeta.name).exists():
+        ruta = f"./../_panther/consolas/{tarjeta.name}"
     xml = DESTINO / sistema / "theme.xml"
     if xml.exists():
         x = xml.read_text(encoding="utf-8", errors="replace")
@@ -320,6 +337,9 @@ for tarjeta in sorted((p / "tarjetas").glob("*.png")):
         xml.write_text(x2, encoding="utf-8")
     else:
         xml.parent.mkdir(exist_ok=True)
-        xml.write_text(LOGO_NUEVO.format(tarjeta=ruta), encoding="utf-8")
+        x2 = LOGO_NUEVO.format(tarjeta=ruta)
+        if sistema == "Emuladores":
+            x2 = x2.replace("</theme>", AYUDA_EMULADORES + "</theme>")
+        xml.write_text(x2, encoding="utf-8")
     print("tarjeta:", sistema)
 print("tema listo:", DESTINO)
