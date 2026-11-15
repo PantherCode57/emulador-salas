@@ -11,6 +11,10 @@ name: Compilar APK
 on:
   push:
     branches-ignore: [ master ]
+    # El sistema del USB (Lakka) tiene su propio flujo
+    paths-ignore:
+      - 'lakka/**'
+      - '.github/workflows/lakka.yml'
   workflow_dispatch:
 
 env:

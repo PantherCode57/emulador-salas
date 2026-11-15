@@ -1,0 +1,76 @@
+name: Pokemulador USB (Lakka)
+
+# Sistema de arranque para el USB: Lakka recortado con las salas de Pokemulador.
+# Paso 1 (provisional): descargar Lakka 6.1 y sacar un informe de lo que lleva dentro.
+on:
+  push:
+    branches-ignore: [ master ]
+    paths:
+      - 'lakka/**'
+      - '.github/workflows/lakka.yml'
+  workflow_dispatch:
+
+env:
+  LAKKA_VERSION: "6.1"
+
+jobs:
+  inspeccionar:
+    name: Ver Lakka por dentro
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Herramientas
+        run: sudo apt-get update && sudo apt-get install -y squashfs-tools
+
+      - name: Descargar Lakka
+        run: |
+          base=https://le.builds.lakka.tv/Generic.x86_64
+          f=Lakka-Generic.x86_64-${LAKKA_VERSION}.img.gz
+          curl -fL --retry 3 -o "$f" "$base/$f"
+          if curl -fsL -o "$f.sha256" "$base/$f.sha256"; then
+            echo "sha256 publicado: $(cat $f.sha256)"
+            sha256sum "$f"
+            [ "$(cut -d' ' -f1 $f.sha256)" = "$(sha256sum $f | cut -d' ' -f1)" ] || { echo "sha256 no coincide"; exit 1; }
+          else
+            echo "no hay .sha256 publicado"; sha256sum "$f"
+          fi
+          gunzip -k "$f"
+          ls -l
+
+      - name: Informe
+        run: |
+          set -x
+          img=Lakka-Generic.x86_64-${LAKKA_VERSION}.img
+          mkdir -p informe
+          {
+            echo "== particiones"; sfdisk -d $img; fdisk -l $img
+            dev=$(sudo losetup -fP --show $img); echo "loop $dev"; lsblk -f $dev || true
+            sudo mkdir -p /mnt/p1 /mnt/p2 /mnt/sys
+            sudo mount ${dev}p1 /mnt/p1; sudo mount ${dev}p2 /mnt/p2
+            echo "== particion 1"; ls -la /mnt/p1; find /mnt/p1 -maxdepth 3 -type f -exec ls -la {} \;
+            for c in /mnt/p1/syslinux.cfg /mnt/p1/EFI/BOOT/syslinux.cfg /mnt/p1/EFI/BOOT/grub.cfg /mnt/p1/extlinux/extlinux.conf; do [ -f $c ] && { echo "== $c"; cat $c; }; done
+            echo "== particion 2"; sudo find /mnt/p2 -maxdepth 3 | head -50
+            sudo mount -o loop,ro /mnt/p1/SYSTEM /mnt/sys
+            echo "== tamaños del sistema"; sudo du -xsh /mnt/sys/*; sudo du -xsh /mnt/sys/usr/* /mnt/sys/usr/lib/* 2>/dev/null | sort -h | tail -40
+            echo "== nucleos"; ls -laS /mnt/sys/usr/lib/libretro/ 2>/dev/null | head -400
+            sudo du -sh /mnt/sys/usr/lib/libretro /mnt/sys/usr/share/retroarch* /mnt/sys/usr/share/libretro* /mnt/sys/usr/lib/kernel-overlays /mnt/sys/usr/lib/firmware 2>/dev/null
+            echo "== share retroarch"; sudo du -sh /mnt/sys/usr/share/retroarch/* 2>/dev/null
+            echo "== firmware"; sudo du -sh /mnt/sys/usr/lib/kernel-overlays/base/lib/firmware/* 2>/dev/null | sort -h | tail -30
+            echo "== servicios"; ls /mnt/sys/usr/lib/systemd/system | head -300
+            for s in retroarch.service retroarch-autostart.service; do [ -f /mnt/sys/usr/lib/systemd/system/$s ] && { echo "== $s"; cat /mnt/sys/usr/lib/systemd/system/$s; }; done
+            echo "== bin"; ls /mnt/sys/usr/bin | head -400
+            for f in /mnt/sys/usr/bin/retroarch.start /mnt/sys/usr/lib/libreelec/fs-resize /mnt/sys/usr/lib/lakka/*; do [ -f $f ] && file $f | grep -q text && { echo "== $f"; cat $f; }; done
+            echo "== init"; sudo cat /mnt/sys/../init 2>/dev/null | head -5 || true
+            echo "== udev automount"; ls /mnt/sys/usr/lib/udev/rules.d/; grep -rl "media" /mnt/sys/usr/lib/udev/rules.d/ | xargs -r cat
+            echo "== retroarch.cfg por defecto"; for c in /mnt/sys/etc/retroarch.cfg /mnt/sys/usr/config/retroarch/retroarch.cfg; do [ -f $c ] && { echo "-- $c"; grep -v '^#' $c | grep -v '^$' | head -200; }; done
+            echo "== usr/config"; find /mnt/sys/usr/config -maxdepth 3 | head -100
+            echo "== bibliotecas clave"; ls /mnt/sys/usr/lib | grep -E "libc\.so|libstdc|libGL|libEGL|libvulkan|libgbm|libdrm|libssl|libcrypto|libz\.|libpng|libjpeg|libasound|libpulse|libSDL|libudev|libusb|libfreetype" ; strings /mnt/sys/usr/lib/libc.so.6 | grep -m1 "GNU C Library"
+            echo "== kernel y modulos"; ls /mnt/sys/usr/lib/modules; sudo find /mnt/sys/usr/lib/modules -name "exfat*" -o -name "*vfat*" | head
+            grep -i exfat /mnt/sys/proc/filesystems 2>/dev/null; ls /mnt/sys/usr/sbin | grep -i -E "fsck|mkfs|exfat"
+          } > informe/lakka.txt 2>&1
+          tail -c 3000 informe/lakka.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: informe-lakka
+          path: informe/
