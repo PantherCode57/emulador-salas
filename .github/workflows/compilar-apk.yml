@@ -11,10 +11,13 @@ name: Compilar APK
 on:
   push:
     branches-ignore: [ master ]
-    # El sistema del USB (Lakka) tiene su propio flujo
+    # El sistema del USB (Lakka) y la consola portátil tienen sus propios flujos
     paths-ignore:
       - 'lakka/**'
       - '.github/workflows/lakka.yml'
+      - 'consola/**'
+      - '.github/workflows/consola.yml'
+      - '.github/workflows/emulationstation.yml'
   workflow_dispatch:
 
 env:

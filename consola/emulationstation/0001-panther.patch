@@ -1,33 +1,501 @@
 diff --git a/es-app/CMakeLists.txt b/es-app/CMakeLists.txt
-index b10e2ed7..91176809 100644
+index b10e2ed7..f9d39321 100644
 --- a/es-app/CMakeLists.txt
 +++ b/es-app/CMakeLists.txt
-@@ -39,6 +39,7 @@ set(ES_HEADERS
+@@ -39,6 +39,9 @@ set(ES_HEADERS
  	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiThemeInstall.h
      ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiCollectionSystemsOptions.h    
      ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiTools.h    
 +    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiPantherWifi.h
++    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiPantherAjustes.h
++    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/PantherEstilo.h
      ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiJoystickCalibration.h
      ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiVolumeKeyCalibration.h
  
-@@ -104,6 +105,7 @@ set(ES_SOURCES
+@@ -104,6 +107,8 @@ set(ES_SOURCES
  	${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiThemeInstall.cpp
      ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiCollectionSystemsOptions.cpp    
      ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiTools.cpp
 +    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiPantherWifi.cpp
++    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiPantherAjustes.cpp
      ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiArkOS4CloneSettings.cpp
      ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiJoystickCalibration.cpp
      ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiVolumeKeyCalibration.cpp
+diff --git a/es-app/src/CollectionSystemManager.cpp b/es-app/src/CollectionSystemManager.cpp
+index d884ad95..d610a2df 100644
+--- a/es-app/src/CollectionSystemManager.cpp
++++ b/es-app/src/CollectionSystemManager.cpp
+@@ -14,6 +14,7 @@
+ #include "ThemeData.h"
+ #include <pugixml/src/pugixml.hpp>
+ #include <fstream>
++#include <algorithm>
+ #include "Gamelist.h"
+ #include "FileSorts.h"
+ #include "utils/ThreadPool.h"
+@@ -310,6 +311,23 @@ void CollectionSystemManager::updateSystemsList()
+ 
+ 	// add auto enabled ones
+ 	addEnabledCollectionsToDisplayedSystems(&mAutoCollectionSystemsData, &map);
++
++	// Panther OS: el ajuste «PantherSystemOrder» (nombres separados por comas) pone esos apartados
++	// delante y en ese orden; los demás quedan detrás como estaban.
++	auto orden = Utils::String::split(Settings::getInstance()->getString("PantherSystemOrder"), ',');
++	if (orden.size() > 0)
++	{
++		auto puesto = [&orden](SystemData* sys)
++		{
++			for (int i = 0; i < (int)orden.size(); i++)
++				if (Utils::String::trim(orden[i]) == sys->getName())
++					return i;
++			return (int)orden.size();
++		};
++
++		std::stable_sort(SystemData::sSystemVector.begin(), SystemData::sSystemVector.end(),
++			[&puesto](SystemData* a, SystemData* b) { return puesto(a) < puesto(b); });
++	}
+ 	/*
+ 	// create views for collections, before reload
+ 	for(auto sysIt = SystemData::sSystemVector.cbegin(); sysIt != SystemData::sSystemVector.cend(); sysIt++)
+diff --git a/es-app/src/SystemData.cpp b/es-app/src/SystemData.cpp
+index e4077543..9b30b774 100644
+--- a/es-app/src/SystemData.cpp
++++ b/es-app/src/SystemData.cpp
+@@ -375,6 +375,7 @@ SystemData* SystemData::loadSystem(pugi::xml_node system)
+ 	envData->mPlatformIds = platformIds;
+ 	envData->mEmulators = emulatorList;
+ 	envData->mGroup = system.child("group").text().get();
++	envData->mPantherDesc = system.child("description").text().get();
+ 
+ 	SystemData* newSys = new SystemData(md, envData);
+ 	if (newSys->getRootFolder()->getChildren().size() == 0)
+@@ -429,6 +430,20 @@ void SystemData::createGroupedSystems()
+ 				auto folder = new FolderData(childSystem->getRootFolder()->getPath(), childSystem, false);
+ 				root->addChild(folder);
+ 
++				// Panther OS: la consola, con su nombre, «marca · año · N juegos» y su descripción
++				{
++					auto& meta = childSystem->getSystemMetadata();
++					std::string ficha = meta.manufacturer;
++					if (meta.releaseYear > 0)
++						ficha += (ficha.empty() ? "" : "  ·  ") + std::to_string(meta.releaseYear);
++					int juegos = (int)childSystem->getRootFolder()->getFilesRecursive(GAME, true).size();
++					ficha += (ficha.empty() ? "" : "  ·  ") + std::to_string(juegos) + (juegos == 1 ? " juego" : " juegos");
++
++					folder->setMetadata("name", childSystem->getFullName());
++					folder->setMetadata("genre", ficha);
++					folder->setMetadata("desc", childSystem->getSystemEnvData()->mPantherDesc);
++				}
++
+ 				auto theme = childSystem->getTheme();
+ 				if (theme)
+ 				{
+@@ -439,7 +454,7 @@ void SystemData::createGroupedSystems()
+ 						folder->setMetadata("image", path);
+ 						folder->setMetadata("thumbnail", path);
+ 
+-						folder->enableVirtualFolderDisplay(true);
++						// Panther OS: tarjeta normal con su nombre debajo (no carpeta «virtual» sin nombre)
+ 					}
+ 				}
+ 
+diff --git a/es-app/src/SystemData.h b/es-app/src/SystemData.h
+index 0d15bebd..72d1c0c5 100644
+--- a/es-app/src/SystemData.h
++++ b/es-app/src/SystemData.h
+@@ -160,6 +160,7 @@ struct SystemEnvironmentData
+ 
+ 		return "";
+ 	}
++	std::string mPantherDesc; // Panther OS: <description> de es_systems.cfg
+ };
+ 
+ class SystemData
+diff --git a/es-app/src/guis/GuiPantherAjustes.cpp b/es-app/src/guis/GuiPantherAjustes.cpp
+new file mode 100644
+index 00000000..b9a5d1db
+--- /dev/null
++++ b/es-app/src/guis/GuiPantherAjustes.cpp
+@@ -0,0 +1,298 @@
++#include "guis/GuiPantherAjustes.h"
++
++#include "guis/GuiPantherWifi.h"
++#include "guis/GuiTools.h"
++#include "guis/PantherEstilo.h"
++#include "guis/arkos4clone/WifiManager.h"
++#include "components/ImageComponent.h"
++#include "renderers/Renderer.h"
++#include "math/Misc.h"
++#include "utils/StringUtil.h"
++#include "AudioManager.h"
++#include "VolumeControl.h"
++#include "Window.h"
++
++#include <cstdio>
++#include <cstdlib>
++#include <ctime>
++#include <fstream>
++#include <thread>
++
++// Herramientas de /opt/system que abre cada recuadro
++#define SCRIPT_INFO		"/opt/system/System Info.sh"
++#define SCRIPT_ARCHIVOS	"/opt/system/351Files.sh"
++#define SCRIPT_MANDOS	"/opt/system/Advanced/Controller Tester.sh"
++#define SCRIPT_USB_PON	"/opt/system/USB Drive Mount.sh"
++#define SCRIPT_USB_QUITA "/opt/system/USB Drive Unmount.sh"
++#define SCRIPT_PORTMASTER "/opt/system/Tools/PortMaster/PortMaster.sh"
++#define SCRIPT_COPIA	"/opt/system/Advanced/Backup dArkOS Settings.sh"
++
++enum { OP_WIFI, OP_INFO, OP_ARCHIVOS, OP_MANDOS, OP_USB, OP_PORTMASTER, OP_COPIA, OP_MAS };
++
++static bool usbMontada()
++{
++	std::ifstream f("/proc/mounts");
++	std::string linea;
++	while (std::getline(f, linea))
++		if (linea.find(" /mnt/usbdrive ") != std::string::npos)
++			return true;
++	return false;
++}
++
++GuiPantherAjustes::GuiPantherAjustes(Window* window) : GuiComponent(window),
++	mAlive(std::make_shared<bool>(true)), mCursor(0), mUsbMontada(false), mReloj(0), mFondo(nullptr), mBorde(nullptr)
++{
++	const float W = (float)Renderer::getScreenWidth();
++	const float H = (float)Renderer::getScreenHeight();
++	const float s = H / 480.0f;
++	setSize(W, H);
++
++	mLetraTitulo = PantherEstilo::letra(30 * s, "selawksb.ttf");
++	mLetraNombre = PantherEstilo::letra(18 * s, "selawksb.ttf");
++	mLetraDetalle = PantherEstilo::letra(14 * s);
++	mLetraAyuda = PantherEstilo::letra(15 * s);
++	mLetraHora = PantherEstilo::letra(26 * s, "selawksl.ttf");
++	mIconoTitulo = PantherEstilo::iconos(30 * s);
++	mIcono = PantherEstilo::iconos(20 * s);
++
++	std::string fondo = PantherEstilo::pieza("fondo-lista.jpg");
++	if (!fondo.empty())
++	{
++		mFondo = new ImageComponent(window, false);
++		mFondo->setImage(fondo);
++		mFondo->setOrigin(0, 0);
++		mFondo->setPosition(0, 0);
++		mFondo->setResize(W, H);
++	}
++
++	std::string borde = PantherEstilo::pieza("borde-ajustes.png");
++	if (!borde.empty())
++	{
++		mBorde = new ImageComponent(window, false);
++		mBorde->setImage(borde);
++		mBorde->setOrigin(0, 0);
++	}
++
++	mOpciones = {
++		{ "", 0x3B82F6FF, "Wi-Fi", "Comprobando…" },
++		{ "", 0x14A096FF, "Información", "Batería, memoria y versión" },
++		{ "", 0xE6A000FF, "Archivos", "Ver, copiar y borrar" },
++		{ "", 0x7C3AEDFF, "Mandos", "Probar los botones" },
++		{ "", 0x22A05AFF, "Memoria USB", "Conectar o quitar" },
++		{ "", 0xE66E28FF, "PortMaster", "Juegos y programas extra" },
++		{ "", 0x5A64E6FF, "Copia de seguridad", "Guardar tus ajustes" },
++		{ "", 0x6E7382FF, "Más opciones", "Todas las herramientas" },
++	};
++
++	leerEstado();
++}
++
++GuiPantherAjustes::~GuiPantherAjustes()
++{
++	*mAlive = false;
++	delete mFondo;
++	delete mBorde;
++}
++
++// Memoria USB al momento; el Wi-Fi en otro hilo (nmcli tarda un poco)
++void GuiPantherAjustes::leerEstado()
++{
++	mUsbMontada = usbMontada();
++	mOpciones[OP_USB].detalle = mUsbMontada ? "Conectada · A para quitarla" : "Conectar o quitar";
++
++	Window* window = mWindow;
++	auto alive = mAlive;
++	std::thread([this, window, alive]()
++	{
++		std::string texto = "Apagado";
++		if (WifiManager::isWifiEnabled())
++		{
++			std::string ssid = Utils::String::trim(WifiManager::getCurrentWifiSSID());
++			texto = ssid.empty() ? "Sin conexión" : ssid + " · conectado";
++		}
++
++		window->postToUiThread([this, alive, texto](Window*)
++		{
++			if (*alive)
++				mOpciones[OP_WIFI].detalle = texto;
++		});
++	}).detach();
++}
++
++// Igual que GuiTools: se suelta la pantalla y el sonido, se lanza la herramienta en la consola
++// de texto y se vuelve.
++void GuiPantherAjustes::lanzar(const std::string& script)
++{
++	AudioManager::getInstance()->deinit();
++	VolumeControl::getInstance()->deinit();
++	mWindow->deinit(true);
++
++	system("sudo chmod 666 /dev/tty1");
++	std::string cmd = "/bin/bash \"" + script + "\" 2>&1 > /dev/tty1";
++	int ret = system(cmd.c_str());
++	(void)ret;
++	system("setterm -clear all > /dev/tty1");
++
++	mWindow->init(true);
++	VolumeControl::getInstance()->init();
++	AudioManager::getInstance()->init();
++
++	mTexts.clear();
++	leerEstado();
++}
++
++void GuiPantherAjustes::abrir(int cual)
++{
++	switch (cual)
++	{
++	case OP_WIFI:		mWindow->pushGui(new GuiPantherWifi(mWindow)); break;
++	case OP_INFO:		lanzar(SCRIPT_INFO); break;
++	case OP_ARCHIVOS:	lanzar(SCRIPT_ARCHIVOS); break;
++	case OP_MANDOS:		lanzar(SCRIPT_MANDOS); break;
++	case OP_USB:		lanzar(usbMontada() ? SCRIPT_USB_QUITA : SCRIPT_USB_PON); break;
++	case OP_PORTMASTER:	lanzar(SCRIPT_PORTMASTER); break;
++	case OP_COPIA:		lanzar(SCRIPT_COPIA); break;
++	case OP_MAS:		mWindow->pushGui(new GuiTools(mWindow)); break;
++	}
++}
++
++bool GuiPantherAjustes::input(InputConfig* config, Input input)
++{
++	if (input.value == 0)
++		return true;
++
++	int n = (int)mOpciones.size();
++	if (config->isMappedTo(BUTTON_BACK, input))
++	{
++		delete this;
++		return true;
++	}
++
++	if (config->isMappedLike("left", input))
++	{
++		if (mCursor % 2 == 1)
++			mCursor--;
++	}
++	else if (config->isMappedLike("right", input))
++	{
++		if (mCursor % 2 == 0 && mCursor + 1 < n)
++			mCursor++;
++	}
++	else if (config->isMappedLike("up", input))
++	{
++		if (mCursor >= 2)
++			mCursor -= 2;
++	}
++	else if (config->isMappedLike("down", input))
++	{
++		if (mCursor + 2 < n)
++			mCursor += 2;
++	}
++	else if (config->isMappedTo(BUTTON_OK, input))
++		abrir(mCursor);
++
++	return true;
++}
++
++void GuiPantherAjustes::update(int deltaTime)
++{
++	GuiComponent::update(deltaTime);
++
++	mReloj -= deltaTime;
++	if (mReloj <= 0)
++	{
++		mReloj = 1000;
++		time_t ahora = time(0);
++		struct tm t = *localtime(&ahora);
++		char buf[16];
++		strftime(buf, sizeof(buf), "%H:%M", &t);
++		mHora = (t.tm_year > 100) ? buf : "";
++	}
++}
++
++void GuiPantherAjustes::drawText(const std::shared_ptr<Font>& font, const std::string& text, float x, float y, unsigned int color, float width, Alignment align)
++{
++	if (text.empty() || font == nullptr)
++		return;
++
++	char key[128];
++	snprintf(key, sizeof(key), "%p|%.1f|%.1f|%.1f|%d|%08x|", (void*)font.get(), x, y, width, (int)align, color);
++	std::string k = std::string(key) + text;
++
++	auto it = mTexts.find(k);
++	if (it == mTexts.end())
++	{
++		if (mTexts.size() > 80)
++			mTexts.clear();
++
++		it = mTexts.emplace(k, std::unique_ptr<TextCache>(font->buildTextCache(text, Vector2f(x, y), color, width, align, 1.0f))).first;
++	}
++
++	font->renderTextCache(it->second.get());
++}
++
++void GuiPantherAjustes::render(const Transform4x4f& parentTrans)
++{
++	const float W = (float)Renderer::getScreenWidth();
++	const float H = (float)Renderer::getScreenHeight();
++	const float sx = W / 640.0f;
++	const float sy = H / 480.0f;
++	Transform4x4f t = parentTrans * getTransform();
++
++	Renderer::setMatrix(t);
++	Renderer::drawRect(0.0f, 0.0f, W, H, 0x0B1220FF);
++	if (mFondo != nullptr)
++	{
++		mFondo->render(t);
++		Renderer::setMatrix(t);
++	}
++
++	// el texto se centra de arriba abajo en la línea que se le da
++	auto medio = [](const std::shared_ptr<Font>& f, float centro) { return Math::round(centro - f->getHeight(1.0f) / 2.0f); };
++
++	// --- Cabecera: engranaje, «Ajustes» y la hora
++	drawText(mIconoTitulo, "", 28 * sx, medio(mIconoTitulo, 40 * sy), 0xFFFFFFFF);
++	drawText(mLetraTitulo, "Ajustes", 66 * sx, medio(mLetraTitulo, 40 * sy), 0xFFFFFFFF);
++	drawText(mLetraHora, mHora, 0, medio(mLetraHora, 40 * sy), 0xFFFFFFFF, W - 24 * sx, ALIGN_RIGHT);
++
++	// --- Recuadros
++	const float tw = 290 * sx, th = 74 * sy, g = 12 * sx, gy = 12 * sy;
++	for (int k = 0; k < (int)mOpciones.size(); k++)
++	{
++		const Opcion& op = mOpciones[k];
++		float x = Math::round(24 * sx + (k % 2) * (tw + g));
++		float y = Math::round(82 * sy + (k / 2) * (th + gy));
++		bool sel = (k == mCursor);
++
++		Renderer::setMatrix(t);
++		Renderer::drawRoundRect(x, y, tw, th, 16 * sy, sel ? 0xFFFFFF3C : 0xFFFFFF22);
++
++		if (sel)
++		{
++			if (mBorde != nullptr)
++			{
++				mBorde->setResize(tw + 6 * sx, th + 6 * sy);
++				mBorde->setPosition(x - 3 * sx, y - 3 * sy);
++				mBorde->render(t);
++				Renderer::setMatrix(t);
++			}
++			else
++			{
++				// sin la pieza del borde: una franja azul arriba y abajo
++				Renderer::drawRect(x + 16 * sy, y - 3 * sy, tw - 32 * sy, 3 * sy, 0x78C8FFFF);
++				Renderer::drawRect(x + 16 * sy, y + th, tw - 32 * sy, 3 * sy, 0x78C8FFFF);
++			}
++		}
++
++		float r = 21 * sy;
++		float cx = x + 16 * sx + r, cy = y + th / 2.0f;
++		Renderer::drawRoundRect(cx - r, cy - r, r * 2, r * 2, r, op.color);
++		drawText(mIcono, op.icono, cx - r, medio(mIcono, cy), 0xFFFFFFFF, r * 2, ALIGN_CENTER);
++
++		drawText(mLetraNombre, op.nombre, x + 74 * sx, medio(mLetraNombre, y + 27 * sy), 0xFFFFFFFF);
++		drawText(mLetraDetalle, op.detalle, x + 74 * sx, medio(mLetraDetalle, y + 50 * sy), 0xC8C8D4FF);
++	}
++
++	// --- Ayuda de los botones
++	drawText(mLetraAyuda, "A  Abrir      B  Volver", 0, medio(mLetraAyuda, H - 26 * sy), 0xBEBEC8FF, W, ALIGN_CENTER);
++}
+diff --git a/es-app/src/guis/GuiPantherAjustes.h b/es-app/src/guis/GuiPantherAjustes.h
+new file mode 100644
+index 00000000..8e5f5728
+--- /dev/null
++++ b/es-app/src/guis/GuiPantherAjustes.h
+@@ -0,0 +1,64 @@
++#pragma once
++#ifndef ES_APP_GUIS_GUIPANTHERAJUSTES_H
++#define ES_APP_GUIS_GUIPANTHERAJUSTES_H
++
++#include "GuiComponent.h"
++#include "resources/Font.h"
++
++#include <map>
++#include <memory>
++#include <string>
++#include <vector>
++
++class ImageComponent;
++class TextCache;
++
++// Panther OS: pantalla de Ajustes (la del engranaje). Ocho recuadros en dos columnas con su icono:
++// Wi-Fi, Información, Archivos, Mandos, Memoria USB, PortMaster, Copia de seguridad y Más opciones
++// (la lista completa de herramientas de /opt/system).
++class GuiPantherAjustes : public GuiComponent
++{
++public:
++	GuiPantherAjustes(Window* window);
++	~GuiPantherAjustes();
++
++	bool input(InputConfig* config, Input input) override;
++	void update(int deltaTime) override;
++	void render(const Transform4x4f& parentTrans) override;
++	std::vector<HelpPrompt> getHelpPrompts() override { return std::vector<HelpPrompt>(); }
++
++private:
++	struct Opcion
++	{
++		std::string icono;
++		unsigned int color;
++		std::string nombre;
++		std::string detalle;
++	};
++
++	void abrir(int cual);
++	void lanzar(const std::string& script);
++	void leerEstado();
++	void drawText(const std::shared_ptr<Font>& font, const std::string& text, float x, float y, unsigned int color, float width = 0, Alignment align = ALIGN_LEFT);
++
++	std::shared_ptr<bool>	mAlive;
++	std::vector<Opcion>		mOpciones;
++	int						mCursor;
++	bool					mUsbMontada;
++	std::string				mWifi;
++	std::string				mHora;
++	int						mReloj;
++
++	ImageComponent*			mFondo;
++	ImageComponent*			mBorde;
++	std::shared_ptr<Font>	mLetraTitulo;
++	std::shared_ptr<Font>	mLetraNombre;
++	std::shared_ptr<Font>	mLetraDetalle;
++	std::shared_ptr<Font>	mLetraAyuda;
++	std::shared_ptr<Font>	mLetraHora;
++	std::shared_ptr<Font>	mIconoTitulo;
++	std::shared_ptr<Font>	mIcono;
++	std::map<std::string, std::unique_ptr<TextCache>> mTexts;
++};
++
++#endif // ES_APP_GUIS_GUIPANTHERAJUSTES_H
 diff --git a/es-app/src/guis/GuiPantherWifi.cpp b/es-app/src/guis/GuiPantherWifi.cpp
 new file mode 100644
-index 00000000..20190e18
+index 00000000..50c7502b
 --- /dev/null
 +++ b/es-app/src/guis/GuiPantherWifi.cpp
-@@ -0,0 +1,691 @@
+@@ -0,0 +1,694 @@
 +#include "guis/GuiPantherWifi.h"
 +
 +#include "guis/GuiMsgBox.h"
 +#include "guis/GuiTextEditPopupKeyboard.h"
++#include "guis/PantherEstilo.h"
 +#include "guis/arkos4clone/ArkOSUtil.h"
 +#include "guis/arkos4clone/WifiManager.h"
 +#include "components/ImageComponent.h"
@@ -207,12 +675,14 @@ index 00000000..20190e18
 +	const float H = (float)Renderer::getScreenHeight();
 +	setSize(W, H);
 +
-+	mFontTitle = Font::get((int)(H * 0.065f), FONT_PATH_REGULAR);
-+	mFontName = Font::get((int)(H * 0.044f), FONT_PATH_REGULAR);
-+	mFontSmall = Font::get((int)(H * 0.032f), FONT_PATH_REGULAR);
-+	mFontLabel = Font::get((int)(H * 0.029f), FONT_PATH_REGULAR);
++	mFontTitle = PantherEstilo::letra(H * 0.065f, "selawksb.ttf");
++	mFontName = PantherEstilo::letra(H * 0.044f, "selawksb.ttf");
++	mFontSmall = PantherEstilo::letra(H * 0.032f);
++	mFontLabel = PantherEstilo::letra(H * 0.029f);
 +
 +	std::string fondo = Settings::getInstance()->getString("PantherWifiBackground");
++	if (fondo.empty())
++		fondo = PantherEstilo::pieza("fondo-lista.jpg");
 +	if (!fondo.empty() && Utils::FileSystem::exists(fondo))
 +	{
 +		mBackground = new ImageComponent(window, false);
@@ -806,16 +1276,61 @@ index 00000000..e262182c
 +};
 +
 +#endif // ES_APP_GUIS_GUIPANTHERWIFI_H
+diff --git a/es-app/src/guis/PantherEstilo.h b/es-app/src/guis/PantherEstilo.h
+new file mode 100644
+index 00000000..6ac79851
+--- /dev/null
++++ b/es-app/src/guis/PantherEstilo.h
+@@ -0,0 +1,38 @@
++#pragma once
++#ifndef ES_APP_GUIS_PANTHERESTILO_H
++#define ES_APP_GUIS_PANTHERESTILO_H
++
++#include "Settings.h"
++#include "resources/Font.h"
++#include "utils/FileSystemUtil.h"
++
++#include <string>
++
++// Panther OS: piezas compartidas por las pantallas propias (Wi-Fi, Ajustes). El ajuste
++// «PantherPiezas» es la carpeta _panther del tema (letra/, fondo-lista.jpg, bordes…).
++namespace PantherEstilo
++{
++	inline std::string pieza(const std::string& nombre)
++	{
++		std::string dir = Settings::getInstance()->getString("PantherPiezas");
++		if (dir.empty())
++			return "";
++
++		std::string ruta = dir + "/" + nombre;
++		return Utils::FileSystem::exists(ruta) ? ruta : "";
++	}
++
++	// letra/selawk.ttf (normal), selawksb.ttf (seminegrita), selawksl.ttf (semifina); si no está, la del menú
++	inline std::shared_ptr<Font> letra(float px, const char* archivo = "selawk.ttf")
++	{
++		std::string ruta = pieza(std::string("letra/") + archivo);
++		return Font::get((int)(px + 0.5f), ruta.empty() ? FONT_PATH_REGULAR : ruta);
++	}
++
++	inline std::shared_ptr<Font> iconos(float px)
++	{
++		return Font::get((int)(px + 0.5f), ":/fontawesome-webfont.ttf");
++	}
++}
++
++#endif // ES_APP_GUIS_PANTHERESTILO_H
 diff --git a/es-app/src/views/SystemView.cpp b/es-app/src/views/SystemView.cpp
-index 67a23327..71a813fd 100644
+index 67a23327..d9d3ead6 100644
 --- a/es-app/src/views/SystemView.cpp
 +++ b/es-app/src/views/SystemView.cpp
-@@ -17,6 +17,41 @@
+@@ -17,6 +17,42 @@
  #include "guis/GuiTextEditPopupKeyboard.h"
  #include "guis/GuiTextEditPopup.h"
  #include "SystemScreenSaver.h"
 +#include "guis/GuiTools.h"
 +#include "guis/GuiPantherWifi.h"
++#include "guis/GuiPantherAjustes.h"
 +#include "guis/arkos4clone/WifiManager.h"
 +#include "components/ControllerActivityComponent.h"
 +#include "components/BatteryIndicatorComponent.h"
@@ -852,7 +1367,7 @@ index 67a23327..71a813fd 100644
  
  // buffer values for scrolling velocity (left, stopped, right)
  const int logoBuffersLeft[] = { -5, -2, -1 };
-@@ -64,6 +99,10 @@ SystemView::~SystemView()
+@@ -64,6 +100,10 @@ SystemView::~SystemView()
  		mClockScreenSaver = nullptr;
  	}
  
@@ -863,7 +1378,7 @@ index 67a23327..71a813fd 100644
  	clearEntries();
  }
  
-@@ -365,6 +404,21 @@ void SystemView::showQuickSearch()
+@@ -365,6 +405,21 @@ void SystemView::showQuickSearch()
  
  bool SystemView::input(InputConfig* config, Input input)
  {
@@ -885,7 +1400,7 @@ index 67a23327..71a813fd 100644
  	if(input.value != 0)
  	{
  		if (config->isMappedTo("y", input))
-@@ -430,6 +484,12 @@ bool SystemView::input(InputConfig* config, Input input)
+@@ -430,6 +485,12 @@ bool SystemView::input(InputConfig* config, Input input)
  		case HORIZONTAL:
  		case HORIZONTAL_WHEEL:
  		default:
@@ -898,7 +1413,7 @@ index 67a23327..71a813fd 100644
  			if (config->isMappedLike("left", input))
  			{
  				listInput(-1);
-@@ -479,7 +539,8 @@ bool SystemView::input(InputConfig* config, Input input)
+@@ -479,7 +540,8 @@ bool SystemView::input(InputConfig* config, Input input)
  		if(config->isMappedTo(BUTTON_OK, input))
  		{
  			stopScrolling();
@@ -908,7 +1423,7 @@ index 67a23327..71a813fd 100644
  			return true;
  		}
  
-@@ -610,6 +671,18 @@ void SystemView::update(int deltaTime)
+@@ -610,6 +672,18 @@ void SystemView::update(int deltaTime)
  	listUpdate(deltaTime);
  	updateExtras([this, deltaTime](GuiComponent* p) { p->update(deltaTime); });
  	GuiComponent::update(deltaTime);
@@ -927,7 +1442,7 @@ index 67a23327..71a813fd 100644
  }
  
  void SystemView::onCursorChanged(const CursorState& /*state*/)
-@@ -838,6 +911,167 @@ void SystemView::render(const Transform4x4f& parentTrans)
+@@ -838,6 +912,167 @@ void SystemView::render(const Transform4x4f& parentTrans)
  	}
  
  	renderExtras(trans, minMax.second, INT16_MAX);
@@ -984,7 +1499,7 @@ index 67a23327..71a813fd 100644
 +void SystemView::pantherOpenTopBarItem()
 +{
 +	if (mTopBar == 0)
-+		mWindow->pushGui(new GuiTools(mWindow));
++		mWindow->pushGui(new GuiPantherAjustes(mWindow));
 +	else if (mTopBar == 1)
 +		mWindow->pushGui(new GuiPantherWifi(mWindow));
 +}
@@ -1095,7 +1610,7 @@ index 67a23327..71a813fd 100644
  }
  
  std::vector<HelpPrompt> SystemView::getHelpPrompts()
-@@ -850,6 +1084,14 @@ std::vector<HelpPrompt> SystemView::getHelpPrompts()
+@@ -850,6 +1085,14 @@ std::vector<HelpPrompt> SystemView::getHelpPrompts()
  		return prompts;
  	}
  
@@ -1110,7 +1625,7 @@ index 67a23327..71a813fd 100644
  	if (mCarousel.type == VERTICAL || mCarousel.type == VERTICAL_WHEEL)
  		prompts.push_back(HelpPrompt("up/down", _("CHOOSE")));
  	else
-@@ -915,6 +1157,47 @@ void  SystemView::getViewElements(const std::shared_ptr<ThemeData>& theme)
+@@ -915,6 +1158,47 @@ void  SystemView::getViewElements(const std::shared_ptr<ThemeData>& theme)
  		mStaticBackground = nullptr;
  	}
  
@@ -1158,7 +1673,52 @@ index 67a23327..71a813fd 100644
  	const ThemeData::ThemeElement* fixedVideoBackgroundElem = theme->getElement("system", "staticBackgroundVideo", "video");
  	if (fixedVideoBackgroundElem && (!fixedVideoBackgroundElem->has("visible") || fixedVideoBackgroundElem->get<bool>("visible")))
  	{		
-@@ -1033,8 +1316,9 @@ void SystemView::renderCarousel(const Transform4x4f& trans)
+@@ -1006,6 +1290,44 @@ void SystemView::renderCarousel(const Transform4x4f& trans)
+ 	int center = (int)(mCamOffset);
+ 	int logoCount = Math::min(mCarousel.maxLogoCount, (int)mEntries.size());
+ 
++	// Panther OS: fila fija. Cada tarjeta en su sitio (centradas en el carrusel) y la elegida crece;
++	// la distancia a la elegida da la vuelta, para que pasar de la última a la primera sea suave.
++	const int total = (int)mEntries.size();
++	if (mCarousel.fixedRow && mCarousel.type == HORIZONTAL && total > 0 && total <= mCarousel.maxLogoCount)
++	{
++		float xFijo = (mCarousel.size.x() - mCarousel.logoSize.x()) / 2.f - ((total - 1) / 2.0f) * logoSpacing[0];
++		if (mCarousel.logoPos.x() >= 0)
++			xFijo = mCarousel.logoPos.x() - ((total - 1) / 2.0f) * logoSpacing[0];
++
++		for (int i = 0; i < total; i++)
++		{
++			Transform4x4f logoTrans = carouselTrans;
++			logoTrans.translate(Vector3f(i * logoSpacing[0] + xFijo, yOff, 0));
++
++			float distance = i - mCamOffset;
++			while (distance > total / 2.0f)
++				distance -= total;
++			while (distance < -total / 2.0f)
++				distance += total;
++
++			float scale = 1.0f + ((mCarousel.logoScale - 1.0f) * (1.0f - fabs(distance)));
++			scale = Math::min(mCarousel.logoScale, Math::max(1.0f, scale));
++			scale /= mCarousel.logoScale;
++
++			int minOpacity = (int)Math::round(Math::clamp(mCarousel.minLogoOpacity, 0.0f, 1.0f) * 0xFF);
++			int opacity = (int)Math::round(minOpacity + ((0xFF - minOpacity) * (1.0f - fabs(distance))));
++			opacity = Math::max(minOpacity, Math::min(0xFF, opacity));
++
++			const std::shared_ptr<GuiComponent> &comp = mEntries.at(i).data.logo;
++			comp->setScale(scale);
++			comp->setOpacity((unsigned char)opacity);
++			comp->render(logoTrans);
++		}
++
++		Renderer::popClipRect();
++		return;
++	}
++
+ 	// Adding texture loading buffers depending on scrolling speed and status
+ 	int bufferIndex = getScrollingVelocity() + 1;
+ 	int bufferLeft = logoBuffersLeft[bufferIndex];
+@@ -1033,8 +1355,9 @@ void SystemView::renderCarousel(const Transform4x4f& trans)
  		scale = Math::min(mCarousel.logoScale, Math::max(1.0f, scale));
  		scale /= mCarousel.logoScale;
  
@@ -1170,24 +1730,27 @@ index 67a23327..71a813fd 100644
  
  		const std::shared_ptr<GuiComponent> &comp = mEntries.at(index).data.logo;
  		if (mCarousel.type == VERTICAL_WHEEL || mCarousel.type == HORIZONTAL_WHEEL) {
-@@ -1286,6 +1570,7 @@ void  SystemView::getDefaultElements(void)
+@@ -1286,6 +1609,8 @@ void  SystemView::getDefaultElements(void)
  	mCarousel.color = 0xFFFFFFD8;
  	mCarousel.colorEnd = 0xFFFFFFD8;
  	mCarousel.colorGradientHorizontal = true;
 +	mCarousel.minLogoOpacity = 0.5f;
++	mCarousel.fixedRow = false;
  	mCarousel.logoScale = 1.2f;
  	mCarousel.logoRotation = 7.5;
  	mCarousel.logoRotationOrigin.x() = -5;
-@@ -1352,6 +1637,8 @@ void SystemView::getCarouselFromTheme(const ThemeData::ThemeElement* elem)
+@@ -1352,6 +1677,10 @@ void SystemView::getCarouselFromTheme(const ThemeData::ThemeElement* elem)
  		mCarousel.colorGradientHorizontal = elem->get<std::string>("gradientType").compare("horizontal");
  	if (elem->has("logoScale"))
  		mCarousel.logoScale = elem->get<float>("logoScale");
 +	if (elem->has("minLogoOpacity"))
 +		mCarousel.minLogoOpacity = elem->get<float>("minLogoOpacity");
++	if (elem->has("fixedRow"))
++		mCarousel.fixedRow = elem->get<bool>("fixedRow");
  	if (elem->has("logoSize"))
  		mCarousel.logoSize = elem->get<Vector2f>("logoSize") * mSize;
  	if (elem->has("logoPos"))
-@@ -1402,6 +1689,7 @@ void SystemView::onHide()
+@@ -1402,6 +1731,7 @@ void SystemView::onHide()
  {
  	GuiComponent::onHide();
  	mShowing = false;
@@ -1195,7 +1758,7 @@ index 67a23327..71a813fd 100644
  	updateExtras([this](GuiComponent* p) { p->onHide(); });
  
  	if (mStaticVideoBackground)
-@@ -1411,6 +1699,7 @@ void SystemView::onHide()
+@@ -1411,6 +1741,7 @@ void SystemView::onHide()
  void SystemView::onScreenSaverActivate()
  {
  	mScreensaverActive = true;
@@ -1204,7 +1767,7 @@ index 67a23327..71a813fd 100644
  
  	if (mStaticVideoBackground)
 diff --git a/es-app/src/views/SystemView.h b/es-app/src/views/SystemView.h
-index a5c1142c..75a312de 100644
+index a5c1142c..b7a71c4f 100644
 --- a/es-app/src/views/SystemView.h
 +++ b/es-app/src/views/SystemView.h
 @@ -7,6 +7,7 @@
@@ -1215,15 +1778,16 @@ index a5c1142c..75a312de 100644
  #include <memory>
  #include <functional>
  
-@@ -43,6 +44,7 @@ struct SystemViewCarousel
+@@ -43,6 +44,8 @@ struct SystemViewCarousel
  	unsigned int color;
  	unsigned int colorEnd;
  	bool colorGradientHorizontal;
 +	float minLogoOpacity; // Panther OS: opacidad de las tarjetas que no están elegidas (0..1)
++	bool fixedRow; // Panther OS: si caben todas, quietas y centradas; se mueve solo la elegida
  	int maxLogoCount; // number of logos shown on the carousel
  	Vector2f logoSize;
  	Vector2f logoPos;
-@@ -119,6 +121,22 @@ private:
+@@ -119,6 +122,22 @@ private:
  
  	ClockScreenSaver* mClockScreenSaver;
  	bool mClockSaverActive;
@@ -1268,15 +1832,44 @@ index 46b47ae4..19d1c413 100644
  	if (mCurrentView)
  		mCurrentView->onHide();
  
+diff --git a/es-app/src/views/gamelist/GridGameListView.cpp b/es-app/src/views/gamelist/GridGameListView.cpp
+index 90cdfbbc..ca2f9d93 100644
+--- a/es-app/src/views/gamelist/GridGameListView.cpp
++++ b/es-app/src/views/gamelist/GridGameListView.cpp
+@@ -295,8 +295,12 @@ void GridGameListView::populateList(const std::vector<FileData*>& files)
+ 			}
+ 
+ 
+-			FileData* placeholder = new FileData(PLACEHOLDER, "..", this->mRoot->getSystem());
+-			mGrid.add(". .", imagePath, "", "", false, true, displayAsVirtualFolder && !imagePath.empty(), placeholder);
++			// Panther OS: en un grupo (Emuladores) se vuelve con B; sin la tarjeta «..»
++			if (!mRoot->getSystem()->isGroupSystem())
++			{
++				FileData* placeholder = new FileData(PLACEHOLDER, "..", this->mRoot->getSystem());
++				mGrid.add(". .", imagePath, "", "", false, true, displayAsVirtualFolder && !imagePath.empty(), placeholder);
++			}
+ 		}
+ 
+ 		std::string systemName = mRoot->getSystem()->getName();
+@@ -329,7 +333,7 @@ void GridGameListView::populateList(const std::vector<FileData*>& files)
+ 				}
+ 			}
+ 
+-			if (file->getType() == FOLDER && Utils::FileSystem::exists(getImagePath(file)))
++			if (file->getType() == FOLDER && Utils::FileSystem::exists(getImagePath(file)) && !mRoot->getSystem()->isGroupSystem())
+ 				mGrid.add(_U("\uF114 ") + file->getName(), getImagePath(file), file->getVideoPath(), file->getMarqueePath(), file->getFavorite(), file->getType() != GAME, isVirtualFolder(file), file);
+ 			else
+ 				mGrid.add(file->getName(), getImagePath(file), file->getVideoPath(), file->getMarqueePath(), file->getFavorite(), file->getType() != GAME, isVirtualFolder(file), file);
 diff --git a/es-core/src/ThemeData.cpp b/es-core/src/ThemeData.cpp
-index f0d92f56..0bcbdd02 100644
+index f0d92f56..2add2165 100644
 --- a/es-core/src/ThemeData.cpp
 +++ b/es-core/src/ThemeData.cpp
-@@ -239,6 +239,7 @@ std::map<std::string, std::map<std::string, ThemeData::ElementPropertyType>> The
+@@ -239,6 +239,8 @@ std::map<std::string, std::map<std::string, ThemeData::ElementPropertyType>> The
  		{ "colorEnd", COLOR },
  		{ "gradientType", STRING },
  		{ "logoScale", FLOAT },
 +		{ "minLogoOpacity", FLOAT }, // Panther OS
++		{ "fixedRow", BOOLEAN }, // Panther OS
  		{ "logoRotation", FLOAT },
  		{ "logoRotationOrigin", NORMALIZED_PAIR },
  		{ "logoSize", NORMALIZED_PAIR },
