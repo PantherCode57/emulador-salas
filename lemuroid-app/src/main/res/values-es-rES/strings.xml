@@ -123,7 +123,7 @@
     <string name="game_running_notification_title_alternative">El juego se está ejecutando</string>
     <string name="game_running_notification_message">Asegúrate de guardar tu progreso</string>
     <string name="game_loader_error_gl_incompatible">Este núcleo requiere una versión de OpenGL ES que no es compatible con tu dispositivo.</string>
-    <string name="game_loader_error_load_game">Ha ocurrido un error al cargar el juego. Asegúrate de que la ROM sea compatible con Pokemulador y vuelve a escanear tus juegos.</string>
+    <string name="game_loader_error_load_game">Ha ocurrido un error al cargar el juego. Asegúrate de que la ROM sea compatible con Pokemulador y vuelve a escanear tus juegos. Los juegos de 3DS tienen que estar descifrados (los que saca GodMode9 de tu cartucho ya lo están).</string>
     <string name="game_loader_error_save">Ha ocurrido algo malo con tu archivo guardado. Si el problema persiste, intenta deshabilitar el guardado automático.</string>
     <string name="game_loader_error_unsupported_architecture">Este núcleo no es compatible con tu dispositivo.</string>
     <string name="game_loader_error_generic">Se produjo un error. Intenta lo siguiente:\n

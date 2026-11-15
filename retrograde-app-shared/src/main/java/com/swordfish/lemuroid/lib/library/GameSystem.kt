@@ -1254,6 +1254,9 @@ data class GameSystem(
                                 ),
                             defaultSettings =
                                 listOf(
+                                    // Azahar usa Vulkan por defecto en Android, pero Lemuroid
+                                    // (LibretroDroid) solo dibuja con OpenGL: sin esto el juego se cierra.
+                                    CoreVariable("citra_graphics_api", "OpenGL"),
                                     CoreVariable("citra_use_acc_mul", "disabled"),
                                     CoreVariable("citra_touch_touchscreen", "enabled"),
                                     CoreVariable("citra_mouse_touchscreen", "disabled"),
