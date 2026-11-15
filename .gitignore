@@ -29,3 +29,6 @@ herramientas/
 pc/secretos/
 # El enlace para Android lo compila GitHub
 lemuroid-app/src/main/jniLibs/
+
+# Sesiones del compilador de Kotlin
+.kotlin/

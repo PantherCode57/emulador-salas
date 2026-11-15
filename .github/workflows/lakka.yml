@@ -67,6 +67,14 @@ jobs:
             echo "== bibliotecas clave"; ls /mnt/sys/usr/lib | grep -E "libc\.so|libstdc|libGL|libEGL|libvulkan|libgbm|libdrm|libssl|libcrypto|libz\.|libpng|libjpeg|libasound|libpulse|libSDL|libudev|libusb|libfreetype" ; strings /mnt/sys/usr/lib/libc.so.6 | grep -m1 "GNU C Library"
             echo "== kernel y modulos"; ls /mnt/sys/usr/lib/modules; sudo find /mnt/sys/usr/lib/modules -name "exfat*" -o -name "*vfat*" | head
             grep -i exfat /mnt/sys/proc/filesystems 2>/dev/null; ls /mnt/sys/usr/sbin | grep -i -E "fsck|mkfs|exfat"
+            echo "== blkid"; sudo blkid ${dev}p1 ${dev}p2
+            echo "== squashfs"; sudo unsquashfs -s /mnt/p1/SYSTEM | head -20
+            for f in /mnt/p1/firstboot.sh /mnt/p1/retroarch-overrides.txt /mnt/p1/wifi-config.txt /mnt/p1/KERNEL.md5 /mnt/p1/SYSTEM.md5 /mnt/sys/usr/lib/retroarch/retroarch-config /mnt/sys/usr/lib/retroarch/retroarch-env.conf /mnt/sys/usr/lib/udev/rules.d/95-udevil-mount.rules /mnt/sys/usr/lib/systemd/system/udevil-mount@.service /mnt/sys/etc/udevil/udevil.conf /mnt/sys/usr/lib/systemd/system/tmp-assets.mount /mnt/sys/usr/lib/systemd/system/tmp-cores.mount /mnt/sys/usr/lib/systemd/system/retroarch.target /mnt/sys/usr/bin/lakka-shutdown.sh; do echo "== $f"; sudo cat $f; done
+            echo "== retroarch.cfg completo"; grep -v '^#' /mnt/sys/etc/retroarch.cfg | grep -E "^(menu_driver|video_driver|video_context|user_language|savefile|savestate|system_dir|rgui_browser|libretro|core_options|global_core|network_cmd|joypad|input_joypad_driver|input_driver|input_menu_toggle|quit_|video_shader|overlay|playlist|screenshot|config_save|menu_show|pause_|video_fullscreen|video_vsync|audio_sync|cache_dir|log_|frontend_log)" 
+            echo "== mesa"; ls /mnt/sys/usr/lib/dri 2>/dev/null; ls /mnt/sys/usr/lib | grep -i -E "gallium|llvm|swrast"; ls /mnt/sys/usr/share/vulkan/icd.d 2>/dev/null
+            echo "== python"; ls /mnt/sys/usr/lib/python3.11 | head -5
+            echo "== parted"; ls -la /mnt/sys/usr/sbin | grep -E "parted|sgdisk|sfdisk|blkid|partprobe"
+            echo "== targets"; ls /mnt/sys/usr/lib/systemd/system/retroarch.target.wants /mnt/sys/usr/lib/systemd/system/multi-user.target.wants 2>/dev/null
           } > informe/lakka.txt 2>&1
           tail -c 3000 informe/lakka.txt; true
 
