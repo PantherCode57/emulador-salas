@@ -4,8 +4,10 @@ name: Compilar APK
 # (master sigue al Lemuroid original). Tres piezas:
 #   1. El núcleo de 3DS: Azahar con las salas de Pokemulador (nucleos/azahar). Tarda mucho,
 #      así que se guarda en caché y solo se recompila si cambian esos archivos.
-#   2. El enlace online (pc/enlace, Go + Tailscale), compilado para Android.
-#   3. La app, con la clave de Tailscale sacada del secreto POKEMULADOR_TS_KEY.
+#   2. El núcleo de GBA: mGBA con scripts de Lua para la partida compartida (nucleos/mgba).
+#      Sale para Android y para Windows (el de Windows va en el instalador de PC).
+#   3. El enlace online (pc/enlace, Go + Tailscale), compilado para Android.
+#   4. La app, con la clave de Tailscale sacada del secreto POKEMULADOR_TS_KEY.
 on:
   push:
     branches-ignore: [ master ]
@@ -13,6 +15,8 @@ on:
 
 env:
   AZAHAR_TAG: "2126.2"
+  MGBA_TAG: "0.10.5"
+  LUA_VERSION: "5.4.7"
   ANDROID_NDK_VERSION: "29.0.14206865"
 
 jobs:
@@ -65,9 +69,43 @@ jobs:
           path: nucleo/libcitra_libretro_android.so
           retention-days: 7
 
+  nucleo-mgba:
+    name: Núcleo GBA (mGBA con partida compartida)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Buscar núcleos ya compilados
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: nucleo-mgba
+          key: nucleo-mgba-${{ env.MGBA_TAG }}-${{ env.LUA_VERSION }}-${{ hashFiles('nucleos/mgba/**') }}
+
+      - name: Descargar mGBA
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: mgba-emu/mgba
+          ref: ${{ env.MGBA_TAG }}
+          path: mgba
+
+      - name: Compilar para Android y Windows
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: bash nucleos/mgba/compilar.sh
+
+      - name: Guardar núcleos
+        uses: actions/upload-artifact@v4
+        with:
+          name: nucleo-mgba
+          path: nucleo-mgba/
+          retention-days: 30
+
   apk:
     name: APK de prueba
-    needs: nucleo-azahar
+    needs: [nucleo-azahar, nucleo-mgba]
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -92,6 +130,18 @@ jobs:
         with:
           name: nucleo-azahar
           path: nucleo
+
+      - name: Traer el núcleo de mGBA
+        uses: actions/download-artifact@v4
+        with:
+          name: nucleo-mgba
+          path: nucleo-mgba
+
+      - name: Poner mGBA con scripts en lugar del de Lemuroid
+        run: |
+          cp --remove-destination nucleo-mgba/libmgba_libretro_android.so \
+            lemuroid-cores/bundled-cores/src/main/jniLibs/arm64-v8a/libmgba_libretro_android.so
+          ls -la lemuroid-cores/bundled-cores/src/main/jniLibs/arm64-v8a/libmgba_libretro_android.so
 
       - name: Poner Azahar en lugar del núcleo antiguo de 3DS
         run: |
