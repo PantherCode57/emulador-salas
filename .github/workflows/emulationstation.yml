@@ -53,7 +53,8 @@ jobs:
           cd es
           # Usa OpenGL ES 1 (glEnableClientState…). En la consola eso está en libMali, a la que
           # apuntan también libGLESv1_CM.so.1 y libGLESv2.so.2; aquí está en libGLESv1_CM.
-          cmake -S . -B build -DGLES=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXE_LINKER_FLAGS="-lGLESv1_CM" > /dev/null
+          # (va al final del enlazado: con --as-needed, delante de los objetos se descartaría)
+          cmake -S . -B build -DGLES=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD_LIBRARIES="-lGLESv1_CM" > /dev/null
           cmake --build build -j "$(nproc)"
           strip -s emulationstation
           ls -la emulationstation
