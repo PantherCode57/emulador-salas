@@ -26,6 +26,8 @@ android {
 
     // GBA-PK Multiplayer (partida compartida de GBA) va dentro de la app, tal cual, con su licencia.
     sourceSets.getByName("main").assets.srcDir("../terceros/gba-pk")
+    // Los trucos de Pokemulador (Caramelos Raros de Rojo Fuego), los mismos que en la consola.
+    sourceSets.getByName("main").assets.srcDir("../consola/trucos")
 
     if (usePlayDynamicFeatures()) {
         println("Building Google Play version. Bundling dynamic features.")

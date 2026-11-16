@@ -54,6 +54,7 @@ fun SettingsScreen(
             scanInProgress = scanInProgress,
         )
         GeneralSettings()
+        TrucosSettings()
         InputSettings(navController = navController)
         MiscSettings(
             indexingInProgress = indexingInProgress,
@@ -102,6 +103,20 @@ private fun MiscSettings(
                 Text(text = stringResource(id = R.string.settings_description_advanced_settings))
             },
             onClick = { navController.navigateToRoute(MainRoute.SETTINGS_ADVANCED) },
+        )
+    }
+}
+
+// Pokemulador: los trucos de los juegos (de momento, los Caramelos Raros de Rojo Fuego y Verde Hoja).
+@Composable
+private fun TrucosSettings() {
+    LemuroidCardSettingsGroup(
+        title = { Text(text = stringResource(id = R.string.emudex_trucos)) },
+    ) {
+        LemuroidSettingsSwitch(
+            state = booleanPreferenceState(R.string.pref_key_caramelos_frlg, false),
+            title = { Text(text = stringResource(id = R.string.emudex_caramelos_titulo)) },
+            subtitle = { Text(text = stringResource(id = R.string.emudex_caramelos_texto)) },
         )
     }
 }

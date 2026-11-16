@@ -93,4 +93,9 @@
     <string name="emudex_cargar_partida_texto">Elige el archivo .sav que descargaste (en linkcable.app, con «Download save»). Sustituye a la partida de este juego; la que tienes ahora se guarda como copia por si acaso.</string>
     <string name="emudex_sacar_partida_texto">Se guarda tu partida en un archivo .sav, para llevarla a otro emulador o a linkcable.app (con «Load save»).</string>
     <string name="emudex_elegir_archivo">Elegir archivo</string>
+
+    <!-- Trucos -->
+    <string name="emudex_trucos">Trucos</string>
+    <string name="emudex_caramelos_titulo">Caramelos Raros infinitos</string>
+    <string name="emudex_caramelos_texto">En Pokémon Rojo Fuego y Verde Hoja (versión de EE. UU.) siempre tienes 999 Caramelos Raros en el bolsillo de objetos de la mochila (RARE CANDY). Vale jugando solo y en las salas.</string>
 </resources>
