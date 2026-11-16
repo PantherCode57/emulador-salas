@@ -534,17 +534,24 @@ func (a *app) guardarVideo(id, video string) {
 // prepararSiguiente busca ya el vídeo de la siguiente, para que no haya espera entre canciones.
 func (a *app) prepararSiguiente() {
 	j := a.colaI + 1
-	if j >= len(a.cola) || a.cola[j].Video != "" || !hayRed() {
+	if j >= len(a.cola) || !hayRed() {
 		return
 	}
 	c := a.cola[j]
 	if _, ok := a.alm.descargada(c.ID); ok {
 		return
 	}
+	if c.Video != "" {
+		go func() { _, _, _ = a.yt.sonido(c.Video) }()
+		return
+	}
 	go func() {
-		if v, err := a.yt.buscar(c, ""); err == nil {
-			a.hacer(func() { a.guardarVideo(c.ID, v) })
+		v, err := a.yt.buscar(c, "")
+		if err != nil {
+			return
 		}
+		a.hacer(func() { a.guardarVideo(c.ID, v) })
+		_, _, _ = a.yt.sonido(v) // la dirección del sonido, ya pedida para cuando toque
 	}()
 }
 
@@ -572,6 +579,7 @@ func (a *app) cancionFallida(err error) {
 		}
 		// La dirección del sonido caduca: se pide otra (la segunda vez, con otro vídeo).
 		cc, turno, otra := *c, a.turnoPlay, a.fallos == 2
+		a.yt.olvidar(cc.Video)
 		a.buscando = true
 		go func() {
 			f, video, err := a.fuenteDe(cc, otra)

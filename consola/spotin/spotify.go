@@ -423,7 +423,7 @@ func (s *cuentaSpotify) biblioteca() ([]Lista, error) {
 			m, err := s.gql("libraryV3", map[string]any{
 				"filters": []string{filtro}, "order": nil, "textFilter": "",
 				"features": []string{"LIKED_SONGS", "YOUR_EPISODES_V2", "PRERELEASES", "EVENTS"},
-				"limit": 50, "offset": offset, "flatten": filtro == "Playlists", "expandedFolders": []string{},
+				"limit":    50, "offset": offset, "flatten": filtro == "Playlists", "expandedFolders": []string{},
 				"folderUri": nil, "includeFoldersWhenFlattening": filtro != "Playlists",
 			})
 			if err != nil {

@@ -67,10 +67,10 @@ const (
 
 type fuentes struct {
 	titulo, grande, nombre, normal, texto, pequena, mini, hora, horaGrande font.Face
-	iconoGrande, icono, iconoPeq                                       font.Face
-	reg                                                                *sfnt.Font
-	ic                                                                 *opentype.Font
-	icTam                                                              map[int]font.Face
+	iconoGrande, icono, iconoPeq                                           font.Face
+	reg                                                                    *sfnt.Font
+	ic                                                                     *opentype.Font
+	icTam                                                                  map[int]font.Face
 }
 
 // iconoDe: los iconos a cualquier tamaño (para las portadas dibujadas).

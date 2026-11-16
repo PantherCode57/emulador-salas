@@ -23,13 +23,13 @@ type portada struct {
 }
 
 type portadas struct {
-	app   *app
-	dir   string
-	mu    sync.Mutex
-	listo map[string]*portada // url|tamaño → lista para pintar
-	orig  map[string]image.Image
+	app     *app
+	dir     string
+	mu      sync.Mutex
+	listo   map[string]*portada // url|tamaño → lista para pintar
+	orig    map[string]image.Image
 	pedidas map[string]bool
-	cola  chan string
+	cola    chan string
 }
 
 func nuevasPortadas(a *app, dir string) *portadas {
@@ -174,4 +174,3 @@ func hsv(h, s, v float64) color.RGBA {
 	}
 	return color.RGBA{uint8(r * 255), uint8(g * 255), uint8(b * 255), 255}
 }
-

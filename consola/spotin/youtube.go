@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -56,10 +58,129 @@ type youtube struct {
 	visitante string
 	visto     time.Time
 	http      *http.Client
+
+	// Direcciones del sonido ya pedidas (valen unas 6 horas): así la siguiente canción empieza ya.
+	muCache sync.Mutex
+	cache   map[string]sonidoGuardado
+	// Solo una consulta a yt-dlp a la vez por vídeo (la de tocar y la de adelantarse a la siguiente).
+	enCurso map[string]chan struct{}
+}
+
+type sonidoGuardado struct {
+	f     fuenteSonido
+	cli   string
+	hasta time.Time
+}
+
+// yt-dlp: el que se mantiene al día con lo que YouTube cambia. Sin él, se prueban los clientes de
+// Spotin (que YouTube bloquea si no se demuestra que no eres un robot).
+var ytdlpBin = entorno("SPOTIN_YTDLP", filepath.Join(filepath.Dir(ejecutable()), "bin", "yt-dlp"))
+
+func ejecutable() string {
+	if e, err := os.Executable(); err == nil {
+		return e
+	}
+	return "."
 }
 
 func nuevoYouTube() *youtube {
-	return &youtube{http: &http.Client{Timeout: 25 * time.Second}}
+	return &youtube{http: &http.Client{Timeout: 25 * time.Second}, cache: map[string]sonidoGuardado{},
+		enCurso: map[string]chan struct{}{}}
+}
+
+// sonido: la dirección del sonido del vídeo (de la memoria si se pidió hace poco).
+func (y *youtube) sonido(video string) (*fuenteSonido, string, error) {
+	for {
+		y.muCache.Lock()
+		if g, ok := y.cache[video]; ok && time.Now().Before(g.hasta) {
+			y.muCache.Unlock()
+			f := g.f
+			return &f, g.cli, nil
+		}
+		if espera, ok := y.enCurso[video]; ok { // ya lo está pidiendo otro hilo: a esperar su respuesta
+			y.muCache.Unlock()
+			<-espera
+			y.muCache.Lock()
+			_, hay := y.cache[video]
+			y.muCache.Unlock()
+			if hay {
+				continue
+			}
+			break
+		}
+		y.enCurso[video] = make(chan struct{})
+		y.muCache.Unlock()
+		break
+	}
+	f, cli, err := y.sonidoNuevo(video)
+	y.muCache.Lock()
+	if err == nil {
+		y.cache[video] = sonidoGuardado{f: *f, cli: cli, hasta: time.Now().Add(5 * time.Hour)}
+	}
+	if c, ok := y.enCurso[video]; ok {
+		close(c)
+		delete(y.enCurso, video)
+	}
+	y.muCache.Unlock()
+	return f, cli, err
+}
+
+// olvidar: la dirección guardada ya no vale (YouTube la cortó).
+func (y *youtube) olvidar(video string) {
+	y.muCache.Lock()
+	delete(y.cache, video)
+	y.muCache.Unlock()
+}
+
+func (y *youtube) sonidoNuevo(video string) (*fuenteSonido, string, error) {
+	if _, err := os.Stat(ytdlpBin); err == nil {
+		f, err := y.sonidoYtdlp(video)
+		if err == nil {
+			return f, "yt-dlp", nil
+		}
+		logf("yt-dlp %s: %v", video, err)
+	}
+	return y.sonidoClientes(video)
+}
+
+func (y *youtube) sonidoYtdlp(video string) (*fuenteSonido, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, ytdlpBin, "-J", "--no-warnings", "--no-playlist", "--no-progress",
+		"-f", "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio", "https://music.youtube.com/watch?v="+video)
+	var errOut bytes.Buffer
+	cmd.Stderr = &errOut
+	out, err := cmd.Output()
+	if err != nil {
+		msg := strings.TrimSpace(errOut.String())
+		if i := strings.LastIndex(msg, "\n"); i >= 0 {
+			msg = msg[i+1:]
+		}
+		return nil, fmt.Errorf("%v: %s", err, msg)
+	}
+	var d struct {
+		URL       string            `json:"url"`
+		Ext       string            `json:"ext"`
+		Acodec    string            `json:"acodec"`
+		Tamano    float64           `json:"filesize"`
+		Aprox     float64           `json:"filesize_approx"`
+		Cabeceras map[string]string `json:"http_headers"`
+	}
+	if err := json.Unmarshal(out, &d); err != nil {
+		return nil, err
+	}
+	if d.URL == "" {
+		return nil, errors.New("yt-dlp no ha dado la dirección")
+	}
+	tipo := "audio/webm; codecs=\"" + d.Acodec + "\""
+	if d.Ext == "m4a" || d.Ext == "mp4" {
+		tipo = "audio/mp4; codecs=\"" + d.Acodec + "\""
+	}
+	tam := int64(d.Tamano)
+	if tam == 0 {
+		tam = int64(d.Aprox)
+	}
+	return &fuenteSonido{Ruta: d.URL, Cabeceras: d.Cabeceras, Tipo: tipo, Tamano: tam}, nil
 }
 
 // visitor: el «visitorData» de una visita anónima a YouTube Music (se pide una vez cada pocas horas).
@@ -428,8 +549,8 @@ func (y *youtube) buscar(s Cancion, evitar string) (string, error) {
 
 // ---- Sonido ---------------------------------------------------------------------------------------
 
-// sonido: la dirección del sonido de un vídeo (la mejor: Opus si hay), probando los clientes.
-func (y *youtube) sonido(video string) (*fuenteSonido, string, error) {
+// sonidoClientes: la dirección del sonido con los clientes de Spotin (la mejor: Opus si hay).
+func (y *youtube) sonidoClientes(video string) (*fuenteSonido, string, error) {
 	var ultimo error = errors.New("sin sonido")
 	for _, cli := range clientesSonido {
 		m, err := y.pedir("player", cli, map[string]any{"videoId": video, "contentCheckOk": true, "racyCheckOk": true})
@@ -532,4 +653,3 @@ func probarYouTube(q string) {
 	st, _ := os.Stat(tmp)
 	fmt.Println("descargado:", st.Size(), "bytes en", tmp)
 }
-
