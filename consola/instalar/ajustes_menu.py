@@ -37,7 +37,7 @@ for sistema in ("gb", "gbc", "gba", "n64", "nds", "ppsspp", "all", "favorites", 
     poner("string", f"{sistema}.defaultView", "grid")
 # Con el menú de Panther OS: WhatsApp y Salas se abren sin pasar por su lista (si tienen un solo
 # .sh) y la pantalla de Wi-Fi usa el fondo de las listas.
-poner("string", "PantherDirectLaunch", "whatsapp,salas")
+poner("string", "PantherDirectLaunch", "whatsapp,spotin,salas")
 poner("string", "PantherWifiBackground", "/roms/themes/es-theme-panther/_panther/fondo-lista.jpg")
 # Pantalla principal: solo Favoritos, WhatsApp y Emuladores (las consolas), en ese orden y quietas.
 # Fuera RetroArch (las opciones están en el engranaje), «Todos» y lo que trae el sistema que no son
@@ -49,7 +49,7 @@ for s in ("retroarch", "pico-8", "scummvm", "j2me", "wolf", "alg", "pymo"):
         ocultos.append(s)
 poner("string", "HiddenSystems", ";".join(ocultos))
 poner("string", "CollectionSystemsAuto", "favorites")
-poner("string", "PantherSystemOrder", "favorites,whatsapp,Emuladores,salas")
+poner("string", "PantherSystemOrder", "favorites,whatsapp,spotin,Emuladores,salas")
 poner("string", "Emuladores.defaultView", "grid")
 # Carpeta de piezas del tema para las pantallas propias (letra, fondo, bordes).
 poner("string", "PantherPiezas", "/roms/themes/es-theme-panther/_panther")

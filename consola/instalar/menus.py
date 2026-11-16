@@ -49,6 +49,17 @@ NUEVOS = """	<system>
 		<release>2026</release>
 	</system>
 	<system>
+		<name>spotin</name>
+		<fullname>Spotin</fullname>
+		<path>/roms/spotin/</path>
+		<extension>.sh .SH</extension>
+		<command>%ROM%</command>
+		<platform>spotin</platform>
+		<theme>spotin</theme>
+		<manufacturer>Panther OS</manufacturer>
+		<release>2026</release>
+	</system>
+	<system>
 		<name>salas</name>
 		<fullname>Salas</fullname>
 		<path>/roms/salas/</path>
@@ -88,8 +99,14 @@ def sistemas(ruta: Path):
         return bloque
 
     t = re.sub(r"<system>.*?</system>", cambiar, t, flags=re.S)
-    if "<name>whatsapp</name>" not in t:
-        t, n = re.subn(r"(<systemList[^>]*>[ \t]*\r?\n)", lambda m: m.group(1) + NUEVOS, t, count=1)
+    # Los apartados nuevos que falten, cada uno por separado (Spotin llegó después que los otros).
+    faltan = ""
+    for bloque in re.findall(r"\t<system>.*?</system>\n", NUEVOS, flags=re.S):
+        nombre = re.search(r"<name>(.*?)</name>", bloque).group(1)
+        if f"<name>{nombre}</name>" not in t:
+            faltan += bloque
+    if faltan:
+        t, n = re.subn(r"(<systemList[^>]*>[ \t]*\r?\n)", lambda m: m.group(1) + faltan, t, count=1)
         if n == 0:
             raise SystemExit(f"no encuentro <systemList> en {ruta}")
     ruta.write_text(t, encoding="utf-8")
@@ -110,5 +127,5 @@ def idioma(ruta: Path):
 for r in ("/etc/emulationstation/es_systems.cfg", "/etc/emulationstation/es_systems.sd1"):
     sistemas(Path(r))
 idioma(Path("/home/ark/.emulationstation/es_settings.cfg"))
-for c in ("/roms/whatsapp", "/roms/salas"):
+for c in ("/roms/whatsapp", "/roms/salas", "/roms/spotin"):
     Path(c).mkdir(exist_ok=True)

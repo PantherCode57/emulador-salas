@@ -21,13 +21,21 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: consola/whatsapp/go.mod
-          cache-dependency-path: consola/whatsapp/go.sum
+          cache-dependency-path: |
+            consola/whatsapp/go.sum
+            consola/spotin/go.sum
       - name: WhatsApp
         working-directory: consola/whatsapp
         run: |
           go vet ./...
           CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/whatsapp .
           ../../piezas/whatsapp -prueba ../../piezas/pantallas
+      - name: Spotin
+        working-directory: consola/spotin
+        run: |
+          go vet ./...
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/spotin .
+          ../../piezas/spotin -prueba ../../piezas/pantallas-spotin
       - name: Animación de arranque
         working-directory: consola/arranque
         run: |
