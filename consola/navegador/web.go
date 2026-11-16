@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -87,14 +88,15 @@ type resultado struct {
 	Titulo, URL, Resumen string
 }
 
-// buscarWeb: DuckDuckGo (su versión sin JavaScript); si no da nada, Bing.
+// buscarWeb: Bing; si no da nada, DuckDuckGo (su versión sin JavaScript, que a veces pide
+// demostrar que no eres un robot y entonces no sirve).
 func buscarWeb(q string) ([]resultado, error) {
-	res, err := buscarDDG(q)
+	res, err := buscarBing(q)
 	if len(res) > 0 {
 		return res, nil
 	}
-	logf("DuckDuckGo: %d resultados (%v); pruebo con Bing", len(res), err)
-	res2, err2 := buscarBing(q)
+	logf("Bing: %d resultados (%v); pruebo con DuckDuckGo", len(res), err)
+	res2, err2 := buscarDDG(q)
 	if len(res2) > 0 {
 		return res2, nil
 	}
@@ -184,15 +186,20 @@ func buscarBing(q string) ([]resultado, error) {
 				return true
 			}
 			switch {
+			// Ahora el enlace envuelve al título (<a><h2>…</h2></a>); antes iba dentro (<h2><a>).
+			case m.Data == "a" && r.URL == "" && contiene(m, "h2"):
+				r.URL, r.Titulo = enlaceBing(atributo(m, "href"), base), textoNodo(m)
+				return false
 			case m.Data == "h2" && r.URL == "":
 				recorrer(m, func(a *html.Node) bool {
 					if a.Type == html.ElementNode && a.Data == "a" && r.URL == "" {
-						if u, err := base.Parse(atributo(a, "href")); err == nil {
-							r.URL, r.Titulo = u.String(), textoNodo(a)
-						}
+						r.URL, r.Titulo = enlaceBing(atributo(a, "href"), base), textoNodo(a)
 					}
 					return true
 				})
+				return false
+			case tieneClase(m, "b_caption"):
+				r.Resumen = textoNodo(m)
 				return false
 			case m.Data == "p" && r.Resumen == "":
 				r.Resumen = textoNodo(m)
@@ -207,7 +214,38 @@ func buscarBing(q string) ([]resultado, error) {
 	return res, nil
 }
 
+// enlaceBing: a veces Bing pasa los enlaces por su redirección (/ck/a?…&u=a1<base64>): se saca el
+// de verdad.
+func enlaceBing(href string, base *url.URL) string {
+	u, err := base.Parse(href)
+	if err != nil {
+		return ""
+	}
+	if strings.HasSuffix(u.Host, "bing.com") && strings.HasPrefix(u.Path, "/ck/") {
+		if d := u.Query().Get("u"); strings.HasPrefix(d, "a1") {
+			if b, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(d[2:], "=")); err == nil {
+				if v, err := url.Parse(string(b)); err == nil && v.Host != "" {
+					return v.String()
+				}
+			}
+		}
+	}
+	return u.String()
+}
+
 // ---- Ayudas para el HTML ------------------------------------------------------------------------------
+
+// contiene: si dentro de n hay alguna etiqueta así.
+func contiene(n *html.Node, etiqueta string) bool {
+	hay := false
+	recorrer(n, func(m *html.Node) bool {
+		if m != n && m.Type == html.ElementNode && m.Data == etiqueta {
+			hay = true
+		}
+		return !hay
+	})
+	return hay
+}
 
 // recorrer visita los nodos en orden; si fn devuelve false, no baja por ese.
 func recorrer(n *html.Node, fn func(*html.Node) bool) {
