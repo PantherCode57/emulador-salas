@@ -47,8 +47,10 @@ p = pathlib.Path("/home/ark/.emulationstation/es_settings.cfg")
 t = p.read_text(encoding="utf-8")
 if '<bool name="VolumePopup"' in t:
     t = re.sub(r'<bool name="VolumePopup" value="[^"]*" />', '<bool name="VolumePopup" value="false" />', t)
-else:
+elif "</config>" in t:
     t = t.replace("</config>", '\t<bool name="VolumePopup" value="false" />\n</config>')
+else:  # el de la consola no tiene raíz: una línea por ajuste
+    t = t.rstrip("\n") + '\n<bool name="VolumePopup" value="false" />\n'
 p.write_text(t, encoding="utf-8")
 for f in pathlib.Path("/roms/themes/es-theme-panther").rglob("*.xml"):
     x = f.read_text(encoding="utf-8")

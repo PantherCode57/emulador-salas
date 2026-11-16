@@ -17,36 +17,78 @@ import (
 //   - /dev/shm/panther-capa: el aviso de arriba (modo 1) o el chat abierto encima (modo 2).
 //   - /dev/shm/panther-panel: los mensajes de la derecha de la pantalla principal (modo 1).
 type capaCompartida struct {
-	mem []byte
-	tam int
+	ruta string
+	mem  []byte
+	tam  int
+	ino  uint64
+	// lo último que se puso, para volver a ponerlo si el archivo desaparece (ver vigilar)
+	modo, x, y int
+	img        *image.RGBA
+	dura       time.Duration
+	empieza    time.Time
 }
 
 const cabeceraCapa = 64
 
 func abrirCapa(ruta string, maxAncho, maxAlto int) (*capaCompartida, error) {
-	tam := cabeceraCapa + maxAncho*maxAlto*4
-	f, err := os.OpenFile(ruta, os.O_RDWR|os.O_CREATE, 0o644)
-	if err != nil {
+	c := &capaCompartida{ruta: ruta, tam: cabeceraCapa + maxAncho*maxAlto*4}
+	if err := c.mapear(); err != nil {
 		return nil, err
+	}
+	return c, nil
+}
+
+func (c *capaCompartida) mapear() error {
+	f, err := os.OpenFile(c.ruta, os.O_RDWR|os.O_CREATE, 0o644)
+	if err != nil {
+		return err
 	}
 	defer f.Close()
 	_ = f.Chmod(0o644)
-	if st, err := f.Stat(); err != nil || st.Size() != int64(tam) {
-		if err := f.Truncate(int64(tam)); err != nil {
-			return nil, err
+	st, err := f.Stat()
+	if err != nil || st.Size() != int64(c.tam) {
+		if err := f.Truncate(int64(c.tam)); err != nil {
+			return err
 		}
 	}
-	mem, err := syscall.Mmap(int(f.Fd()), 0, tam, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+	mem, err := syscall.Mmap(int(f.Fd()), 0, c.tam, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	c := &capaCompartida{mem: mem, tam: tam}
+	if c.mem != nil {
+		_ = syscall.Munmap(c.mem)
+	}
+	c.mem = mem
+	if s, ok := st.Sys().(*syscall.Stat_t); ok {
+		c.ino = s.Ino
+	}
 	copy(mem[0:4], "PCAP")
 	binary.LittleEndian.PutUint32(mem[4:], 1)
 	if atomic.LoadUint32(c.u32(8))&1 == 1 { // se quedó a medias (el servicio se cerró escribiendo)
 		atomic.AddUint32(c.u32(8), 1)
 	}
-	return c, nil
+	return nil
+}
+
+// vigilar: systemd borra los archivos de /dev/shm de un usuario cuando se cierra su última sesión
+// (RemoveIPC). Si ha desaparecido, se vuelve a crear con lo que tenía; el menú y el emulador lo
+// vuelven a abrir solos.
+func (c *capaCompartida) vigilar() {
+	if c == nil {
+		return
+	}
+	st, err := os.Stat(c.ruta)
+	if err == nil {
+		if s, ok := st.Sys().(*syscall.Stat_t); ok && s.Ino == c.ino {
+			return
+		}
+	}
+	if err := c.mapear(); err != nil {
+		logf("no se puede volver a crear %s: %v", c.ruta, err)
+		return
+	}
+	logf("%s había desaparecido: vuelto a crear", c.ruta)
+	c.escribir(c.modo, c.img, c.x, c.y, c.dura, c.empieza)
 }
 
 func (c *capaCompartida) u32(off int) *uint32 { return (*uint32)(unsafe.Pointer(&c.mem[off])) }
@@ -57,6 +99,11 @@ func (c *capaCompartida) poner(modo int, img *image.RGBA, x, y int, dura time.Du
 	if c == nil {
 		return
 	}
+	c.modo, c.img, c.x, c.y, c.dura, c.empieza = modo, img, x, y, dura, time.Now()
+	c.escribir(modo, img, x, y, dura, c.empieza)
+}
+
+func (c *capaCompartida) escribir(modo int, img *image.RGBA, x, y int, dura time.Duration, empieza time.Time) {
 	atomic.AddUint32(c.u32(8), 1) // impar: escribiendo
 	w, h := 0, 0
 	if img != nil && modo != 0 {
@@ -93,7 +140,7 @@ func (c *capaCompartida) poner(modo int, img *image.RGBA, x, y int, dura time.Du
 	le.PutUint32(c.mem[20:], uint32(h))
 	le.PutUint32(c.mem[24:], uint32(x))
 	le.PutUint32(c.mem[28:], uint32(y))
-	le.PutUint64(c.mem[32:], uint64(time.Now().UnixMilli()))
+	le.PutUint64(c.mem[32:], uint64(empieza.UnixMilli()))
 	le.PutUint32(c.mem[40:], uint32(dura.Milliseconds()))
 	c.latido()
 	atomic.AddUint32(c.u32(8), 1) // par: listo

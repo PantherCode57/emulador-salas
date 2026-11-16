@@ -158,6 +158,9 @@ func (a *app) bucleServicio() {
 		case d := <-a.teclasVol:
 			a.cambiarVolumen(5 * d)
 		case <-barraReloj.C:
+			for _, c := range []*capaCompartida{a.capa, a.panel, a.barra, a.volumen} {
+				c.vigilar() // por si systemd las ha borrado al cerrarse una sesión
+			}
 			a.ponerBarra(false) // la hora, la batería y si hay mensajes
 		case err := <-raHecho:
 			logf("la pantalla de WhatsApp se ha cerrado (%v)", err)
