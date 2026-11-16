@@ -71,6 +71,11 @@ type app struct {
 	panelHecho      time.Time
 	ultimoAviso     *Chat
 	ultimoAvisoHora time.Time
+	// El recuadro de arriba, el volumen y las grabaciones (barra.go, captura.go).
+	barra, volumen *capaCompartida
+	barraVista     estadoBarra
+	grab           *grabacion
+	teclasVol      <-chan int
 }
 
 func nuevaApp(f *fuentes) *app {

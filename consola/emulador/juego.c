@@ -370,6 +370,7 @@ int juego(const struct opciones *o) {
 	static int16_t muestras[4096 * 2];
 	bool en_menu = false, rapido = false, chat = false;
 	int factor = ajuste_factor_rapido(), salto_puesto = 0;
+	uint64_t r2_desde = 0;
 	Uint64 frec_reloj = SDL_GetPerformanceFrequency();
 
 	while (!salir_ya) {
@@ -398,11 +399,20 @@ int juego(const struct opciones *o) {
 			if (combo) { /* (R3 y F son del chat de WhatsApp: los mira el servicio) */
 				en_menu = true;
 				menu_abrir(titulo, existe(rapido_ruta));
-			} else if (nuevos & BOT_R2) {
-				rapido = !rapido;
-				char s[40];
-				snprintf(s, sizeof(s), "Velocidad ×%d", factor);
-				aviso(rapido ? s : "Velocidad normal");
+			} else {
+				/* R2 va rápido, pero L2 + R2 es grabar la pantalla (lo hace el servicio): se espera
+				 * un poquito por si llega L2. */
+				if ((nuevos & BOT_R2) && !(estado & BOT_L2))
+					r2_desde = ahora_ms();
+				if (estado & BOT_L2)
+					r2_desde = 0;
+				if (r2_desde && ahora_ms() - r2_desde > 150) {
+					r2_desde = 0;
+					rapido = !rapido;
+					char s[40];
+					snprintf(s, sizeof(s), "Velocidad ×%d", factor);
+					aviso(rapido ? s : "Velocidad normal");
+				}
 			}
 		} else if (!chat) {
 			switch (menu_pulsar(nuevos, &factor)) {

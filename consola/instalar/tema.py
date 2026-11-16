@@ -49,9 +49,10 @@ PANTHER_XML = """<theme>
       <color>FFFFFFE0</color>
       <alignment>left</alignment>
     </text>
-    <!-- En las listas solo la hora, arriba a la derecha; la batería se aparta fuera de la pantalla. -->
+    <!-- En las listas, la hora y la batería van en el recuadro negro de arriba que pinta el servicio
+         de Panther (consola/whatsapp/barra.go): las del tema se apartan fuera de la pantalla. -->
     <text name="clock_lista">
-      <pos>0.71875 0.0375</pos>
+      <pos>0 2</pos>
       <size>0.25 0.091667</size>
       <fontPath>./letra/selawksl.ttf</fontPath>
       <fontSize>0.0625</fontSize>

@@ -54,6 +54,16 @@ func servicio(f *fuentes) {
 		logf("sin panel: %v", err)
 	}
 	a.capa.poner(0, nil, 0, 0, 0)
+	if a.barra, err = abrirCapa("/dev/shm/panther-barra", maxAnchoBarr, altoBarra); err != nil {
+		logf("sin recuadro de arriba: %v", err)
+	}
+	if a.volumen, err = abrirCapa("/dev/shm/panther-volumen", anchoVolumen, altoVolumen); err != nil {
+		logf("sin barra de volumen: %v", err)
+	}
+	a.volumen.poner(0, nil, 0, 0, 0)
+	if a.teclasVol, err = abrirTeclasVolumen(); err != nil {
+		logf("%v", err)
+	}
 	if a.mando, err = abrirMando(); err != nil {
 		logf("sin mando: %v (no se podrá abrir el chat encima)", err)
 	}
@@ -104,7 +114,12 @@ func servicio(f *fuentes) {
 		a.capa.poner(0, nil, 0, 0, 0)
 		a.mando.agarrar(false)
 	}
+	if a.grab != nil {
+		a.cambiarGrabacion()
+		time.Sleep(2 * time.Second)
+	}
 	a.panel.poner(0, nil, 0, 0, 0)
+	a.barra.poner(0, nil, 0, 0, 0)
 	w.cerrar()
 	ln.Close()
 	log.Printf("servicio parado")
@@ -119,6 +134,9 @@ func (a *app) bucleServicio() {
 	if a.mando != nil {
 		cambiosMando = a.mando.cambios
 	}
+	a.ponerBarra(true)
+	barraReloj := time.NewTicker(2 * time.Second)
+	defer barraReloj.Stop()
 	for {
 		var raHecho <-chan error
 		if a.ra != nil {
@@ -137,6 +155,10 @@ func (a *app) bucleServicio() {
 			}
 		case e := <-cambiosMando:
 			a.mandoCambia(e)
+		case d := <-a.teclasVol:
+			a.cambiarVolumen(5 * d)
+		case <-barraReloj.C:
+			a.ponerBarra(false) // la hora, la batería y si hay mensajes
 		case err := <-raHecho:
 			logf("la pantalla de WhatsApp se ha cerrado (%v)", err)
 			a.ra = nil
@@ -176,6 +198,7 @@ func (a *app) bucleServicio() {
 			a.panelSucio = false
 			a.panelHecho = time.Now()
 			a.panel.poner(1, a.dibujarPanel(), sitioPanel.X, sitioPanel.Y, 0)
+			a.ponerBarra(false) // el logo de WhatsApp sale o se va con los mensajes sin leer
 		}
 	}
 }
@@ -186,6 +209,9 @@ func (a *app) bucleServicio() {
 func (a *app) mandoCambia(e uint32) {
 	nuevos := e &^ a.mandoAntes
 	a.mandoAntes = e
+	if !a.esperaSoltar {
+		a.combinaciones(e, nuevos) // capturas (L1+R1) y grabar (L2+R2), en cualquier pantalla
+	}
 	switch a.modo {
 	case modoFondo:
 		if nuevos&(bR3|bF) != 0 && hayQuienPinte() {

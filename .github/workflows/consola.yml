@@ -95,7 +95,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Herramientas
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq libsdl2-dev zlib1g-dev > /dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libsdl2-dev zlib1g-dev libdrm-dev > /dev/null
       - name: Código de mGBA y de Lua
         run: |
           mkdir -p fuera && cd fuera
@@ -111,10 +111,15 @@ jobs:
       - name: Emulador
         working-directory: consola/emulador
         run: make MGBA=$GITHUB_WORKSPACE/fuera/mgba-lib
+      - name: Captura de pantalla
+        working-directory: consola/captura
+        run: gcc -O2 -Wall -o captura captura.c $(pkg-config --cflags --libs libdrm) -lz
       - uses: actions/upload-artifact@v4
         with:
           name: consola-emulador-arm64
-          path: consola/emulador/emulador
+          path: |
+            consola/emulador/emulador
+            consola/captura/captura
           retention-days: 7
 
   mgba:

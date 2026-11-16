@@ -14,6 +14,7 @@ const (
 	bF  = 1 << 16
 )
 
-func abrirMando() (*mando, error) { return nil, errors.New("solo en la consola") }
+func abrirMando() (*mando, error)          { return nil, errors.New("solo en la consola") }
+func abrirTeclasVolumen() (<-chan int, error) { return nil, errors.New("solo en la consola") }
 func (m *mando) ahora() uint32   { return 0 }
 func (m *mando) agarrar(si bool) {}

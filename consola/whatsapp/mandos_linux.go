@@ -113,6 +113,59 @@ func abrirMando() (*mando, error) {
 	return nil, fmt.Errorf("no encuentro el mando")
 }
 
+// abrirTeclasVolumen: los botones + y − de la consola (en la XF35H, «rk29-keypad»). Por el canal
+// llega +1 o −1 cada vez que se pulsan (y mientras se mantienen).
+func abrirTeclasVolumen() (<-chan int, error) {
+	rutas, _ := filepath.Glob("/dev/input/event*")
+	for _, r := range rutas {
+		f, err := os.OpenFile(r, os.O_RDONLY, 0)
+		if err != nil {
+			continue
+		}
+		var bits [96]byte
+		if ioctl(f.Fd(), ioc(2, 0x20+1, uintptr(len(bits))), uintptr(unsafe.Pointer(&bits[0]))) != nil ||
+			bits[115/8]&(1<<(115%8)) == 0 || bits[0x130/8]&(1<<(0x130%8)) != 0 { // con KEY_VOLUMEUP y sin ser el mando
+			f.Close()
+			continue
+		}
+		ch := make(chan int, 16)
+		go func() {
+			buf := make([]byte, 24*16)
+			for {
+				n, err := f.Read(buf)
+				if err != nil {
+					logf("botones de volumen: %v", err)
+					return
+				}
+				for i := 0; i+24 <= n; i += 24 {
+					tipo := binary.LittleEndian.Uint16(buf[i+16:])
+					codigo := binary.LittleEndian.Uint16(buf[i+18:])
+					valor := int32(binary.LittleEndian.Uint32(buf[i+20:]))
+					if tipo != 1 || valor == 0 { // solo al pulsar (1) y al mantener (2)
+						continue
+					}
+					d := 0
+					switch codigo {
+					case 115: // KEY_VOLUMEUP
+						d = 1
+					case 114: // KEY_VOLUMEDOWN
+						d = -1
+					}
+					if d != 0 {
+						select {
+						case ch <- d:
+						default:
+						}
+					}
+				}
+			}
+		}()
+		logf("botones de volumen: %s", r)
+		return ch, nil
+	}
+	return nil, fmt.Errorf("no encuentro los botones de volumen")
+}
+
 // leerEstado: lo que está pulsado de verdad ahora mismo.
 func (m *mando) leerEstado() uint32 {
 	var bits [96]byte

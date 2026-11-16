@@ -306,5 +306,18 @@ func dibujarPruebas(f *fuentes, carpeta string) error {
 	for _, c := range a.w.chats {
 		c.NoLeidos = 0
 	}
-	return encima("13-panel-vacio", a.dibujarPanel(), sitioPanel.X, sitioPanel.Y)
+	if err := encima("13-panel-vacio", a.dibujarPanel(), sitioPanel.X, sitioPanel.Y); err != nil {
+		return err
+	}
+	for _, e := range []estadoBarra{{hora: "22:47", bateria: 27, cargando: true, whatsapp: true}, {hora: "9:05", bateria: 12, grabando: true}} {
+		b := a.dibujarBarra(e)
+		nombre := "14-barra"
+		if e.grabando {
+			nombre = "15-barra-grabando"
+		}
+		if err := encima(nombre, b, 640-8-b.Bounds().Dx(), 4); err != nil {
+			return err
+		}
+	}
+	return encima("16-volumen", a.dibujarVolumen(65), 14, (480-altoVolumen)/2)
 }
