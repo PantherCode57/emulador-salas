@@ -40,6 +40,21 @@ func (a *app) dibujar() {
 	if a.avisoTexto != "" {
 		a.dibujarAviso()
 	}
+	if !a.volHasta.IsZero() && a.volumen >= 0 {
+		a.dibujarVolumen()
+	}
+}
+
+// dibujarVolumen: la barra que sale al subir o bajar el volumen.
+func (a *app) dibujarVolumen() {
+	l := a.l
+	r := image.Rect(ancho/2-150, 22, ancho/2+150, 66)
+	l.redondeado(r, 22, color.RGBA{0, 0, 0, 0xd8})
+	l.centrado(image.Rect(r.Min.X+10, r.Min.Y, r.Min.X+46, r.Max.Y), icAltavoz, l.f.icono, colTexto)
+	x0, x1 := r.Min.X+52, r.Max.X-62
+	l.redondeado(image.Rect(x0, 41, x1, 47), 3, color.RGBA{70, 70, 70, 70})
+	l.redondeado(image.Rect(x0, 41, x0+(x1-x0)*a.volumen/100, 47), 3, colVerde)
+	l.derecha(image.Rect(x1+6, r.Min.Y, r.Max.X-14, r.Max.Y), fmt.Sprintf("%d %%", a.volumen), l.f.pequena, colTexto)
 }
 
 func (a *app) dibujarCarga() {
@@ -464,7 +479,16 @@ func (a *app) dibujarSonando() {
 	l.centrado(image.Rect(x0+94, 196, x0+146, 248), ic, l.f.iconoGrande, color.RGBA{10, 14, 24, 255})
 	l.centrado(image.Rect(x0+180, 200, x0+220, 244), icSiguiente, l.f.icono, colTexto)
 	if _, ok := a.alm.descargada(c.ID); ok {
-		l.centrado(image.Rect(x0+260, 200, x0+300, 244), icHecho, l.f.iconoPeq, colVerde)
+		l.centrado(image.Rect(x0+236, 200, x0+262, 244), icHecho, l.f.iconoPeq, colVerde)
+	}
+	// El volumen, con cómo cambiarlo.
+	if a.volumen < 0 {
+		a.volumen = leerVolumen()
+	}
+	if a.volumen >= 0 {
+		l.centrado(image.Rect(x0+262, 196, x0+300, 224), icAltavoz, l.f.iconoPeq, colSuave)
+		l.centrado(image.Rect(x0+250, 220, x0+312, 240), fmt.Sprintf("%d %%", a.volumen), l.f.mini, colSuave)
+		l.centrado(image.Rect(x0+236, 238, x0+326, 256), "arriba / abajo", l.f.mini, colApagado)
 	}
 	// Letra: la línea de ahora y las de alrededor.
 	y := 278

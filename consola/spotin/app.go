@@ -76,6 +76,9 @@ type app struct {
 
 	sesionEstado string // texto bajo la dirección en la pantalla de sesión
 
+	volumen  int       // 0..100 (-1 si no se sabe)
+	volHasta time.Time // hasta cuándo se ve la barra del volumen
+
 	avisoTexto string
 	avisoHasta time.Time
 	cargaHasta time.Time
@@ -86,7 +89,7 @@ type app struct {
 }
 
 func nuevaApp(f *fuentes) *app {
-	a := &app{f: f, l: nuevoLienzo(f), tareas: make(chan func(), 256), salir: make(chan struct{}), cambios: true,
+	a := &app{f: f, l: nuevoLienzo(f), tareas: make(chan func(), 256), salir: make(chan struct{}), cambios: true, volumen: -1,
 		luz: nuevaLuz(), descCola: make(chan Cancion, 4096)}
 	a.cargaHasta = time.Now().Add(1200 * time.Millisecond)
 	return a
@@ -144,6 +147,9 @@ func (a *app) bucle(botones <-chan uint16, ra *retroarch) {
 			}
 			if !a.cargaHasta.IsZero() && time.Now().After(a.cargaHasta) {
 				a.cargaHasta, a.cambios = time.Time{}, true
+			}
+			if !a.volHasta.IsZero() && time.Now().After(a.volHasta) {
+				a.volHasta, a.cambios = time.Time{}, true
 			}
 		case <-progreso.C:
 			if a.rep.sonando() || a.descPend > 0 {
@@ -601,6 +607,10 @@ func (a *app) cancionFallida(err error) {
 
 func (a *app) pulsarSonando(b uint16) {
 	switch b {
+	case bArriba:
+		a.cambiarVolumen(5)
+	case bAbajo:
+		a.cambiarVolumen(-5)
 	case bA:
 		if a.rep.sonando() {
 			a.rep.pausar(!a.rep.enPausa())
