@@ -1,0 +1,22 @@
+[Unit]
+Description=WhatsApp de Panther OS (siempre conectado: avisos y chat encima de los juegos)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ark
+WorkingDirectory=/home/ark/panther/whatsapp
+Environment=HOME=/home/ark
+# La pantalla de la app es el emulador de Panther (sin RetroArch).
+Environment=CONSOLA_RETROARCH=/home/ark/panther/emulador/emulador
+Environment=CONSOLA_NUCLEO=/home/ark/panther/whatsapp/pokemulador_libretro.so
+Environment=POKEMULADOR_ANCHO=640
+Environment=POKEMULADOR_ALTO=480
+Environment=SDL_VIDEO_EGL_DRIVER=libEGL.so
+ExecStart=/home/ark/panther/whatsapp/whatsapp -servicio
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

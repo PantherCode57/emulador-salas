@@ -233,10 +233,24 @@ func (w *wa) arrancar() {
 		return
 	}
 	w.app.estado = waConectando
+	cli := w.cli
 	go func() {
-		if err := w.cli.Connect(); err != nil {
+		// Al encender la consola puede que aún no haya Wi-Fi: se vuelve a probar hasta que conecte
+		// (luego whatsmeow ya se reconecta solo si se corta).
+		for intento := 0; ; intento++ {
+			err := cli.Connect()
+			if err == nil {
+				return
+			}
 			log.Printf("conectar: %v", err)
 			w.app.hacer(func() { w.app.estado = waSinRed })
+			if w.app.modo == modoSolo && intento >= 2 {
+				return
+			}
+			time.Sleep(15 * time.Second)
+			if cli.IsConnected() || w.cli != cli {
+				return
+			}
 		}
 	}()
 }

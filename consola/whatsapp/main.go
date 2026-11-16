@@ -21,6 +21,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -55,7 +56,21 @@ func main() {
 	prueba := flag.String("prueba", "", "dibuja las pantallas de ejemplo en esta carpeta y sale")
 	diag := flag.Duration("diagnostico", 0, "sin pantalla: pide el QR con registro detallado durante este tiempo y sale")
 	comoServicio := flag.Bool("servicio", false, "siempre conectado, sin pantalla: avisos, el chat encima de los juegos y la lista de la pantalla principal")
+	probarAviso := flag.String("probar-aviso", "", "pone un aviso de prueba («Nombre|mensaje») encima del juego o del menú y sale")
 	flag.Parse()
+	if *probarAviso != "" {
+		nombre, texto, _ := strings.Cut(*probarAviso, "|")
+		f := cargarFuentes()
+		a := nuevaApp(f)
+		c := &Chat{JID: "prueba@s.whatsapp.net", Nombre: nombre}
+		capa, err := abrirCapa("/dev/shm/panther-capa", ancho, alto)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		capa.poner(1, a.dibujarAviso(c, &Mensaje{Texto: texto, Hora: time.Now()}), sitioAviso.X, sitioAviso.Y, 2*time.Second)
+		return
+	}
 	if *diag > 0 {
 		diagnostico(*diag)
 		return
