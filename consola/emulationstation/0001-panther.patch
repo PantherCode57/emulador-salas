@@ -1321,10 +1321,15 @@ index 00000000..6ac79851
 +
 +#endif // ES_APP_GUIS_PANTHERESTILO_H
 diff --git a/es-app/src/views/SystemView.cpp b/es-app/src/views/SystemView.cpp
-index 67a23327..d9d3ead6 100644
+index 67a23327..7d5588ae 100644
 --- a/es-app/src/views/SystemView.cpp
 +++ b/es-app/src/views/SystemView.cpp
-@@ -17,6 +17,42 @@
+@@ -1,3 +1,4 @@
++#include "PantherCapa.h"
+ #include <string>
+ #include "views/SystemView.h"
+ 
+@@ -17,6 +18,42 @@
  #include "guis/GuiTextEditPopupKeyboard.h"
  #include "guis/GuiTextEditPopup.h"
  #include "SystemScreenSaver.h"
@@ -1367,7 +1372,7 @@ index 67a23327..d9d3ead6 100644
  
  // buffer values for scrolling velocity (left, stopped, right)
  const int logoBuffersLeft[] = { -5, -2, -1 };
-@@ -64,6 +100,10 @@ SystemView::~SystemView()
+@@ -64,6 +101,10 @@ SystemView::~SystemView()
  		mClockScreenSaver = nullptr;
  	}
  
@@ -1378,7 +1383,7 @@ index 67a23327..d9d3ead6 100644
  	clearEntries();
  }
  
-@@ -365,6 +405,21 @@ void SystemView::showQuickSearch()
+@@ -365,6 +406,21 @@ void SystemView::showQuickSearch()
  
  bool SystemView::input(InputConfig* config, Input input)
  {
@@ -1400,7 +1405,7 @@ index 67a23327..d9d3ead6 100644
  	if(input.value != 0)
  	{
  		if (config->isMappedTo("y", input))
-@@ -430,6 +485,12 @@ bool SystemView::input(InputConfig* config, Input input)
+@@ -430,6 +486,12 @@ bool SystemView::input(InputConfig* config, Input input)
  		case HORIZONTAL:
  		case HORIZONTAL_WHEEL:
  		default:
@@ -1413,7 +1418,7 @@ index 67a23327..d9d3ead6 100644
  			if (config->isMappedLike("left", input))
  			{
  				listInput(-1);
-@@ -479,7 +540,8 @@ bool SystemView::input(InputConfig* config, Input input)
+@@ -479,7 +541,8 @@ bool SystemView::input(InputConfig* config, Input input)
  		if(config->isMappedTo(BUTTON_OK, input))
  		{
  			stopScrolling();
@@ -1423,7 +1428,7 @@ index 67a23327..d9d3ead6 100644
  			return true;
  		}
  
-@@ -610,6 +672,18 @@ void SystemView::update(int deltaTime)
+@@ -610,6 +673,18 @@ void SystemView::update(int deltaTime)
  	listUpdate(deltaTime);
  	updateExtras([this, deltaTime](GuiComponent* p) { p->update(deltaTime); });
  	GuiComponent::update(deltaTime);
@@ -1442,12 +1447,15 @@ index 67a23327..d9d3ead6 100644
  }
  
  void SystemView::onCursorChanged(const CursorState& /*state*/)
-@@ -838,6 +912,167 @@ void SystemView::render(const Transform4x4f& parentTrans)
+@@ -838,6 +913,170 @@ void SystemView::render(const Transform4x4f& parentTrans)
  	}
  
  	renderExtras(trans, minMax.second, INT16_MAX);
 +
 +	renderTopBar(trans);
++
++	// Panther OS: lo que te han escrito por WhatsApp, a la derecha
++	PantherCapa::dibujarPanel(trans);
 +}
 +
 +// ---- Panther OS: barra de arriba -------------------------------------------------------------
@@ -1610,7 +1618,7 @@ index 67a23327..d9d3ead6 100644
  }
  
  std::vector<HelpPrompt> SystemView::getHelpPrompts()
-@@ -850,6 +1085,14 @@ std::vector<HelpPrompt> SystemView::getHelpPrompts()
+@@ -850,6 +1089,14 @@ std::vector<HelpPrompt> SystemView::getHelpPrompts()
  		return prompts;
  	}
  
@@ -1625,7 +1633,7 @@ index 67a23327..d9d3ead6 100644
  	if (mCarousel.type == VERTICAL || mCarousel.type == VERTICAL_WHEEL)
  		prompts.push_back(HelpPrompt("up/down", _("CHOOSE")));
  	else
-@@ -915,6 +1158,47 @@ void  SystemView::getViewElements(const std::shared_ptr<ThemeData>& theme)
+@@ -915,6 +1162,47 @@ void  SystemView::getViewElements(const std::shared_ptr<ThemeData>& theme)
  		mStaticBackground = nullptr;
  	}
  
@@ -1673,7 +1681,7 @@ index 67a23327..d9d3ead6 100644
  	const ThemeData::ThemeElement* fixedVideoBackgroundElem = theme->getElement("system", "staticBackgroundVideo", "video");
  	if (fixedVideoBackgroundElem && (!fixedVideoBackgroundElem->has("visible") || fixedVideoBackgroundElem->get<bool>("visible")))
  	{		
-@@ -1006,6 +1290,44 @@ void SystemView::renderCarousel(const Transform4x4f& trans)
+@@ -1006,6 +1294,44 @@ void SystemView::renderCarousel(const Transform4x4f& trans)
  	int center = (int)(mCamOffset);
  	int logoCount = Math::min(mCarousel.maxLogoCount, (int)mEntries.size());
  
@@ -1718,7 +1726,7 @@ index 67a23327..d9d3ead6 100644
  	// Adding texture loading buffers depending on scrolling speed and status
  	int bufferIndex = getScrollingVelocity() + 1;
  	int bufferLeft = logoBuffersLeft[bufferIndex];
-@@ -1033,8 +1355,9 @@ void SystemView::renderCarousel(const Transform4x4f& trans)
+@@ -1033,8 +1359,9 @@ void SystemView::renderCarousel(const Transform4x4f& trans)
  		scale = Math::min(mCarousel.logoScale, Math::max(1.0f, scale));
  		scale /= mCarousel.logoScale;
  
@@ -1730,7 +1738,7 @@ index 67a23327..d9d3ead6 100644
  
  		const std::shared_ptr<GuiComponent> &comp = mEntries.at(index).data.logo;
  		if (mCarousel.type == VERTICAL_WHEEL || mCarousel.type == HORIZONTAL_WHEEL) {
-@@ -1286,6 +1609,8 @@ void  SystemView::getDefaultElements(void)
+@@ -1286,6 +1613,8 @@ void  SystemView::getDefaultElements(void)
  	mCarousel.color = 0xFFFFFFD8;
  	mCarousel.colorEnd = 0xFFFFFFD8;
  	mCarousel.colorGradientHorizontal = true;
@@ -1739,7 +1747,7 @@ index 67a23327..d9d3ead6 100644
  	mCarousel.logoScale = 1.2f;
  	mCarousel.logoRotation = 7.5;
  	mCarousel.logoRotationOrigin.x() = -5;
-@@ -1352,6 +1677,10 @@ void SystemView::getCarouselFromTheme(const ThemeData::ThemeElement* elem)
+@@ -1352,6 +1681,10 @@ void SystemView::getCarouselFromTheme(const ThemeData::ThemeElement* elem)
  		mCarousel.colorGradientHorizontal = elem->get<std::string>("gradientType").compare("horizontal");
  	if (elem->has("logoScale"))
  		mCarousel.logoScale = elem->get<float>("logoScale");
@@ -1750,7 +1758,7 @@ index 67a23327..d9d3ead6 100644
  	if (elem->has("logoSize"))
  		mCarousel.logoSize = elem->get<Vector2f>("logoSize") * mSize;
  	if (elem->has("logoPos"))
-@@ -1402,6 +1731,7 @@ void SystemView::onHide()
+@@ -1402,6 +1735,7 @@ void SystemView::onHide()
  {
  	GuiComponent::onHide();
  	mShowing = false;
@@ -1758,7 +1766,7 @@ index 67a23327..d9d3ead6 100644
  	updateExtras([this](GuiComponent* p) { p->onHide(); });
  
  	if (mStaticVideoBackground)
-@@ -1411,6 +1741,7 @@ void SystemView::onHide()
+@@ -1411,6 +1745,7 @@ void SystemView::onHide()
  void SystemView::onScreenSaverActivate()
  {
  	mScreensaverActive = true;
@@ -1860,6 +1868,335 @@ index 90cdfbbc..ca2f9d93 100644
  				mGrid.add(_U("\uF114 ") + file->getName(), getImagePath(file), file->getVideoPath(), file->getMarqueePath(), file->getFavorite(), file->getType() != GAME, isVirtualFolder(file), file);
  			else
  				mGrid.add(file->getName(), getImagePath(file), file->getVideoPath(), file->getMarqueePath(), file->getFavorite(), file->getType() != GAME, isVirtualFolder(file), file);
+diff --git a/es-core/CMakeLists.txt b/es-core/CMakeLists.txt
+index 4a05db76..5b1dbed4 100644
+--- a/es-core/CMakeLists.txt
++++ b/es-core/CMakeLists.txt
+@@ -115,6 +115,7 @@ set(CORE_SOURCES
+ 	${CMAKE_CURRENT_SOURCE_DIR}/src/DisplayPanelControl.cpp
+ 	${CMAKE_CURRENT_SOURCE_DIR}/src/VolumeControl.cpp
+ 	${CMAKE_CURRENT_SOURCE_DIR}/src/Window.cpp
++	${CMAKE_CURRENT_SOURCE_DIR}/src/PantherCapa.cpp
+ 	${CMAKE_CURRENT_SOURCE_DIR}/src/EsLocale.cpp
+ 
+ 	# Animations
+diff --git a/es-core/src/PantherCapa.cpp b/es-core/src/PantherCapa.cpp
+new file mode 100644
+index 00000000..a83be66f
+--- /dev/null
++++ b/es-core/src/PantherCapa.cpp
+@@ -0,0 +1,282 @@
++#include "PantherCapa.h"
++
++#include "components/ImageComponent.h"
++#include "resources/TextureResource.h"
++#include "Window.h"
++
++#include <SDL.h>
++#include <atomic>
++#include <chrono>
++#include <cstdint>
++#include <cstring>
++#include <fcntl.h>
++#include <memory>
++#include <sys/mman.h>
++#include <sys/stat.h>
++#include <thread>
++#include <time.h>
++#include <unistd.h>
++#include <vector>
++
++namespace
++{
++	const size_t CABECERA = 64;
++	const int ENTRA = 220, SALE = 260;
++
++	uint64_t ahoraMs()
++	{
++		struct timespec ts;
++		clock_gettime(CLOCK_REALTIME, &ts);
++		return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
++	}
++
++	// Una de las dos imágenes compartidas, leída solo para mirar.
++	struct Mapa
++	{
++		const char* ruta;
++		uint8_t* mem = nullptr;
++		size_t tam = 0;
++		ino_t ino = 0;
++		uint64_t intento = 0, mirada = 0;
++
++		explicit Mapa(const char* r) : ruta(r) {}
++		uint32_t u32(size_t off) const { return __atomic_load_n((const uint32_t*)(mem + off), __ATOMIC_ACQUIRE); }
++
++		void soltar()
++		{
++			if (mem)
++				munmap(mem, tam);
++			mem = nullptr;
++		}
++
++		// ¿Está abierta y es la de verdad? (el servicio puede haberla vuelto a crear)
++		bool lista(uint64_t t)
++		{
++			if (!mem)
++			{
++				if (t - intento < 1000)
++					return false;
++				intento = t;
++				int fd = open(ruta, O_RDONLY | O_CLOEXEC);
++				if (fd < 0)
++					return false;
++				struct stat st;
++				if (fstat(fd, &st) == 0 && st.st_size >= (off_t)CABECERA)
++				{
++					void* m = mmap(nullptr, (size_t)st.st_size, PROT_READ, MAP_SHARED, fd, 0);
++					if (m != MAP_FAILED)
++					{
++						mem = (uint8_t*)m;
++						tam = (size_t)st.st_size;
++						ino = st.st_ino;
++					}
++				}
++				close(fd);
++				if (!mem)
++					return false;
++			}
++			if (t - mirada > 2000)
++			{
++				mirada = t;
++				struct stat st;
++				if (stat(ruta, &st) != 0 || st.st_ino != ino)
++				{
++					soltar();
++					return false;
++				}
++			}
++			return memcmp(mem, "PCAP", 4) == 0;
++		}
++	};
++
++	// Lo que se enseña de cada una (en el hilo del menú).
++	struct Capa
++	{
++		Mapa mapa;
++		uint32_t visto = 0xffffffff;
++		uint32_t modo = 0, x = 0, y = 0, w = 0, h = 0, dura = 0;
++		uint64_t empieza = 0;
++		std::vector<unsigned char> copia;
++		std::shared_ptr<TextureResource> tex;
++		std::unique_ptr<ImageComponent> img;
++
++		explicit Capa(const char* r) : mapa(r) {}
++
++		void mirar(Window* window)
++		{
++			uint64_t t = ahoraMs();
++			if (!mapa.lista(t))
++			{
++				modo = 0;
++				visto = 0xffffffff;
++				return;
++			}
++			uint32_t n = mapa.u32(8);
++			if (n == visto || (n & 1))
++				return;
++			uint32_t m = mapa.u32(12), nw = mapa.u32(16), nh = mapa.u32(20);
++			if (m != 0 && (nw == 0 || nh == 0 || nw > 1920 || nh > 1080 || CABECERA + (size_t)nw * nh * 4 > mapa.tam))
++				return;
++			if (m != 0)
++			{
++				copia.resize((size_t)nw * nh * 4);
++				memcpy(copia.data(), mapa.mem + CABECERA, copia.size());
++			}
++			uint32_t nx = mapa.u32(24), ny = mapa.u32(28), nd = mapa.u32(40);
++			uint64_t ne = (uint64_t)mapa.u32(32) | ((uint64_t)mapa.u32(36) << 32);
++			if (mapa.u32(8) != n)
++				return; // lo estaba cambiando: a la próxima
++			visto = n;
++			modo = m, w = nw, h = nh, x = nx, y = ny, dura = nd, empieza = ne;
++			if (m == 0)
++				return;
++			tex = TextureResource::get("");
++			tex->initFromPixels(copia.data(), w, h);
++			if (!img)
++				img.reset(new ImageComponent(window));
++			img->setImage(tex);
++			img->setResize((float)w, (float)h);
++		}
++
++		bool vivo() const
++		{
++			// con el chat abierto encima, el servicio pone un latido cada segundo
++			return mapa.mem && (uint32_t)(ahoraMs() / 1000) - mapa.u32(44) <= 4;
++		}
++	};
++
++	Window* sVentana = nullptr;
++	Capa* sCapa = nullptr;
++	Capa* sPanel = nullptr;
++	std::atomic<bool> sActivo(true), sSalir(false), sForzar(false);
++	std::thread sHilo;
++
++	// Despierta al menú cuando hay algo nuevo (con el ahorro de energía se queda dormido esperando a
++	// que pulses algo) y le avisa al servicio de que hay alguien pintando la capa.
++	void vigilar()
++	{
++		Mapa capa("/dev/shm/panther-capa"), panel("/dev/shm/panther-panel");
++		uint32_t vistoCapa = 0xffffffff, vistoPanel = 0xffffffff;
++		uint64_t tocado = 0;
++		while (!sSalir)
++		{
++			std::this_thread::sleep_for(std::chrono::milliseconds(40));
++			if (!sActivo)
++				continue;
++			uint64_t t = ahoraMs();
++			if (t - tocado >= 1000)
++			{
++				tocado = t;
++				int fd = open("/dev/shm/panther-capa-viendo", O_WRONLY | O_CREAT | O_CLOEXEC, 0666);
++				if (fd >= 0)
++				{
++					futimens(fd, nullptr);
++					close(fd);
++				}
++			}
++			bool despertar = false;
++			if (capa.lista(t))
++			{
++				uint32_t n = capa.u32(8);
++				if (n != vistoCapa)
++					despertar = true, vistoCapa = n;
++				uint64_t e = (uint64_t)capa.u32(32) | ((uint64_t)capa.u32(36) << 32);
++				if (capa.u32(12) == 1 && t >= e && t <= e + capa.u32(40) + SALE + 100)
++					despertar = true; // el aviso se está moviendo
++			}
++			if (panel.lista(t))
++			{
++				uint32_t n = panel.u32(8);
++				if (n != vistoPanel)
++					despertar = true, vistoPanel = n;
++			}
++			if (despertar)
++			{
++				SDL_Event ev;
++				SDL_zero(ev);
++				ev.type = SDL_USEREVENT;
++				SDL_PushEvent(&ev);
++			}
++		}
++		capa.soltar();
++		panel.soltar();
++	}
++}
++
++namespace PantherCapa
++{
++	void iniciar(Window* window)
++	{
++		sVentana = window;
++		if (!sCapa)
++			sCapa = new Capa("/dev/shm/panther-capa");
++		if (!sPanel)
++			sPanel = new Capa("/dev/shm/panther-panel");
++		if (!sHilo.joinable())
++		{
++			sHilo = std::thread(vigilar);
++			sHilo.detach(); // vive lo que viva el menú
++		}
++	}
++
++	void parar()
++	{
++		sSalir = true;
++	}
++
++	void activo(bool si)
++	{
++		sActivo = si;
++		if (si)
++			sForzar = true; // las texturas se han perdido con la pantalla: se vuelven a subir
++	}
++
++	void actualizar()
++	{
++		if (!sCapa || !sPanel)
++			return;
++		if (sForzar.exchange(false))
++		{
++			sCapa->visto = sPanel->visto = 0xffffffff;
++		}
++		sCapa->mirar(sVentana);
++		sPanel->mirar(sVentana);
++	}
++
++	void dibujarCapa()
++	{
++		if (!sCapa || !sCapa->img || sCapa->modo == 0)
++			return;
++		Transform4x4f t = Transform4x4f::Identity();
++		ImageComponent* img = sCapa->img.get();
++		if (sCapa->modo == 2)
++		{
++			if (!sCapa->vivo())
++				return;
++			img->setPosition((float)sCapa->x, (float)sCapa->y);
++			img->setOpacity(255);
++			img->render(t);
++			return;
++		}
++		int64_t e = (int64_t)(ahoraMs() - sCapa->empieza);
++		if (e < 0)
++			e = 0;
++		if (e > (int64_t)sCapa->dura + SALE)
++			return;
++		double p = e < ENTRA ? (double)e / ENTRA : (e > (int64_t)sCapa->dura ? 1.0 - (double)(e - sCapa->dura) / SALE : 1.0);
++		double suave = 1 - (1 - p) * (1 - p) * (1 - p);
++		float dy = (float)((1 - suave) * (sCapa->y + sCapa->h + 6));
++		img->setPosition((float)sCapa->x, (float)sCapa->y - dy);
++		img->setOpacity((unsigned char)(255 * suave));
++		img->render(t);
++	}
++
++	void dibujarPanel(const Transform4x4f& trans)
++	{
++		if (!sPanel || !sPanel->img || sPanel->modo != 1)
++			return;
++		sPanel->img->setPosition((float)sPanel->x, (float)sPanel->y);
++		sPanel->img->setOpacity(255);
++		sPanel->img->render(trans);
++	}
++}
+diff --git a/es-core/src/PantherCapa.h b/es-core/src/PantherCapa.h
+new file mode 100644
+index 00000000..f9a57018
+--- /dev/null
++++ b/es-core/src/PantherCapa.h
+@@ -0,0 +1,23 @@
++#pragma once
++#ifndef ES_CORE_PANTHER_CAPA_H
++#define ES_CORE_PANTHER_CAPA_H
++
++#include "math/Transform4x4f.h"
++
++class Window;
++
++// Panther OS: lo que el servicio de WhatsApp de la consola pone encima del menú (ver
++// consola/emulador/capa.c, que explica el formato de /dev/shm/panther-capa):
++//  - el aviso pequeño de arriba cuando te escriben, y el chat entero si lo abres con R3;
++//  - la lista de lo que te han escrito, a la derecha de la pantalla principal (/dev/shm/panther-panel).
++namespace PantherCapa
++{
++	void iniciar(Window* window);
++	void parar();
++	void activo(bool si);   // el menú está en pantalla (no mientras hay un juego abierto)
++	void actualizar();      // lee lo nuevo (hilo principal, antes de dibujar)
++	void dibujarCapa();     // lo último de todo
++	void dibujarPanel(const Transform4x4f& trans); // en la pantalla principal
++}
++
++#endif
 diff --git a/es-core/src/ThemeData.cpp b/es-core/src/ThemeData.cpp
 index f0d92f56..2add2165 100644
 --- a/es-core/src/ThemeData.cpp
@@ -1874,13 +2211,15 @@ index f0d92f56..2add2165 100644
  		{ "logoRotationOrigin", NORMALIZED_PAIR },
  		{ "logoSize", NORMALIZED_PAIR },
 diff --git a/es-core/src/Window.cpp b/es-core/src/Window.cpp
-index ce6a6a46..39fe2f3e 100644
+index ce6a6a46..6b479e99 100644
 --- a/es-core/src/Window.cpp
 +++ b/es-core/src/Window.cpp
-@@ -21,6 +21,18 @@
+@@ -20,6 +20,19 @@
+ #include "AudioManager.h"
  #include "components/VolumeInfoComponent.h"
  #include "components/BrightnessInfoComponent.h"
- 
++#include "PantherCapa.h"
++
 +// Panther OS: fecha en español para la pantalla principal («Domingo, 15 de noviembre»).
 +static std::string pantherFecha(const struct tm& t)
 +{
@@ -1892,11 +2231,10 @@ index ce6a6a46..39fe2f3e 100644
 +
 +	return std::string(dias[t.tm_wday]) + ", " + std::to_string(t.tm_mday) + " de " + meses[t.tm_mon];
 +}
-+
+ 
  Window::Window() : mNormalizeNextUpdate(false), mFrameTimeElapsed(0), mFrameCountElapsed(0), mAverageDeltaTime(10),
    mAllowSleep(true), mSleeping(false), mTimeSinceLastInput(0), mScreenSaver(NULL), mRenderScreenSaver(false), mInfoPopup(NULL), mClockElapsed(0),
-   mIgnoreKeys(false)// batocera
-@@ -124,6 +136,15 @@ bool Window::init(bool initRenderer)
+@@ -124,6 +137,15 @@ bool Window::init(bool initRenderer)
  		mClock->setColor(0x777777FF);
  	}
  
@@ -1912,7 +2250,27 @@ index ce6a6a46..39fe2f3e 100644
  	if (Settings::getInstance()->getBool("VolumePopup") && (mVolumeInfo == nullptr))
  		mVolumeInfo = std::make_shared<VolumeInfoComponent>(this);
  
-@@ -340,6 +361,9 @@ void Window::update(int deltaTime)
+@@ -137,6 +159,10 @@ bool Window::init(bool initRenderer)
+ 	// update our help because font sizes probably changed
+ 	if (peekGui())
+ 		peekGui()->updateHelpPrompts();
++
++	// Panther OS: los avisos de WhatsApp y la lista de la pantalla principal
++	PantherCapa::iniciar(this);
++	PantherCapa::activo(true);
+ 	
+ 	return true;
+ }
+@@ -155,6 +181,8 @@ void Window::reactivateGui()
+ 
+ void Window::deinit(bool deinitRenderer)
+ {
++	PantherCapa::activo(false); // un juego (o apagar): el menú deja la pantalla
++
+ 	for (auto extra : mScreenExtras)
+ 		extra->onHide();
+ 
+@@ -340,6 +368,9 @@ void Window::update(int deltaTime)
  #endif
  
  				mClock->setText(clockBuf);
@@ -1922,7 +2280,15 @@ index ce6a6a46..39fe2f3e 100644
  			}
  
  			mClockElapsed = 1000; // next update in 1000ms
-@@ -412,6 +436,9 @@ void Window::render()
+@@ -371,6 +402,7 @@ void Window::update(int deltaTime)
+ void Window::render()
+ {
+ 	Transform4x4f transform = Transform4x4f::Identity();
++	PantherCapa::actualizar();
+ 
+ 	mRenderedHelpPrompts = false;
+ 
+@@ -412,6 +444,9 @@ void Window::render()
  	if (Settings::getInstance()->getBool("DrawClock") && mClock && (mGuiStack.size() < 2 || !Renderer::isSmallScreen()))
  	{
  		mClock->render(transform);
@@ -1932,7 +2298,17 @@ index ce6a6a46..39fe2f3e 100644
  	//	Renderer::setMatrix(Transform4x4f::Identity());
  		/*
  		if (mClockFont == nullptr)
-@@ -845,6 +872,42 @@ void Window::onThemeChanged(const std::shared_ptr<ThemeData>& theme)
+@@ -449,6 +484,9 @@ void Window::render()
+ 	if (mBrightnessInfo)
+ 		mBrightnessInfo->render(transform);
+ 
++	// Panther OS: el aviso de WhatsApp (o el chat abierto con R3), encima de todo.
++	PantherCapa::dibujarCapa();
++
+ 	if(mTimeSinceLastInput >= screensaverTime && screensaverTime != 0)
+ 	{
+ 		if (!isProcessing() && mAllowSleep && (!mScreenSaver || mScreenSaver->allowSleep()))
+@@ -845,6 +883,42 @@ void Window::onThemeChanged(const std::shared_ptr<ThemeData>& theme)
  	if (mBackgroundOverlay)
  		mBackgroundOverlay->setImage(ThemeData::getMenuTheme()->Background.fadePath);
  
@@ -1975,7 +2351,7 @@ index ce6a6a46..39fe2f3e 100644
  	if (mClock)
  	{
  		mClock->setFont(Font::get(FONT_SIZE_SMALL));
-@@ -867,15 +930,26 @@ void Window::onThemeChanged(const std::shared_ptr<ThemeData>& theme)
+@@ -867,15 +941,26 @@ void Window::onThemeChanged(const std::shared_ptr<ThemeData>& theme)
  		mClock->setPosition(Renderer::getScreenWidth()*0.94, Renderer::getScreenHeight()*0.9965 - mClock->getFont()->getHeight());
  		mClock->setSize(Renderer::getScreenWidth()*0.05, 0);
  

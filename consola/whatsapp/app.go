@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"time"
 )
 
@@ -55,6 +56,21 @@ type app struct {
 	// Botones: los que estaban pulsados y cuándo se repiten (para mantener pulsadas las flechas).
 	pulsados  uint16
 	repetirEn time.Time
+
+	// Como servicio (ver servicio.go).
+	modo            modoPantalla
+	capa, panel     *capaCompartida
+	mando           *mando
+	mandoAntes      uint32
+	esperaSoltar    bool // el chat de encima espera a que sueltes los botones para abrirse o cerrarse
+	cerrando        bool
+	botonesCore     chan uint16
+	ra              *retroarch
+	cliente         net.Conn
+	panelSucio      bool
+	panelHecho      time.Time
+	ultimoAviso     *Chat
+	ultimoAvisoHora time.Time
 }
 
 func nuevaApp(f *fuentes) *app {
@@ -81,6 +97,9 @@ func (a *app) aviso(s string) {
 }
 
 func (a *app) chatAbierto() string {
+	if a.modo == modoFondo || a.esperaSoltar && a.cerrando {
+		return "" // no se está viendo: lo que llegue queda sin leer
+	}
 	if a.abierto != nil && (a.pant == pChat || a.pant == pTeclado || a.pant == pRapidas || a.pant == pVisor) {
 		return a.abierto.JID
 	}
@@ -173,6 +192,13 @@ func (a *app) repetir() {
 
 func (a *app) pulsar(b uint16) {
 	a.cambios = true
+	if a.modo == modoCapa && (a.esperaSoltar || b == bB && (a.pant == pChat || a.pant == pChats)) {
+		// Encima del juego, B vuelve a él (desde el chat o desde la lista).
+		if !a.esperaSoltar {
+			a.cerrarCapa()
+		}
+		return
+	}
 	if a.estado != waConectado && a.estado != waSinRed && a.estado != waConectando && a.pant != pMenu {
 		// Sin sesión: solo la pantalla del QR.
 		switch b {
@@ -306,7 +332,7 @@ func (a *app) pulsarRapidas(b uint16) {
 }
 
 // Opciones del menú.
-var opcionesMenu = []string{"Seguir", "Desvincular este dispositivo", "Salir al menú de la consola"}
+var opcionesMenu = []string{"Seguir", "Desvincular este dispositivo", "Salir de WhatsApp"}
 
 func (a *app) pulsarMenu(b uint16) {
 	switch b {
@@ -328,7 +354,7 @@ func (a *app) pulsarMenu(b uint16) {
 			a.w.desvincular()
 			a.pant, a.selChat, a.abierto = pChats, 0, nil
 		case 2:
-			a.terminar()
+			a.salirPantalla()
 		}
 	}
 }

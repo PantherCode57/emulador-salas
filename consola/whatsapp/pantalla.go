@@ -38,6 +38,7 @@ const (
 
 type servidorPantalla struct {
 	botones chan<- uint16
+	ln      net.Listener
 	mu      sync.Mutex
 	ultimo  []byte
 	version int
@@ -55,6 +56,7 @@ func (s *servidorPantalla) escuchar() error {
 	if err != nil {
 		return err
 	}
+	s.ln = ln
 	go func() {
 		for {
 			c, err := ln.Accept()
@@ -66,6 +68,13 @@ func (s *servidorPantalla) escuchar() error {
 		}
 	}()
 	return nil
+}
+
+// cerrar deja libre el puerto de la pantalla (para las otras apps).
+func (s *servidorPantalla) cerrar() {
+	if s.ln != nil {
+		s.ln.Close()
+	}
 }
 
 // enviar deja un marco nuevo para el núcleo.

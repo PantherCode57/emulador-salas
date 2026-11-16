@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/png"
 	"io"
 	"log"
@@ -53,6 +54,7 @@ func escribirAtomico(ruta string, datos []byte) {
 func main() {
 	prueba := flag.String("prueba", "", "dibuja las pantallas de ejemplo en esta carpeta y sale")
 	diag := flag.Duration("diagnostico", 0, "sin pantalla: pide el QR con registro detallado durante este tiempo y sale")
+	comoServicio := flag.Bool("servicio", false, "siempre conectado, sin pantalla: avisos, el chat encima de los juegos y la lista de la pantalla principal")
 	flag.Parse()
 	if *diag > 0 {
 		diagnostico(*diag)
@@ -70,6 +72,14 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+		return
+	}
+	if *comoServicio {
+		servicio(f)
+		return
+	}
+	// Abierto desde el menú: si el servicio está en marcha, es él quien se enseña.
+	if pedirAlServicio() {
 		return
 	}
 
@@ -249,5 +259,37 @@ func dibujarPruebas(f *fuentes, carpeta string) error {
 			return err
 		}
 	}
-	return nil
+	// El aviso de arriba y la lista de la pantalla principal, sobre una imagen de fondo cualquiera.
+	a.estado = waConectado
+	mama := a.w.chats["34600000001@s.whatsapp.net"]
+	mama.NoLeidos = 2
+	a.w.chats["120363000000000001@g.us"].NoLeidos = 5
+	a.w.chats["34600000007@s.whatsapp.net"].NoLeidos = 1
+	fondo := image.NewRGBA(image.Rect(0, 0, ancho, alto))
+	for y := 0; y < alto; y++ {
+		for x := 0; x < ancho; x++ {
+			fondo.Set(x, y, color.RGBA{uint8(40 + x/12), uint8(70 + y/10), uint8(90 + x/16), 255})
+		}
+	}
+	encima := func(nombre string, img *image.RGBA, x, y int) error {
+		out := image.NewRGBA(fondo.Bounds())
+		draw.Draw(out, out.Bounds(), fondo, image.Point{}, draw.Src)
+		draw.Draw(out, img.Bounds().Add(image.Pt(x, y)), img, image.Point{}, draw.Over)
+		f, err := os.Create(filepath.Join(carpeta, nombre+".png"))
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		return png.Encode(f, out)
+	}
+	if err := encima("11-aviso", a.dibujarAviso(mama, mama.Mensajes[2]), sitioAviso.X, sitioAviso.Y); err != nil {
+		return err
+	}
+	if err := encima("12-panel", a.dibujarPanel(), sitioPanel.X, sitioPanel.Y); err != nil {
+		return err
+	}
+	for _, c := range a.w.chats {
+		c.NoLeidos = 0
+	}
+	return encima("13-panel-vacio", a.dibujarPanel(), sitioPanel.X, sitioPanel.Y)
 }

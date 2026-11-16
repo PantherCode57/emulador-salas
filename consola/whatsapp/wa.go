@@ -399,7 +399,7 @@ func (w *wa) mensaje(e *events.Message, enVivo bool) {
 			if c.Grupo && m.De != "" {
 				quien = c.Nombre + " · " + m.De
 			}
-			w.app.aviso(quien + ": " + m.Texto)
+			w.app.avisoNuevo(c, m, quien)
 		} else {
 			w.leido(c, []*Mensaje{m})
 		}

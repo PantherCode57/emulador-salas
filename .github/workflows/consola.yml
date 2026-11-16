@@ -88,6 +88,35 @@ jobs:
           path: piezas/
           retention-days: 7
 
+  emulador:
+    name: Emulador de Panther OS (GB, GBC y GBA con mGBA dentro) para arm64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Herramientas
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libsdl2-dev zlib1g-dev > /dev/null
+      - name: Código de mGBA y de Lua
+        run: |
+          mkdir -p fuera && cd fuera
+          curl -fsSL "https://github.com/mgba-emu/mgba/archive/refs/tags/${MGBA_TAG}.tar.gz" -o mgba.tar.gz
+          curl -fsSL "https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz" -o lua.tar.gz
+          if [ "$LUA_VERSION" = "5.4.7" ]; then
+            echo "9fbf5e28ef86c69858f6d3d34eccc32e911c1a28b4120ff3e84aaa70cfbf1e30  lua.tar.gz" | sha256sum -c -
+          fi
+          tar xzf mgba.tar.gz && tar xzf lua.tar.gz
+      - name: mGBA y Lua
+        working-directory: fuera
+        run: MGBA=$PWD/mgba-${MGBA_TAG} LUA=$PWD/lua-${LUA_VERSION} bash ../consola/emulador/compilar_mgba.sh
+      - name: Emulador
+        working-directory: consola/emulador
+        run: make MGBA=$GITHUB_WORKSPACE/fuera/mgba-lib
+      - uses: actions/upload-artifact@v4
+        with:
+          name: consola-emulador-arm64
+          path: consola/emulador/emulador
+          retention-days: 7
+
   mgba:
     name: mGBA de Pokemulador (GBA-PK) para arm64
     runs-on: ubuntu-24.04-arm
