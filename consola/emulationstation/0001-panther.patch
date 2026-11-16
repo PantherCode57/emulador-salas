@@ -1321,7 +1321,7 @@ index 00000000..6ac79851
 +
 +#endif // ES_APP_GUIS_PANTHERESTILO_H
 diff --git a/es-app/src/views/SystemView.cpp b/es-app/src/views/SystemView.cpp
-index 67a23327..7d5588ae 100644
+index 67a23327..e4395e0b 100644
 --- a/es-app/src/views/SystemView.cpp
 +++ b/es-app/src/views/SystemView.cpp
 @@ -1,3 +1,4 @@
@@ -1447,7 +1447,7 @@ index 67a23327..7d5588ae 100644
  }
  
  void SystemView::onCursorChanged(const CursorState& /*state*/)
-@@ -838,6 +913,170 @@ void SystemView::render(const Transform4x4f& parentTrans)
+@@ -838,6 +913,171 @@ void SystemView::render(const Transform4x4f& parentTrans)
  	}
  
  	renderExtras(trans, minMax.second, INT16_MAX);
@@ -1456,6 +1456,7 @@ index 67a23327..7d5588ae 100644
 +
 +	// Panther OS: lo que te han escrito por WhatsApp, a la derecha
 +	PantherCapa::dibujarPanel(trans);
++	PantherCapa::enInicio();
 +}
 +
 +// ---- Panther OS: barra de arriba -------------------------------------------------------------
@@ -1618,7 +1619,7 @@ index 67a23327..7d5588ae 100644
  }
  
  std::vector<HelpPrompt> SystemView::getHelpPrompts()
-@@ -850,6 +1089,14 @@ std::vector<HelpPrompt> SystemView::getHelpPrompts()
+@@ -850,6 +1090,14 @@ std::vector<HelpPrompt> SystemView::getHelpPrompts()
  		return prompts;
  	}
  
@@ -1633,7 +1634,7 @@ index 67a23327..7d5588ae 100644
  	if (mCarousel.type == VERTICAL || mCarousel.type == VERTICAL_WHEEL)
  		prompts.push_back(HelpPrompt("up/down", _("CHOOSE")));
  	else
-@@ -915,6 +1162,47 @@ void  SystemView::getViewElements(const std::shared_ptr<ThemeData>& theme)
+@@ -915,6 +1163,47 @@ void  SystemView::getViewElements(const std::shared_ptr<ThemeData>& theme)
  		mStaticBackground = nullptr;
  	}
  
@@ -1681,7 +1682,7 @@ index 67a23327..7d5588ae 100644
  	const ThemeData::ThemeElement* fixedVideoBackgroundElem = theme->getElement("system", "staticBackgroundVideo", "video");
  	if (fixedVideoBackgroundElem && (!fixedVideoBackgroundElem->has("visible") || fixedVideoBackgroundElem->get<bool>("visible")))
  	{		
-@@ -1006,6 +1294,44 @@ void SystemView::renderCarousel(const Transform4x4f& trans)
+@@ -1006,6 +1295,44 @@ void SystemView::renderCarousel(const Transform4x4f& trans)
  	int center = (int)(mCamOffset);
  	int logoCount = Math::min(mCarousel.maxLogoCount, (int)mEntries.size());
  
@@ -1726,7 +1727,7 @@ index 67a23327..7d5588ae 100644
  	// Adding texture loading buffers depending on scrolling speed and status
  	int bufferIndex = getScrollingVelocity() + 1;
  	int bufferLeft = logoBuffersLeft[bufferIndex];
-@@ -1033,8 +1359,9 @@ void SystemView::renderCarousel(const Transform4x4f& trans)
+@@ -1033,8 +1360,9 @@ void SystemView::renderCarousel(const Transform4x4f& trans)
  		scale = Math::min(mCarousel.logoScale, Math::max(1.0f, scale));
  		scale /= mCarousel.logoScale;
  
@@ -1738,7 +1739,7 @@ index 67a23327..7d5588ae 100644
  
  		const std::shared_ptr<GuiComponent> &comp = mEntries.at(index).data.logo;
  		if (mCarousel.type == VERTICAL_WHEEL || mCarousel.type == HORIZONTAL_WHEEL) {
-@@ -1286,6 +1613,8 @@ void  SystemView::getDefaultElements(void)
+@@ -1286,6 +1614,8 @@ void  SystemView::getDefaultElements(void)
  	mCarousel.color = 0xFFFFFFD8;
  	mCarousel.colorEnd = 0xFFFFFFD8;
  	mCarousel.colorGradientHorizontal = true;
@@ -1747,7 +1748,7 @@ index 67a23327..7d5588ae 100644
  	mCarousel.logoScale = 1.2f;
  	mCarousel.logoRotation = 7.5;
  	mCarousel.logoRotationOrigin.x() = -5;
-@@ -1352,6 +1681,10 @@ void SystemView::getCarouselFromTheme(const ThemeData::ThemeElement* elem)
+@@ -1352,6 +1682,10 @@ void SystemView::getCarouselFromTheme(const ThemeData::ThemeElement* elem)
  		mCarousel.colorGradientHorizontal = elem->get<std::string>("gradientType").compare("horizontal");
  	if (elem->has("logoScale"))
  		mCarousel.logoScale = elem->get<float>("logoScale");
@@ -1758,7 +1759,7 @@ index 67a23327..7d5588ae 100644
  	if (elem->has("logoSize"))
  		mCarousel.logoSize = elem->get<Vector2f>("logoSize") * mSize;
  	if (elem->has("logoPos"))
-@@ -1402,6 +1735,7 @@ void SystemView::onHide()
+@@ -1402,6 +1736,7 @@ void SystemView::onHide()
  {
  	GuiComponent::onHide();
  	mShowing = false;
@@ -1766,7 +1767,7 @@ index 67a23327..7d5588ae 100644
  	updateExtras([this](GuiComponent* p) { p->onHide(); });
  
  	if (mStaticVideoBackground)
-@@ -1411,6 +1745,7 @@ void SystemView::onHide()
+@@ -1411,6 +1746,7 @@ void SystemView::onHide()
  void SystemView::onScreenSaverActivate()
  {
  	mScreensaverActive = true;
@@ -1882,10 +1883,10 @@ index 4a05db76..5b1dbed4 100644
  	# Animations
 diff --git a/es-core/src/PantherCapa.cpp b/es-core/src/PantherCapa.cpp
 new file mode 100644
-index 00000000..a83be66f
+index 00000000..23476499
 --- /dev/null
 +++ b/es-core/src/PantherCapa.cpp
-@@ -0,0 +1,282 @@
+@@ -0,0 +1,343 @@
 +#include "PantherCapa.h"
 +
 +#include "components/ImageComponent.h"
@@ -2036,6 +2037,10 @@ index 00000000..a83be66f
 +	Window* sVentana = nullptr;
 +	Capa* sCapa = nullptr;
 +	Capa* sPanel = nullptr;
++	Capa* sBarra = nullptr;
++	Capa* sVolumen = nullptr;
++	bool sEnInicio = false, sEnInicioAntes = false;
++	const int APAGA = 300;
 +	std::atomic<bool> sActivo(true), sSalir(false), sForzar(false);
 +	std::thread sHilo;
 +
@@ -2044,7 +2049,8 @@ index 00000000..a83be66f
 +	void vigilar()
 +	{
 +		Mapa capa("/dev/shm/panther-capa"), panel("/dev/shm/panther-panel");
-+		uint32_t vistoCapa = 0xffffffff, vistoPanel = 0xffffffff;
++		Mapa barra("/dev/shm/panther-barra"), volumen("/dev/shm/panther-volumen");
++		uint32_t vistoCapa = 0xffffffff, vistoPanel = 0xffffffff, vistoBarra = 0xffffffff, vistoVolumen = 0xffffffff;
 +		uint64_t tocado = 0;
 +		while (!sSalir)
 +		{
@@ -2078,6 +2084,21 @@ index 00000000..a83be66f
 +				if (n != vistoPanel)
 +					despertar = true, vistoPanel = n;
 +			}
++			if (barra.lista(t))
++			{
++				uint32_t n = barra.u32(8);
++				if (n != vistoBarra)
++					despertar = true, vistoBarra = n;
++			}
++			if (volumen.lista(t))
++			{
++				uint32_t n = volumen.u32(8);
++				if (n != vistoVolumen)
++					despertar = true, vistoVolumen = n;
++				uint64_t e = (uint64_t)volumen.u32(32) | ((uint64_t)volumen.u32(36) << 32);
++				if (volumen.u32(12) == 1 && t >= e && t <= e + volumen.u32(40) + APAGA + 100)
++					despertar = true; // se está apagando
++			}
 +			if (despertar)
 +			{
 +				SDL_Event ev;
@@ -2088,6 +2109,8 @@ index 00000000..a83be66f
 +		}
 +		capa.soltar();
 +		panel.soltar();
++		barra.soltar();
++		volumen.soltar();
 +	}
 +}
 +
@@ -2100,6 +2123,10 @@ index 00000000..a83be66f
 +			sCapa = new Capa("/dev/shm/panther-capa");
 +		if (!sPanel)
 +			sPanel = new Capa("/dev/shm/panther-panel");
++		if (!sBarra)
++			sBarra = new Capa("/dev/shm/panther-barra");
++		if (!sVolumen)
++			sVolumen = new Capa("/dev/shm/panther-volumen");
 +		if (!sHilo.joinable())
 +		{
 +			sHilo = std::thread(vigilar);
@@ -2121,18 +2148,53 @@ index 00000000..a83be66f
 +
 +	void actualizar()
 +	{
-+		if (!sCapa || !sPanel)
++		if (!sCapa || !sPanel || !sBarra || !sVolumen)
 +			return;
 +		if (sForzar.exchange(false))
 +		{
-+			sCapa->visto = sPanel->visto = 0xffffffff;
++			sCapa->visto = sPanel->visto = sBarra->visto = sVolumen->visto = 0xffffffff;
 +		}
 +		sCapa->mirar(sVentana);
 +		sPanel->mirar(sVentana);
++		sBarra->mirar(sVentana);
++		sVolumen->mirar(sVentana);
++		// ¿se vio la pantalla principal en la imagen anterior?
++		sEnInicioAntes = sEnInicio;
++		sEnInicio = false;
++	}
++
++	void enInicio() { sEnInicio = true; }
++
++	static void dibujarFijas()
++	{
++		Transform4x4f t = Transform4x4f::Identity();
++		bool chat = sCapa && sCapa->img && sCapa->modo == 2 && sCapa->vivo();
++		// el recuadro de arriba: en todas las pantallas menos en la principal (y no encima del chat)
++		if (sBarra && sBarra->img && sBarra->modo == 1 && !sEnInicio && !sEnInicioAntes && !chat)
++		{
++			sBarra->img->setPosition((float)sBarra->x, (float)sBarra->y);
++			sBarra->img->setOpacity(255);
++			sBarra->img->render(t);
++		}
++		// la barra del volumen: un momento y se apaga
++		if (sVolumen && sVolumen->img && sVolumen->modo == 1)
++		{
++			int64_t e = (int64_t)(ahoraMs() - sVolumen->empieza);
++			if (e < 0)
++				e = 0;
++			if (e <= (int64_t)sVolumen->dura + APAGA)
++			{
++				double a = e <= (int64_t)sVolumen->dura ? 1.0 : 1.0 - (double)(e - sVolumen->dura) / APAGA;
++				sVolumen->img->setPosition((float)sVolumen->x, (float)sVolumen->y);
++				sVolumen->img->setOpacity((unsigned char)(255 * a));
++				sVolumen->img->render(t);
++			}
++		}
 +	}
 +
 +	void dibujarCapa()
 +	{
++		dibujarFijas();
 +		if (!sCapa || !sCapa->img || sCapa->modo == 0)
 +			return;
 +		Transform4x4f t = Transform4x4f::Identity();
@@ -2170,10 +2232,10 @@ index 00000000..a83be66f
 +}
 diff --git a/es-core/src/PantherCapa.h b/es-core/src/PantherCapa.h
 new file mode 100644
-index 00000000..f9a57018
+index 00000000..742e7fa3
 --- /dev/null
 +++ b/es-core/src/PantherCapa.h
-@@ -0,0 +1,23 @@
+@@ -0,0 +1,26 @@
 +#pragma once
 +#ifndef ES_CORE_PANTHER_CAPA_H
 +#define ES_CORE_PANTHER_CAPA_H
@@ -2185,7 +2247,9 @@ index 00000000..f9a57018
 +// Panther OS: lo que el servicio de WhatsApp de la consola pone encima del menú (ver
 +// consola/emulador/capa.c, que explica el formato de /dev/shm/panther-capa):
 +//  - el aviso pequeño de arriba cuando te escriben, y el chat entero si lo abres con R3;
-+//  - la lista de lo que te han escrito, a la derecha de la pantalla principal (/dev/shm/panther-panel).
++//  - la lista de lo que te han escrito, a la derecha de la pantalla principal (/dev/shm/panther-panel);
++//  - el recuadro de arriba a la derecha (batería, hora, WhatsApp) fuera de la pantalla principal
++//    (/dev/shm/panther-barra) y la barra del volumen de la izquierda (/dev/shm/panther-volumen).
 +namespace PantherCapa
 +{
 +	void iniciar(Window* window);
@@ -2194,6 +2258,7 @@ index 00000000..f9a57018
 +	void actualizar();      // lee lo nuevo (hilo principal, antes de dibujar)
 +	void dibujarCapa();     // lo último de todo
 +	void dibujarPanel(const Transform4x4f& trans); // en la pantalla principal
++	void enInicio();         // la pantalla principal se está viendo (ahí no va el recuadro de arriba)
 +}
 +
 +#endif
