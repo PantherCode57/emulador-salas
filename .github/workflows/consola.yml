@@ -33,6 +33,7 @@ jobs:
             consola/whatsapp/go.sum
             consola/spotin/go.sum
             consola/enlace/go.sum
+            consola/pokemon/go.sum
       - name: WhatsApp
         working-directory: consola/whatsapp
         run: |
@@ -45,6 +46,12 @@ jobs:
           go vet ./...
           CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/spotin .
           ../../piezas/spotin -prueba ../../piezas/pantallas-spotin
+      - name: Pokémon (salas de Pokemulador)
+        working-directory: consola/pokemon
+        run: |
+          go vet ./...
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/pokemon .
+          ../../piezas/pokemon -prueba ../../piezas/pantallas-pokemon
       - name: Enlace de las salas (sin clave)
         working-directory: consola/enlace
         run: |

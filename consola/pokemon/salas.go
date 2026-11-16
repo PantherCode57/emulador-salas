@@ -27,7 +27,7 @@ type Sala struct {
 	Creada        int64  `json:"creada"`
 }
 
-func archivoSalas() string         { return filepath.Join(carpetaDatos, "salas.json") }
+func archivoSalas() string          { return filepath.Join(carpetaDatos, "salas.json") }
 func carpetaSala(c string) string   { return filepath.Join(carpetaDatos, "salas", strings.ToLower(c)) }
 func archivoPropio(c string) string { return filepath.Join(carpetaSala(c), "mi_progreso.json") }
 func carpetaAmigos(c string) string { return filepath.Join(carpetaSala(c), "amigos") }

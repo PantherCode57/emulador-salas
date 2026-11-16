@@ -68,10 +68,10 @@ const (
 
 type fuentes struct {
 	grande, titulo, nombre, fila, semi15, etiqueta, inicial font.Face // Selawik Semibold 28, 26, 17, 16, 15, 14, 18
-	texto, normal, pequena, chica, mini                    font.Face // Selawik 18, 16, 15, 14, 13
-	hora, horaGrande                                       font.Face // Selawik Semilight 26 y 30
-	iconoGrande, icono, iconoPeq                           font.Face // Font Awesome 24, 18, 14
-	reg                                                    *sfnt.Font
+	texto, normal, pequena, chica, mini                     font.Face // Selawik 18, 16, 15, 14, 13
+	hora, horaGrande                                        font.Face // Selawik Semilight 26 y 30
+	iconoGrande, icono, iconoPeq                            font.Face // Font Awesome 24, 18, 14
+	reg                                                     *sfnt.Font
 }
 
 func cargarLetra(archivo string, reserva []byte) *opentype.Font {

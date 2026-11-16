@@ -8,8 +8,10 @@ I=~/panther-instalar
 P=~/panther/pokemon
 mkdir -p $P ~/.config/panther/pokemon
 install -m 755 $I/pokemon-arm64 $P/pokemon
-install -m 755 $I/enlace $P/enlace
-install -m 644 $I/mgba_libretro.so $P/mgba_libretro.so
+[ -f $I/enlace ] && install -m 755 $I/enlace $P/enlace
+[ -f $I/mgba_libretro.so ] && install -m 644 $I/mgba_libretro.so $P/mgba_libretro.so
+# GBA-PK (veros por el mapa en GBA) y los Caramelos Raros de Rojo Fuego: scripts de Lua del mGBA.
+install -m 644 $I/pokemon-lua/*.lua $P/
 cp ~/panther/whatsapp/pokemulador_libretro.so $P/
 [ -f $I/tarjetas-pokemon/pokemon.png ] && cp $I/tarjetas-pokemon/pokemon.png $I/tema-panther/tarjetas/
 sudo systemctl stop emulationstation
