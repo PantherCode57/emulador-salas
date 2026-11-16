@@ -60,6 +60,17 @@ NUEVOS = """	<system>
 		<release>2026</release>
 	</system>
 	<system>
+		<name>pokemon</name>
+		<fullname>Pokémon</fullname>
+		<path>/roms/pokemon/</path>
+		<extension>.sh .SH</extension>
+		<command>%ROM%</command>
+		<platform>pokemon</platform>
+		<theme>pokemon</theme>
+		<manufacturer>Pokemulador</manufacturer>
+		<release>2026</release>
+	</system>
+	<system>
 		<name>salas</name>
 		<fullname>Salas</fullname>
 		<path>/roms/salas/</path>
@@ -127,5 +138,5 @@ def idioma(ruta: Path):
 for r in ("/etc/emulationstation/es_systems.cfg", "/etc/emulationstation/es_systems.sd1"):
     sistemas(Path(r))
 idioma(Path("/home/ark/.emulationstation/es_settings.cfg"))
-for c in ("/roms/whatsapp", "/roms/salas", "/roms/spotin"):
+for c in ("/roms/whatsapp", "/roms/salas", "/roms/spotin", "/roms/pokemon"):
     Path(c).mkdir(exist_ok=True)
