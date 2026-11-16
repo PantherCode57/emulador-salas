@@ -39,8 +39,11 @@ pedir esas listas (los vídeos se siguen viendo sin cuenta).</p>
 <ol><li>En el PC, abre una <b>ventana de incógnito</b> en Chrome o Edge (<b>Ctrl + Mayús + N</b>) y entra en
 <b>youtube.com</b> con tu cuenta.</li>
 <li>Pulsa <b>F12</b>, ve a la pestaña <b>Red</b> (<i>Network</i>) y pulsa <b>F5</b> para recargar la página.</li>
-<li>Arriba de la lista, pulsa la primera línea (<code>www.youtube.com</code>). En <b>Encabezados</b>
-(<i>Headers</i>), baja hasta <b>Encabezados de solicitud</b> y busca <code>cookie</code>.</li>
+<li>En la cajita de <b>Filtrar</b> (<i>Filter</i>) de la pestaña Red escribe <code>youtubei</code> y pulsa una de
+las líneas que salen (por ejemplo <code>browse</code>, <code>next</code> o <code>guide</code>). En <b>Encabezados</b>
+(<i>Headers</i>), baja hasta <b>Encabezados de solicitud</b> y busca <code>cookie</code>.
+No vale la primera línea (<code>www.youtube.com</code>): YouTube la saca de su caché y Chrome no enseña su
+cookie (pone «Se muestran encabezados provisionales»). Si en la que elijas tampoco sale, prueba otra.</li>
 <li>Clic derecho sobre su valor → <b>Copiar valor</b> (o selecciónalo entero), y pégalo aquí:</li></ol>
 <form method="post" action="/"><textarea name="cookie" placeholder="Pega aquí la cookie (empieza por algo como YSC=… o VISITOR_INFO1_LIVE=…)" autofocus></textarea>
 <button type="submit">Enviar a la consola</button></form>

@@ -58,7 +58,10 @@ static void conectar(void) {
 	conexion = fd;
 	llevamos = 0;
 	ultima_mascara = -1;
+	registro("conectado con la app");
 }
+
+static long imagenes;
 
 /* Lee lo que haya llegado. Devuelve true si se ha completado una imagen nueva. */
 static bool leer(void) {
@@ -91,6 +94,8 @@ static bool leer(void) {
 			video_imagen(recibido, nuevo_w, nuevo_h, nuevo_w * 4, SDL_PIXELFORMAT_XRGB8888, ESCALA_LLENAR);
 			llevamos = 0;
 			nueva = true;
+			if (imagenes++ == 0)
+				registro("primera imagen de la app: %dx%d", nuevo_w, nuevo_h);
 		}
 	}
 	return nueva;
@@ -137,6 +142,7 @@ int pantalla_apps(void) {
 		capa_dibujar();
 		video_presentar();
 	}
+	registro("fin de la pantalla: %ld imágenes de la app", imagenes);
 	cerrar();
 	video_cerrar();
 	return 0;
