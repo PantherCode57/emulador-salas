@@ -60,6 +60,17 @@ NUEVOS = """	<system>
 		<release>2026</release>
 	</system>
 	<system>
+		<name>youtube</name>
+		<fullname>YouTube</fullname>
+		<path>/roms/youtube/</path>
+		<extension>.sh .SH</extension>
+		<command>%ROM%</command>
+		<platform>youtube</platform>
+		<theme>youtube</theme>
+		<manufacturer>Panther OS</manufacturer>
+		<release>2026</release>
+	</system>
+	<system>
 		<name>pokemon</name>
 		<fullname>Pokémon</fullname>
 		<path>/roms/pokemon/</path>
@@ -138,5 +149,5 @@ def idioma(ruta: Path):
 for r in ("/etc/emulationstation/es_systems.cfg", "/etc/emulationstation/es_systems.sd1"):
     sistemas(Path(r))
 idioma(Path("/home/ark/.emulationstation/es_settings.cfg"))
-for c in ("/roms/whatsapp", "/roms/salas", "/roms/spotin", "/roms/pokemon"):
+for c in ("/roms/whatsapp", "/roms/salas", "/roms/spotin", "/roms/pokemon", "/roms/youtube"):
     Path(c).mkdir(exist_ok=True)
