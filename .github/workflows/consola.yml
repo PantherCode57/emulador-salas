@@ -1,15 +1,23 @@
 name: Consola portátil (arm64)
 
-# Programas de la consola portátil (consola/): el WhatsApp, la animación de arranque y el núcleo de
-# la pantalla (lakka/nucleo), compilados en una máquina arm64 de GitHub. Ninguno lleva claves.
+# Programas de la consola portátil (consola/): el WhatsApp, Spotin, Pokémon con su enlace, la
+# animación de arranque, el núcleo de la pantalla (lakka/nucleo) y el mGBA de Pokemulador (scripts
+# de Lua para GBA-PK), compilados en una máquina arm64 de GitHub. Ninguno lleva claves: el enlace de
+# la consola entra en Tailscale con la cuenta de quien la usa (un QR la primera vez).
 on:
   push:
     branches-ignore: [ master ]
     paths:
       - 'consola/**'
       - 'lakka/nucleo/**'
+      - 'nucleos/mgba/**'
+      - 'lakka/nucleos/mgba-linux.sh'
       - '.github/workflows/consola.yml'
   workflow_dispatch:
+
+env:
+  MGBA_TAG: "0.10.5"
+  LUA_VERSION: "5.4.7"
 
 jobs:
   programas:
@@ -24,6 +32,7 @@ jobs:
           cache-dependency-path: |
             consola/whatsapp/go.sum
             consola/spotin/go.sum
+            consola/enlace/go.sum
       - name: WhatsApp
         working-directory: consola/whatsapp
         run: |
@@ -36,6 +45,11 @@ jobs:
           go vet ./...
           CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/spotin .
           ../../piezas/spotin -prueba ../../piezas/pantallas-spotin
+      - name: Enlace de las salas (sin clave)
+        working-directory: consola/enlace
+        run: |
+          go vet ./...
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/enlace .
       - name: Animación de arranque
         working-directory: consola/arranque
         run: |
@@ -51,4 +65,34 @@ jobs:
         with:
           name: consola-arm64
           path: piezas/
+          retention-days: 7
+
+  mgba:
+    name: mGBA de Pokemulador (GBA-PK) para arm64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Buscar núcleo ya compilado
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: nucleo-mgba-linux
+          key: consola-mgba-${{ env.MGBA_TAG }}-${{ env.LUA_VERSION }}-${{ hashFiles('nucleos/mgba/**', 'lakka/nucleos/mgba-linux.sh') }}
+      - name: Descargar mGBA
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: mgba-emu/mgba
+          ref: ${{ env.MGBA_TAG }}
+          path: mgba
+      - name: Compilar
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build > /dev/null
+          bash lakka/nucleos/mgba-linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: consola-mgba-arm64
+          path: nucleo-mgba-linux/mgba_libretro.so
           retention-days: 7
