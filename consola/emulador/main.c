@@ -57,6 +57,8 @@ static void leer_config(const char *ruta, struct opciones *o) {
 		char clave[128], valor[900];
 		if (sscanf(linea, " %127[^= ] = \"%899[^\"]\"", clave, valor) != 2)
 			continue;
+		if (!strcmp(clave, "savestate_auto_load") && !strcmp(valor, "false"))
+			o->sin_seguir = true;
 		const char **dst = NULL;
 		if (!strcmp(clave, "savefile_directory"))
 			dst = &o->dir_guardados;
@@ -64,6 +66,10 @@ static void leer_config(const char *ruta, struct opciones *o) {
 			dst = &o->dir_estados;
 		else if (!strcmp(clave, "system_directory"))
 			dst = &o->dir_sistema;
+		else if (!strcmp(clave, "screenshot_directory"))
+			dst = &o->dir_capturas;
+		else if (!strcmp(clave, "core_options_path"))
+			dst = &o->opciones_nucleo;
 		if (dst && valor[0] && strcmp(valor, "default") != 0) {
 			if (valor[0] == '~' && getenv("HOME")) {
 				char *r = malloc(strlen(getenv("HOME")) + strlen(valor) + 1);

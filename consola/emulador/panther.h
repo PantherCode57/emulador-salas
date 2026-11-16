@@ -114,6 +114,9 @@ struct opciones {
 	const char *dir_guardados; /* .srm; si no, junto al juego (como RetroArch) */
 	const char *dir_estados;   /* partidas rápidas; si no, junto al juego */
 	const char *dir_sistema;   /* donde mira pokemulador/multijugador.lua (las salas) */
+	const char *dir_capturas;  /* donde van las capturas que pide la app Pokémon */
+	const char *opciones_nucleo; /* opciones de Gambatte de la app Pokémon (el cable link de la sala) */
+	bool sin_seguir;           /* no guardar ni retomar dónde ibas (la app Pokémon lo lleva ella) */
 	const char *scripts[8];
 	int n_scripts;
 	int medir; /* sin pantalla: emula tantas imágenes lo más deprisa posible y dice cuánto tarda */
@@ -125,6 +128,18 @@ enum accion_menu { MENU_NADA, MENU_SEGUIR, MENU_GUARDAR, MENU_CARGAR, MENU_SALIR
 void menu_abrir(const char *titulo, bool hay_partida);
 enum accion_menu menu_pulsar(uint32_t nuevos, int *factor_rapido);
 void menu_dibujar(void);
+
+/* ---- cable.c: el cable link de GB por la red (como el de Gambatte) ---- */
+struct mCore;
+bool cable_empezar(struct mCore *core, bool servidor, const char *ip, int puerto);
+void cable_mantener(void);
+void cable_acabar(void);
+
+/* ---- ordenes.c: órdenes como las de RetroArch (SCREENSHOT, QUIT) y capturas en PNG ---- */
+void ordenes_abrir(void);
+const char *ordenes_leer(void);
+void ordenes_cerrar(void);
+bool guardar_png(const char *ruta, const uint8_t *px, int w, int h, int paso);
 
 /* ---- apps.c: la pantalla de las apps de la consola ---- */
 int pantalla_apps(void);

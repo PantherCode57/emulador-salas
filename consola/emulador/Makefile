@@ -9,7 +9,7 @@ CFLAGS += -std=gnu11 -Wall -Wextra -Wno-unused-parameter -ffunction-sections -fd
 LDFLAGS += -flto=4 -Wl,--gc-sections -Wl,--as-needed -s
 LDLIBS += $(MGBA)/lib/libmgba.a $(MGBA)/lib/liblua.a $(shell pkg-config --libs sdl2) -lz -lm -lpthread -ldl
 
-OBJ = main.o juego.o apps.o video.o sonido.o mandos.o capa.o avisos.o menu.o lienzo.o ajustes.o
+OBJ = main.o juego.o apps.o video.o sonido.o mandos.o capa.o avisos.o menu.o lienzo.o ajustes.o cable.o ordenes.o
 
 emulador: $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LDLIBS)

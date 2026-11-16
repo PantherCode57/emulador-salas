@@ -29,6 +29,7 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 /* Teclas de GBA (las de GB son las 8 primeras). */
@@ -184,6 +185,50 @@ static bool cargar_estado(struct mCore *core, const char *ruta) {
 	return bien;
 }
 
+/* El cable link de la sala, de las opciones de Gambatte que escribe la app Pokémon:
+ *   gambatte_gb_link_mode = "Network Server" | "Network Client" | "Not Connected"
+ *   gambatte_gb_link_network_port = "56400"
+ *   gambatte_gb_link_network_server_ip_1..12 = una cifra cada una (127.000.000.001) */
+static void cable_de_opciones(struct mCore *core, const char *ruta) {
+	FILE *f = ruta ? fopen(ruta, "r") : NULL;
+	if (!f)
+		return;
+	char modo[128] = "", cifras[13] = "000000000000", linea[512];
+	int puerto = 56400;
+	while (fgets(linea, sizeof(linea), f)) {
+		char clave[128], valor[128];
+		if (sscanf(linea, " %127[^= ] = \"%127[^\"]\"", clave, valor) != 2)
+			continue;
+		int n;
+		if (!strcmp(clave, "gambatte_gb_link_mode"))
+			snprintf(modo, sizeof(modo), "%s", valor);
+		else if (!strcmp(clave, "gambatte_gb_link_network_port"))
+			puerto = atoi(valor);
+		else if (sscanf(clave, "gambatte_gb_link_network_server_ip_%d", &n) == 1 && n >= 1 && n <= 12)
+			cifras[n - 1] = valor[0];
+	}
+	fclose(f);
+	bool servidor = !strcmp(modo, "Network Server");
+	if (!servidor && strcmp(modo, "Network Client") != 0)
+		return;
+	char ip[32];
+	snprintf(ip, sizeof(ip), "%d.%d.%d.%d", (cifras[0] - '0') * 100 + (cifras[1] - '0') * 10 + (cifras[2] - '0'),
+	         (cifras[3] - '0') * 100 + (cifras[4] - '0') * 10 + (cifras[5] - '0'),
+	         (cifras[6] - '0') * 100 + (cifras[7] - '0') * 10 + (cifras[8] - '0'),
+	         (cifras[9] - '0') * 100 + (cifras[10] - '0') * 10 + (cifras[11] - '0'));
+	cable_empezar(core, servidor, ip, puerto > 0 ? puerto : 56400);
+}
+
+/* Una captura como las de RetroArch: «<juego>-AAMMDD-HHMMSS.png». */
+static void capturar(const char *dir, const char *base, const color_t *px, unsigned w, unsigned h) {
+	char hora[32], ruta[PATH_MAX + NAME_MAX + 40];
+	time_t t = time(NULL);
+	strftime(hora, sizeof(hora), "%y%m%d-%H%M%S", localtime(&t));
+	snprintf(ruta, sizeof(ruta), "%s/%s-%s.png", dir, base, hora);
+	if (!guardar_png(ruta, (const uint8_t *)px, (int)w, (int)h, 256 * (int)sizeof(color_t)))
+		registro("no se ha podido guardar la captura %s", ruta);
+}
+
 /* Al ir rápido no se dibujan las imágenes que no se van a ver (es lo que más cuesta). */
 static void saltar_imagenes(struct mCore *core, int n) {
 	mCoreConfigSetIntValue(&core->config, "frameskip", n);
@@ -304,11 +349,13 @@ int juego(const struct opciones *o) {
 
 	/* ¿Seguir donde lo dejaste? Solo si la partida del juego no ha cambiado después (si has jugado a
 	 * este juego con otro programa, manda lo que hiciste allí). */
-	if (stat(auto_ruta, &st_auto) == 0 && (!habia_srm || st_auto.st_mtime + 30 >= st_srm.st_mtime)) {
+	if (!o->sin_seguir && stat(auto_ruta, &st_auto) == 0 && (!habia_srm || st_auto.st_mtime + 30 >= st_srm.st_mtime)) {
 		if (cargar_estado(core, auto_ruta))
 			aviso("Sigues donde lo dejaste");
 	}
 	guiones_empezar(core, scripts, n_scripts);
+	cable_de_opciones(core, o->opciones_nucleo);
+	ordenes_abrir();
 
 	char titulo[NAME_MAX + 1];
 	nombre_bonito(titulo, sizeof(titulo), base);
@@ -334,6 +381,13 @@ int juego(const struct opciones *o) {
 		uint32_t estado, nuevos;
 		mandos_leer(&estado, &nuevos);
 		capa_mirar();
+		cable_mantener();
+		for (const char *orden; (orden = ordenes_leer()) != NULL;) {
+			if (!strcmp(orden, "SCREENSHOT"))
+				capturar(o->dir_capturas ? o->dir_capturas : dir_juego, base, pixeles, w, h);
+			else if (!strcmp(orden, "QUIT"))
+				salir_ya = 1;
+		}
 		bool chat_ahora = capa_pantalla_completa();
 		if (chat_ahora != chat) {
 			chat = chat_ahora;
@@ -427,7 +481,9 @@ int juego(const struct opciones *o) {
 
 	registro("saliendo: guardo dónde ibas");
 	guiones_acabar();
-	if (!guardar_estado(core, auto_ruta))
+	cable_acabar();
+	ordenes_cerrar();
+	if (!o->sin_seguir && !guardar_estado(core, auto_ruta))
 		registro("no se ha podido guardar %s", auto_ruta);
 	sonido_cerrar();
 	core->unloadROM(core);
