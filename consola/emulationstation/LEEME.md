@@ -26,6 +26,13 @@ EmulationStation parado. Antes se guarda el original como `emulationstation.pant
   nmcli. Una red guardada que no conecta no se borra: si la contraseña ya no vale se cambia (y si la
   nueva tampoco va, vuelve la de antes). Cuando falla, sale el motivo (contraseña, red no encontrada,
   red de instituto con usuario, WPA3…) y, si no se sabe, la línea de error de nmcli.
+  - Redes con usuario (WPA2-Enterprise: institutos, empresas, eduroam): pide usuario y contraseña y
+    prueba PEAP/MSCHAPv2, luego TTLS/PAP y TTLS/MSCHAPv2. No comprueba el certificado del servidor
+    (como «No validar» en un móvil).
+  - Móviles y routers con WPA3 o PMF: si el primer intento falla, prueba otra vez con WPA2 a secas y
+    sin PMF, porque el Wi-Fi de la consola es antiguo.
+  - Avisa si la red pide entrar en una página web (`nmcli networking connectivity check` = portal).
+  - Al buscar con Y recuerda que la consola sólo ve redes de 2,4 GHz.
 - **Apertura directa**: los apartados del ajuste `PantherDirectLaunch` (separados por comas) que
   tienen un solo juego lo abren al pulsar A, sin pasar por su lista.
 - **Carrusel**: propiedad `minLogoOpacity` (0 a 1) para las tarjetas no elegidas; antes estaba fija
