@@ -4,7 +4,8 @@ EmulationStation parado (si no, al cerrarse guardaría sus ajustes encima).
 
 - Nombres cortos en español para los sistemas que se usan.
 - Las consolas, dentro de la tarjeta «Emuladores», con su marca, año y descripción.
-- Apartados propios «WhatsApp» y «Salas» (carpetas /roms/whatsapp y /roms/salas, con scripts .sh).
+- Apartados propios (WhatsApp, Spotin, YouTube, Instagram, Navegador, Pokémon y Salas: carpetas en
+  /roms con scripts .sh).
 - Idioma de los menús: español.
 Antes de cambiar nada guarda una copia (*.panther-original) de cada archivo, una sola vez.
 """
@@ -67,6 +68,17 @@ NUEVOS = """	<system>
 		<command>%ROM%</command>
 		<platform>youtube</platform>
 		<theme>youtube</theme>
+		<manufacturer>Panther OS</manufacturer>
+		<release>2026</release>
+	</system>
+	<system>
+		<name>instagram</name>
+		<fullname>Instagram</fullname>
+		<path>/roms/instagram/</path>
+		<extension>.sh .SH</extension>
+		<command>%ROM%</command>
+		<platform>instagram</platform>
+		<theme>instagram</theme>
 		<manufacturer>Panther OS</manufacturer>
 		<release>2026</release>
 	</system>
@@ -160,5 +172,6 @@ def idioma(ruta: Path):
 for r in ("/etc/emulationstation/es_systems.cfg", "/etc/emulationstation/es_systems.sd1"):
     sistemas(Path(r))
 idioma(Path("/home/ark/.emulationstation/es_settings.cfg"))
-for c in ("/roms/whatsapp", "/roms/salas", "/roms/spotin", "/roms/pokemon", "/roms/youtube", "/roms/navegador"):
+for c in ("/roms/whatsapp", "/roms/salas", "/roms/spotin", "/roms/pokemon", "/roms/youtube", "/roms/navegador",
+          "/roms/instagram"):
     Path(c).mkdir(exist_ok=True)

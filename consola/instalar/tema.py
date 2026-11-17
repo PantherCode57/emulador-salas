@@ -111,17 +111,18 @@ PANTHER_XML = """<theme>
       <pos>0 2</pos>
       <size>0.001 0.001</size>
     </image>
-    <!-- Seis tarjetas quietas y centradas (fixedRow): se mueve solo la elegida, que crece. El
-         carrusel mide todo el ancho, así que de una tarjeta a la siguiente hay 1/6 (107 px). -->
+    <!-- Siete tarjetas quietas y centradas (fixedRow): se mueve solo la elegida, que crece. El
+         carrusel mide todo el ancho, así que de una tarjeta a la siguiente hay 1/7 (91 px); cada
+         una mide 80 × 46 px (con seis medían 96 × 55). -->
     <carousel name="systemcarousel">
       <type>horizontal</type>
       <pos>0 0.775</pos>
       <size>1 0.21</size>
       <color>00000000</color>
       <logoAlignment>center</logoAlignment>
-      <logoSize>0.15 0.115</logoSize>
+      <logoSize>0.125 0.096</logoSize>
       <logoScale>1.12</logoScale>
-      <maxLogoCount>6</maxLogoCount>
+      <maxLogoCount>7</maxLogoCount>
       <fixedRow>true</fixedRow>
       <!-- las tarjetas no elegidas, opacas (sin el cambio del menú quedaban a medio transparentar) -->
       <minLogoOpacity>1</minLogoOpacity>

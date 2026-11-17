@@ -11,6 +11,13 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
   - Avisos de mensajes nuevos.
   - `-prueba <carpeta>` dibuja las pantallas con datos inventados.
   - `-diagnostico 40s` pide un QR sin pantalla y con el registro detallado.
+- `instagram/`: Instagram con tu cuenta (la cookie de instagram.com se pega desde el PC en
+  `http://IP:8767`): tu inicio (fotos, de varias fotos y vídeos), los reels, las historias y tus
+  mensajes, con «me gusta» y respuestas con el teclado en pantalla. Habla con Instagram como su web
+  (GraphQL con doc_id y api/v1); los vídeos los lee ffmpeg de su dirección y las fotos solo van a la
+  memoria. Al ver historias o abrir chats no se marcan como vistos.
+  - `-prueba <carpeta>` dibuja las pantallas con datos inventados.
+  - `-probar` dice, con la sesión guardada, qué contesta Instagram a cada pestaña (solo cuántas).
 - `arranque/`: animación de arranque que dibuja en `/dev/fb0` a 60 fps antes de EmulationStation.
   Las letras se cargan de `/usr/local/share/panther/arranque` (`titulo.png`, `subtitulo.png`,
   `posiciones.txt`); no están en el repositorio.
