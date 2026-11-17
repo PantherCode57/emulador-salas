@@ -17,6 +17,8 @@ on:
       - '.github/workflows/lakka.yml'
       - 'consola/**'
       - '.github/workflows/consola.yml'
+      - 'panther-android/**'
+      - '.github/workflows/panther-android.yml'
       - '.github/workflows/emulationstation.yml'
   workflow_dispatch:
 
