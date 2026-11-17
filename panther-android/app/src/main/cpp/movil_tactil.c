@@ -113,22 +113,26 @@ static void de_pie(int w, int h) {
 	float u = (float)w;
 	int arriba = recorte_pantalla > (int)(0.03f * h) ? recorte_pantalla : (int)(0.03f * h);
 	zona = (SDL_Rect){0, arriba, w, w * 3 / 4};
-	int y0 = zona.y + zona.h + (int)(0.05f * u);
-	int abajo = h - (int)(0.035f * h);
+	/* Los botones van juntos abajo, como un mando (donde llegan los pulgares); lo que sobra de
+	 * pantalla queda entre el juego y ellos. De abajo arriba: SELECT y START, la cruz y A, B, y L, R. */
+	int y0 = zona.y + zona.h + (int)(0.04f * u);
+	int abajo = h - (int)(0.03f * h);
 	int fh = (int)(0.095f * u), lw = (int)(0.25f * u);
-	pon(C_L, (int)(0.04f * u) + lw / 2, y0 + fh / 2, lw, fh);
-	pon(C_R, w - (int)(0.04f * u) - lw / 2, y0 + fh / 2, lw, fh);
 	int ph = (int)(0.075f * u), pw = (int)(0.18f * u);
-	pon(C_RAPIDO, w / 2 - (int)(0.015f * u) - pw / 2, y0 + fh / 2, pw, ph);
-	pon(C_MENU, w / 2 + (int)(0.015f * u) + pw / 2, y0 + fh / 2, pw, ph);
+	int hueco = (int)(0.07f * u);
+	float r = 0.2f * u;
+	int cabe = (abajo - ph - hueco - hueco - fh - y0) / 2;
+	if (r > cabe)
+		r = (float)cabe;
+	int ymed = abajo - ph - hueco - (int)r;
+	int y_l = ymed - (int)r - hueco - fh / 2;
+	pon(C_L, (int)(0.04f * u) + lw / 2, y_l, lw, fh);
+	pon(C_R, w - (int)(0.04f * u) - lw / 2, y_l, lw, fh);
+	pon(C_RAPIDO, w / 2 - (int)(0.015f * u) - pw / 2, y_l, pw, ph);
+	pon(C_MENU, w / 2 + (int)(0.015f * u) + pw / 2, y_l, pw, ph);
 	int sw = (int)(0.2f * u);
 	pon(C_SELECT, w / 2 - (int)(0.025f * u) - sw / 2, abajo - ph / 2, sw, ph);
 	pon(C_START, w / 2 + (int)(0.025f * u) + sw / 2, abajo - ph / 2, sw, ph);
-	int medio_alto = (abajo - ph) - (y0 + fh);
-	int ymed = y0 + fh + medio_alto / 2;
-	float r = 0.2f * u;
-	if (r > medio_alto * 0.42f)
-		r = medio_alto * 0.42f;
 	pon(C_CRUZ, (int)(0.07f * u + r), ymed, (int)(2 * r), (int)(2 * r));
 	float rb = r * 0.52f;
 	int ax = w - (int)(0.07f * u + rb);

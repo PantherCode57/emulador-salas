@@ -33,6 +33,9 @@ print((int(m[1]) + int(m[3])) // 2, (int(m[2]) + int(m[4])) // 2) if m else prin
 }
 
 adb install -r "$APK" || exit 1
+# El aviso de Android «Viendo en pantalla completa» (en el móvil sale una vez y se quita con
+# «Entendido»): aquí taparía el juego y se quedaría la tecla atrás.
+adb shell settings put secure immersive_mode_confirmations confirmed
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 0
 adb shell wm size
@@ -72,10 +75,20 @@ cap 6-partida-rapida-guardada
 
 toca $(boton Rapido) 2
 cap 7-rapido
+toca $(boton Rapido) 2
+
+toca $(boton Menu) 2                   # el botón «Menú» de la pantalla
+cap 8-menu-con-el-boton
+toca $(boton B) 2                      # B: seguir jugando
 
 adb shell settings put system user_rotation 1
-sleep 5
-cap 8-tumbado
+sleep 6
+cap 8b-tumbado
+adb shell input keyevent KEYCODE_BACK
+sleep 2
+cap 8c-tumbado-menu
+adb shell input keyevent KEYCODE_BACK
+sleep 1
 adb shell settings put system user_rotation 0
 sleep 4
 
