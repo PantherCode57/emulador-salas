@@ -57,9 +57,14 @@ void sonido_vaciar(void);
 void sonido_cerrar(void);
 
 /* ---- lienzo.c: dibujar en memoria (RGBA sin premultiplicar) y letras con stb_truetype ---- */
+/* Las medidas van en píxeles de 640×480. Con lienzo_escala = k (la app del móvil, en pantallas
+ * grandes) el lienzo tiene k×k píxeles por cada uno y se dibuja más fino; en la consola es 1. */
+extern int lienzo_escala;
 struct lienzo {
 	uint8_t *px;
-	int w, h;
+	int w, h;   /* en píxeles de 640×480 */
+	int k;      /* la escala con la que se hizo */
+	int pw, ph; /* los píxeles de verdad: w×k, h×k */
 };
 struct color {
 	uint8_t r, g, b, a;

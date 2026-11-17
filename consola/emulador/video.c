@@ -149,7 +149,8 @@ void textura_subir_rgba(struct capa_textura *t, const uint8_t *rgba, int w, int 
 	SDL_UpdateTexture(t->tex, NULL, rgba, w * 4);
 }
 
-void textura_subir(struct capa_textura *t, const struct lienzo *l) { textura_subir_rgba(t, l->px, l->w, l->h); }
+/* (En la consola el lienzo va a escala 1: sus píxeles son los de 640×480.) */
+void textura_subir(struct capa_textura *t, const struct lienzo *l) { textura_subir_rgba(t, l->px, l->pw, l->ph); }
 
 /* x, y, w y h van en píxeles de 640×480 (se ajustan si la pantalla fuera de otro tamaño). */
 void textura_dibujar(struct capa_textura *t, int x, int y, int w, int h, uint8_t alfa) {

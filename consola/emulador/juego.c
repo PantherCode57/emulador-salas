@@ -376,9 +376,14 @@ int juego(const struct opciones *o) {
 	while (!salir_ya) {
 		Uint64 empieza = SDL_GetPerformanceCounter();
 		SDL_Event ev;
-		while (SDL_PollEvent(&ev))
-			if (ev.type == SDL_QUIT)
+		while (SDL_PollEvent(&ev)) {
+			if (ev.type == SDL_QUIT || ev.type == SDL_APP_TERMINATING)
 				salir_ya = 1;
+			/* En el móvil (la app Panther): al irte a otra app se guarda dónde ibas, por si el
+			 * sistema la cierra mientras no la ves. */
+			else if (ev.type == SDL_APP_WILLENTERBACKGROUND && !o->sin_seguir && !guardar_estado(core, auto_ruta))
+				registro("no se ha podido guardar %s", auto_ruta);
+		}
 		uint32_t estado, nuevos;
 		mandos_leer(&estado, &nuevos);
 		capa_mirar();

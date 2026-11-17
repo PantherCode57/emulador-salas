@@ -1,0 +1,78 @@
+name: App Panther (Android)
+
+# La app Panther del móvil (panther-android/): el emulador de Panther OS de la consola
+# (consola/emulador: mGBA con Lua y SDL) con botones táctiles. No lleva claves ni juegos.
+on:
+  push:
+    branches-ignore: [ master ]
+    paths:
+      - 'panther-android/**'
+      - 'consola/emulador/**'
+      - 'consola/trucos/**'
+      - 'lakka/prueba/rom_prueba.py'
+      - '.github/workflows/panther-android.yml'
+  workflow_dispatch:
+
+jobs:
+  apk:
+    name: Compilar el APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: NDK y CMake
+        run: echo "y" | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" "cmake;3.22.1" > /dev/null
+      - name: Buscar mGBA ya compilado
+        uses: actions/cache@v4
+        with:
+          path: |
+            panther-android/terceros/*.tar.gz
+            panther-android/terceros/mgba-lib
+          key: panther-terceros-${{ hashFiles('panther-android/preparar.sh') }}
+      - name: SDL2, mGBA y Lua
+        run: bash panther-android/preparar.sh
+      - name: APK
+        run: |
+          chmod +x gradlew
+          ./gradlew -p panther-android assembleDebug --no-daemon
+          ls -la panther-android/app/build/outputs/apk/debug/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: panther-apk
+          path: panther-android/app/build/outputs/apk/debug/*.apk
+
+  prueba:
+    name: Probar en un emulador de Android
+    needs: apk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: panther-apk
+          path: apk
+      - name: KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Probar
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash panther-android/prueba/emulador.sh apk/app-debug.apk resultados
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: panther-prueba
+          path: resultados/

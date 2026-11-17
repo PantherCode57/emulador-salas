@@ -15,10 +15,15 @@
 #include "terceros/stb_truetype.h"
 #pragma GCC diagnostic pop
 
+int lienzo_escala = 1;
+
 bool lienzo_nuevo(struct lienzo *l, int w, int h) {
-	l->px = calloc((size_t)w * h, 4);
+	l->k = lienzo_escala > 0 ? lienzo_escala : 1;
 	l->w = w;
 	l->h = h;
+	l->pw = w * l->k;
+	l->ph = h * l->k;
+	l->px = calloc((size_t)l->pw * l->ph, 4);
 	return l->px != NULL;
 }
 
@@ -28,20 +33,20 @@ void lienzo_libre(struct lienzo *l) {
 }
 
 void lienzo_borrar(struct lienzo *l, struct color c) {
-	for (int i = 0; i < l->w * l->h; i++) {
+	for (int i = 0; i < l->pw * l->ph; i++) {
 		uint8_t *p = l->px + i * 4;
 		p[0] = c.r, p[1] = c.g, p[2] = c.b, p[3] = c.a;
 	}
 }
 
-/* Pone el color c encima del píxel con una cobertura de 0 a 255. */
+/* Pone el color c encima del píxel (en píxeles de verdad) con una cobertura de 0 a 255. */
 static inline void mezclar(struct lienzo *l, int x, int y, struct color c, int cobertura) {
-	if (x < 0 || y < 0 || x >= l->w || y >= l->h)
+	if (x < 0 || y < 0 || x >= l->pw || y >= l->ph)
 		return;
 	int sa = c.a * cobertura / 255;
 	if (sa <= 0)
 		return;
-	uint8_t *d = l->px + ((size_t)y * l->w + x) * 4;
+	uint8_t *d = l->px + ((size_t)y * l->pw + x) * 4;
 	int da = d[3];
 	int fuera = da * (255 - sa) / 255;
 	int oa = sa + fuera;
@@ -54,6 +59,7 @@ static inline void mezclar(struct lienzo *l, int x, int y, struct color c, int c
 }
 
 void lienzo_redondeado(struct lienzo *l, int x, int y, int w, int h, int radio, struct color c) {
+	x *= l->k, y *= l->k, w *= l->k, h *= l->k, radio *= l->k;
 	if (radio * 2 > w)
 		radio = w / 2;
 	if (radio * 2 > h)
@@ -75,6 +81,7 @@ void lienzo_redondeado(struct lienzo *l, int x, int y, int w, int h, int radio, 
 
 /* Triángulo que apunta a la derecha (para el icono de ir rápido), suavizado con 4×4 muestras. */
 void lienzo_triangulo_der(struct lienzo *l, int x, int y, int w, int h, struct color c) {
+	x *= l->k, y *= l->k, w *= l->k, h *= l->k;
 	for (int j = 0; j < h; j++) {
 		for (int i = 0; i < w; i++) {
 			int dentro = 0;
@@ -188,7 +195,9 @@ int texto_ancho(enum letra f, int tam, const char *s) {
 int texto(struct lienzo *l, int x, int y, enum letra f, int tam, struct color c, const char *s) {
 	if (!hay_letra[f])
 		return x;
-	float esc = escala_de(f, tam), pos = (float)x;
+	int k = l->k;
+	y *= k;
+	float esc = escala_de(f, tam * k), pos = (float)(x * k);
 	int antes = 0;
 	while (*s) {
 		int cp = siguiente(&s);
@@ -212,7 +221,7 @@ int texto(struct lienzo *l, int x, int y, enum letra f, int tam, struct color c,
 		pos += esc * avance;
 		antes = cp;
 	}
-	return (int)ceilf(pos);
+	return (int)ceilf(pos / k);
 }
 
 void texto_recortado(struct lienzo *l, int x, int y, int ancho_max, enum letra f, int tam, struct color c, const char *s) {

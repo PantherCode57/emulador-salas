@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Panther: el emulador de Panther OS (el de la consola) en el móvil. Sin internet: los juegos se
+     traen del móvil o de Google Drive con el selector de archivos de Android. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-feature android:glEsVersion="0x00020000" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+
+    <!-- Una vibración cortita al pulsar los botones de la pantalla. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <application
+        android:allowBackup="true"
+        android:appCategory="game"
+        android:icon="@mipmap/icono"
+        android:roundIcon="@mipmap/icono"
+        android:isGame="true"
+        android:label="Panther"
+        android:theme="@style/Inicio">
+
+        <activity
+            android:name=".Inicio"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- El juego va en su propio proceso, que se cierra al salir (ver movil.c). -->
+        <activity
+            android:name=".Juego"
+            android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
+            android:exported="false"
+            android:preferMinimalPostProcessing="true"
+            android:process=":juego"
+            android:screenOrientation="fullUser"
+            android:theme="@style/Juego" />
+    </application>
+</manifest>
