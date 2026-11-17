@@ -16,7 +16,26 @@ DIR=/sdcard/Android/data/$PKG/files/juegos
 AQUI=$(cd "$(dirname "$0")" && pwd)
 
 cap() { adb exec-out screencap -p > "$OUT/$1.png"; echo "captura $1"; }
-toca() { adb shell input tap "$1" "$2"; sleep "${3:-1}"; }
+toca() {
+	if [ -z "${1:-}" ] || [ -z "${2:-}" ]; then echo "no sé dónde tocar"; return; fi
+	adb shell input tap "$1" "$2"; sleep "${3:-1}"
+}
+# Los emuladores de GitHub van justos y a veces sale «X no responde»: se le da a esperar.
+esperar_avisos() {
+	for i in 1 2 3; do
+		adb shell uiautomator dump /sdcard/avisos.xml > /dev/null 2>&1
+		w=$(adb shell cat /sdcard/avisos.xml 2>/dev/null | python3 -c "
+import re, sys
+x = sys.stdin.read()
+if 'responding' not in x and 'no responde' not in x: sys.exit()
+m = re.search(r'text=\"(Wait|Esperar)\"[^>]*bounds=\"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\"', x)
+print((int(m[2]) + int(m[4])) // 2, (int(m[3]) + int(m[5])) // 2) if m else print('')")
+		[ -z "$w" ] && return
+		echo "aviso de «no responde»: esperar"
+		adb shell input tap $w
+		sleep 3
+	done
+}
 # El centro de un botón de la pantalla del juego, según lo que apunta el emulador en el registro.
 boton() {
 	adb logcat -d -s Panther:I | grep "botón $1:" | tail -1 | awk '{for (i = 1; i <= NF; i++) if ($i == "'"$1"':") print $(i+1) + int($(i+3) / 2), $(i+2) + int($(i+4) / 2)}'
@@ -41,8 +60,11 @@ adb shell settings put system user_rotation 0
 adb shell wm size
 adb logcat -c
 
+sleep 20  # que el sistema acabe de arrancar
+esperar_avisos
 adb shell am start -W -n $PKG/.Inicio
 sleep 5
+esperar_avisos
 cap 1-inicio-vacio
 
 python3 "$AQUI/rom_gba.py" /tmp/prueba.gba
@@ -53,9 +75,16 @@ adb push /tmp/prueba.gb "$DIR/Prueba de Game Boy.gb"
 adb shell am force-stop $PKG
 adb shell am start -W -n $PKG/.Inicio
 sleep 4
+esperar_avisos
 cap 2-inicio-con-juegos
 
-donde=$(tarjeta "Prueba de Panther")
+donde=""
+for i in 1 2 3; do
+	donde=$(tarjeta "Prueba de Panther")
+	[ -n "$donde" ] && break
+	esperar_avisos
+	sleep 3
+done
 echo "tarjeta de GBA en: $donde"
 [ -n "$donde" ] && toca $donde 10
 cap 3-juego-de-pie
@@ -67,7 +96,8 @@ cap 4-menu-con-atras
 abajo=$(boton cruz | awk '{print $1, $2}')
 read -r cx cy <<< "$abajo"
 r=$(adb logcat -d -s Panther:I | grep "botón cruz:" | tail -1 | awk '{print $NF}')
-echo "cruz en $cx $cy (lado $r)"
+echo "cruz en ${cx:-?} ${cy:-?} (lado ${r:-?})"
+[ -n "${cy:-}" ] && [ -n "${r:-}" ] || { echo "el juego no ha dicho dónde están sus botones"; cy=0; r=0; cx=""; }
 toca "$cx" $((cy + r * 3 / 10)) 1      # abajo: «Guardar partida rápida»
 cap 5-menu-abajo
 toca $(boton A) 2                      # A
@@ -97,6 +127,7 @@ adb shell input keyevent KEYCODE_BACK
 sleep 2
 read -r cx cy <<< "$(boton cruz)"
 r=$(adb logcat -d -s Panther:I | grep "botón cruz:" | tail -1 | awk '{print $NF}')
+[ -n "${cy:-}" ] && [ -n "${r:-}" ] || { cy=0; r=0; cx=""; }
 for i in 1 2 3 4 5; do toca "$cx" $((cy + r * 3 / 10)) 1; done
 cap 9-menu-salir
 toca $(boton A) 6
