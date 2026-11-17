@@ -18,6 +18,17 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
   memoria. Al ver historias o abrir chats no se marcan como vistos.
   - `-prueba <carpeta>` dibuja las pantallas con datos inventados.
   - `-probar` dice, con la sesión guardada, qué contesta Instagram a cada pestaña (solo cuántas).
+  - Al pegar la cookie prueba varias direcciones y no se rinde con la primera que falla. Solo la
+    rechaza si Instagram dice que no vale: manda al login o a la portada, o pide confirmar que eres
+    tú (`/challenge`). Si solo pone límites (429), la guarda igual y avisa. El registro apunta
+    adónde manda cada 302, sin lo que va detrás de «?».
+- `claude/`: un chat con la conversación de Claude Code abierta en el PC de casa. La consola no
+  lleva a Claude dentro: lo que escribes se deja en `~/.config/panther/claude/pendientes/`, el PC
+  lo recoge por SSH (y lo mueve a `leidos/`) y deja la respuesta en `respuestas/`. Mientras el PC
+  escucha toca `pc-vivo` cada 2 s, y la app enseña «Conectado al PC», «Escribiendo…» o «No escucha
+  ahora». Los mensajes se guardan en `chat.jsonl` (los 300 últimos). Teclado en pantalla como en
+  Instagram; START envía.
+  - `-prueba <carpeta>` dibuja las pantallas con una conversación inventada.
 - `arranque/`: animación de arranque que dibuja en `/dev/fb0` a 60 fps antes de EmulationStation.
   Las letras se cargan de `/usr/local/share/panther/arranque` (`titulo.png`, `subtitulo.png`,
   `posiciones.txt`); no están en el repositorio.

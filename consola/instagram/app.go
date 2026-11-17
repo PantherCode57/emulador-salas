@@ -160,6 +160,14 @@ func (a *app) terminar() {
 // fallo: lo que se enseña cuando algo no ha salido (y si es la sesión, se avisa de pasarla otra vez).
 func (a *app) fallo(err error) string {
 	switch {
+	case errors.Is(err, errReto):
+		if !a.cuentaMal {
+			a.cuentaMal = true
+			a.aviso("Instagram quiere que confirmes que eres tú")
+		}
+		return "Instagram quiere que confirmes que eres tú: abre instagram.com en el navegador o en el móvil, acepta el aviso y pasa la cookie otra vez en «Tú»."
+	case errors.Is(err, errLimite):
+		return "Instagram no contesta ahora mismo (demasiadas peticiones). Espera unos minutos."
 	case errors.Is(err, errSesion):
 		if !a.cuentaMal {
 			a.cuentaMal = true

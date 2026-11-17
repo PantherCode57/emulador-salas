@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -663,14 +664,17 @@ func (a *app) abrirPagina() {
 	a.web = &paginaSesion{validar: func(texto string) error {
 		a.hacer(func() { a.sesionEstado = "Comprobando la sesión con Instagram…" })
 		err := a.ig.ponerCuenta(texto)
+		limite := errors.Is(err, errLimite)
 		a.hacer(func() {
-			if err != nil {
+			if err != nil && !limite {
 				a.sesionEstado = "Instagram no ha aceptado esa sesión. Prueba otra vez."
 				return
 			}
 			a.cuentaMal, a.cambiandoCta = false, false
 			a.cerrarPagina()
-			if u := a.ig.cuenta.usuario(); u != "" {
+			if limite {
+				a.aviso("Guardada. Instagram va lento ahora: si no carga, espera unos minutos")
+			} else if u := a.ig.cuenta.usuario(); u != "" {
 				a.aviso("Hola, @" + u)
 			} else {
 				a.aviso("¡Listo! Ya tienes tu Instagram en la consola")
@@ -681,6 +685,9 @@ func (a *app) abrirPagina() {
 			a.cargarHistorias()
 			a.cargarChats()
 		})
+		if limite {
+			return nil // guardada: la página dice «¡Hecho!»
+		}
 		return err
 	}}
 	if err := a.web.abrir(); err != nil {

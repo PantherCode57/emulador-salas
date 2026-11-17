@@ -27,13 +27,18 @@ const (
 )
 
 var (
-	appID         = entorno("INSTAGRAM_APP_ID", "936619743392459")
-	docInicio     = entorno("INSTAGRAM_DOC_INICIO", "26307883352181852")
-	docInicioMas  = entorno("INSTAGRAM_DOC_INICIO_MAS", "26038778959150000")
-	docReels      = entorno("INSTAGRAM_DOC_REELS", "26136666099278270")
-	errSesion     = errors.New("la sesión no vale")
-	errMensajes   = errors.New("Instagram no deja ver los mensajes desde aquí")
-	errSinCuenta  = errors.New("sin cuenta")
+	appID        = entorno("INSTAGRAM_APP_ID", "936619743392459")
+	docInicio    = entorno("INSTAGRAM_DOC_INICIO", "26307883352181852")
+	docInicioMas = entorno("INSTAGRAM_DOC_INICIO_MAS", "26038778959150000")
+	docReels     = entorno("INSTAGRAM_DOC_REELS", "26136666099278270")
+	errSesion    = errors.New("la sesión no vale")
+	errMensajes  = errors.New("Instagram no deja ver los mensajes desde aquí")
+	errSinCuenta = errors.New("sin cuenta")
+	// errReto: Instagram quiere que confirmes en su web que eres tú (también cuenta como errSesion).
+	errReto = fmt.Errorf("%w: Instagram pide confirmar que eres tú", errSesion)
+	// errLimite: Instagram no contesta bien (demasiadas peticiones o bloquea esa dirección), pero
+	// no ha dicho que la sesión no valga.
+	errLimite     = errors.New("Instagram no contesta ahora mismo")
 	clienteDatos  = &http.Client{Timeout: 25 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	clienteImagen = &http.Client{Timeout: 25 * time.Second}
 )
@@ -175,16 +180,39 @@ func (ig *instagram) pedir(metodo, ruta string, consulta url.Values, form url.Va
 	}
 	c.actualizar(resp.Cookies())
 	rb, _ := io.ReadAll(io.LimitReader(resp.Body, 24<<20))
-	if resp.StatusCode == 401 || resp.StatusCode == 403 || (resp.StatusCode >= 300 && resp.StatusCode < 400) {
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		// a dónde manda (sin lo de detrás de «?», que puede llevar datos): al login es que la sesión
+		// no vale; a /challenge, que quiere que confirmes que eres tú; a otro sitio, no se sabe
+		destino := ""
+		if u, err := url.Parse(resp.Header.Get("Location")); err == nil {
+			destino = u.Host + u.Path
+		}
+		logf("%s %s: %d a %s", metodo, ruta, resp.StatusCode, destino)
+		switch {
+		case strings.Contains(destino, "/challenge") || strings.Contains(destino, "/checkpoint"):
+			return nil, errReto
+		case destino == "" || strings.Contains(destino, "/accounts/login") || strings.HasSuffix(destino, "instagram.com/"):
+			return nil, errSesion
+		}
+		return nil, fmt.Errorf("Instagram manda a otra página (%d)", resp.StatusCode)
+	}
+	if resp.StatusCode == 401 || resp.StatusCode == 403 {
 		logf("%s %s: %d", metodo, ruta, resp.StatusCode)
 		return nil, errSesion
+	}
+	if resp.StatusCode == 429 {
+		logf("%s %s: 429 (demasiadas peticiones)", metodo, ruta)
+		return nil, errLimite
 	}
 	var m map[string]any
 	if err := json.Unmarshal(rb, &m); err != nil {
 		logf("%s %s: %d, no es JSON (%d bytes)", metodo, ruta, resp.StatusCode, len(rb))
 		return nil, fmt.Errorf("Instagram responde %d", resp.StatusCode)
 	}
-	if msg := txt(m, "message"); msg == "login_required" || msg == "checkpoint_required" || txt(m, "require_login") == "true" {
+	if msg := txt(m, "message"); msg == "checkpoint_required" || msg == "challenge_required" {
+		logf("%s %s: %s", metodo, ruta, msg)
+		return nil, errReto
+	} else if msg == "login_required" || txt(m, "require_login") == "true" {
 		logf("%s %s: %s", metodo, ruta, msg)
 		return nil, errSesion
 	}
@@ -713,9 +741,12 @@ func (ig *instagram) Enviar(id, texto string) error {
 
 // ---- Tu cuenta -----------------------------------------------------------------------------------
 
-// QuienSoy pregunta a Instagram de quién es la sesión. Prueba varias direcciones (alguna puede no
-// valer con la sesión de la web); si ninguna dice el nombre pero la de las historias contesta, la
-// sesión vale igual (y el nombre sale vacío).
+// QuienSoy pregunta a Instagram de quién es la sesión. Prueba varias direcciones, porque con la
+// sesión de la web unas contestan y otras no (en noviembre de 2026, users/<id>/info daba 429 y
+// accounts/current_user mandaba a otra página). La sesión vale si contesta cualquiera, aunque no
+// diga el nombre (entonces sale vacío), y solo no vale si Instagram lo dice (manda al login o pide
+// confirmar que eres tú) y nada más contesta. Si solo hay límites o errores raros, devuelve
+// errLimite: puede que valga.
 func (ig *instagram) QuienSoy() (usuario, nombre, foto string, err error) {
 	id := ig.cuenta.id()
 	type intento struct {
@@ -724,34 +755,67 @@ func (ig *instagram) QuienSoy() (usuario, nombre, foto string, err error) {
 		camino   []any
 	}
 	intentos := []intento{
+		{"/api/v1/accounts/edit/web_form_data/", nil, []any{"form_data"}},
 		{"/api/v1/accounts/current_user/", url.Values{"edit": {"true"}}, []any{"user"}},
-		{"/api/v1/direct_v2/inbox/", url.Values{"limit": {"1"}, "thread_message_limit": {"1"}}, []any{"viewer"}},
 	}
 	if id != "" {
-		intentos = append([]intento{{"/api/v1/users/" + id + "/info/", nil, []any{"user"}}}, intentos...)
+		intentos = append(intentos, intento{"/api/v1/users/" + id + "/info/", nil, []any{"user"}})
 	}
+	var errSes error
+	limite := false // algún 429: con una sesión que no vale, Instagram manda al login, no pone límites
+	anotar := func(e error) {
+		switch {
+		case errors.Is(e, errLimite):
+			limite = true
+			err = e
+		case errors.Is(e, errReto):
+			errSes = e
+		case errors.Is(e, errSesion):
+			if errSes == nil {
+				errSes = e
+			}
+		default:
+			err = e
+		}
+	}
+	vale := false
 	for _, it := range intentos {
 		m, e := ig.pedir(http.MethodGet, it.ruta, it.consulta, nil, nil)
 		if e != nil {
-			if errors.Is(e, errSesion) {
-				return "", "", "", e
-			}
-			err = e
+			anotar(e)
 			continue
 		}
+		vale = true
 		u := ir(m, it.camino...)
 		if s := txt(u, "username"); s != "" {
-			return s, txt(u, "full_name"), txt(u, "profile_pic_url"), nil
+			n := txt(u, "full_name")
+			if n == "" {
+				n = strings.TrimSpace(txt(u, "first_name"))
+			}
+			return s, n, txt(u, "profile_pic_url"), nil
 		}
 	}
-	if _, e := ig.pedir(http.MethodGet, "/api/v1/feed/reels_tray/", nil, nil, nil); e == nil {
-		logf("la sesión vale, pero Instagram no ha dicho el nombre (%v)", err)
+	if !vale {
+		if _, e := ig.pedir(http.MethodGet, "/api/v1/feed/reels_tray/", nil, nil, nil); e == nil {
+			vale = true
+		} else {
+			anotar(e)
+		}
+	}
+	if !vale {
+		if _, e := ig.Inicio(""); e == nil {
+			vale = true
+		} else {
+			anotar(e)
+		}
+	}
+	if vale {
+		logf("la sesión vale, pero Instagram no ha dicho el nombre")
 		return "", "", "", nil
-	} else if errors.Is(e, errSesion) {
-		return "", "", "", e
 	}
-	if err == nil {
-		err = errors.New("Instagram no dice de quién es la sesión")
+	if errSes != nil && (errors.Is(errSes, errReto) || !limite) {
+		return "", "", "", errSes
 	}
-	return "", "", "", err
+	logf("no se ha podido comprobar la sesión: %v", err)
+	return "", "", "", fmt.Errorf("%w (%v)", errLimite, err)
 }

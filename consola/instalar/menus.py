@@ -72,6 +72,17 @@ NUEVOS = """	<system>
 		<release>2026</release>
 	</system>
 	<system>
+		<name>claude</name>
+		<fullname>Claude</fullname>
+		<path>/roms/claude/</path>
+		<extension>.sh .SH</extension>
+		<command>%ROM%</command>
+		<platform>claude</platform>
+		<theme>claude</theme>
+		<manufacturer>Panther OS</manufacturer>
+		<release>2026</release>
+	</system>
+	<system>
 		<name>instagram</name>
 		<fullname>Instagram</fullname>
 		<path>/roms/instagram/</path>
@@ -173,5 +184,5 @@ for r in ("/etc/emulationstation/es_systems.cfg", "/etc/emulationstation/es_syst
     sistemas(Path(r))
 idioma(Path("/home/ark/.emulationstation/es_settings.cfg"))
 for c in ("/roms/whatsapp", "/roms/salas", "/roms/spotin", "/roms/pokemon", "/roms/youtube", "/roms/navegador",
-          "/roms/instagram"):
+          "/roms/instagram", "/roms/claude"):
     Path(c).mkdir(exist_ok=True)

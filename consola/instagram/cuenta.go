@@ -170,7 +170,9 @@ func limpiarCookies(s string) string {
 	return strings.Join(pares, "; ")
 }
 
-// ponerCuenta comprueba la sesión con Instagram (que diga de quién es) y la guarda.
+// ponerCuenta comprueba la sesión con Instagram (que diga de quién es) y la guarda. Si Instagram no
+// contesta bien pero tampoco dice que no valga (errLimite), la guarda igual y devuelve errLimite
+// para avisar.
 func (ig *instagram) ponerCuenta(texto string) error {
 	cookie := limpiarCookies(texto)
 	switch {
@@ -182,9 +184,12 @@ func (ig *instagram) ponerCuenta(texto string) error {
 	prueba := &cuenta{Cookie: cookie}
 	otro := &instagram{cuenta: prueba, claim: "0", disp: ig.disp}
 	usuario, nombre, foto, err := otro.QuienSoy()
-	if err != nil {
+	if err != nil && !errors.Is(err, errLimite) {
+		if errors.Is(err, errReto) {
+			return errors.New("Instagram quiere que confirmes que eres tú: abre instagram.com en el navegador, acepta el aviso que salga y copia la cookie otra vez")
+		}
 		if errors.Is(err, errSesion) {
-			return errors.New("Instagram no reconoce esa sesión (¿has entrado en tu cuenta en esa ventana?)")
+			return errors.New("Instagram dice que esa sesión no vale (¿cerraste sesión en esa ventana?). Entra otra vez y copia la cookie nueva")
 		}
 		return err
 	}
@@ -199,5 +204,5 @@ func (ig *instagram) ponerCuenta(texto string) error {
 	ig.claim = otro.claim
 	ig.mu.Unlock()
 	logf("cuenta de Instagram guardada (%d cookies)", strings.Count(cookie, ";")+1)
-	return nil
+	return err // nil, o errLimite si no se ha podido comprobar
 }
