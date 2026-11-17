@@ -22,6 +22,10 @@ EmulationStation parado. Antes se guarda el original como `emulationstation.pant
   disponibles con su cobertura y candado, A para conectar (pide la contraseña con el teclado de la
   pantalla si hace falta) e Y para buscar redes. Usa `nmcli` con `sudo` en otro hilo. El fondo es la
   imagen del ajuste `PantherWifiBackground`.
+  Si se ha conectado lo decide el estado real del Wi-Fi (`nmcli device`), no el código de salida de
+  nmcli. Una red guardada que no conecta no se borra: si la contraseña ya no vale se cambia (y si la
+  nueva tampoco va, vuelve la de antes). Cuando falla, sale el motivo (contraseña, red no encontrada,
+  red de instituto con usuario, WPA3…) y, si no se sabe, la línea de error de nmcli.
 - **Apertura directa**: los apartados del ajuste `PantherDirectLaunch` (separados por comas) que
   tienen un solo juego lo abren al pulsar A, sin pasar por su lista.
 - **Carrusel**: propiedad `minLogoOpacity` (0 a 1) para las tarjetas no elegidas; antes estaba fija

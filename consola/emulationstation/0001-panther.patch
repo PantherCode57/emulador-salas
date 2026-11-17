@@ -487,10 +487,10 @@ index 00000000..8e5f5728
 +#endif // ES_APP_GUIS_GUIPANTHERAJUSTES_H
 diff --git a/es-app/src/guis/GuiPantherWifi.cpp b/es-app/src/guis/GuiPantherWifi.cpp
 new file mode 100644
-index 00000000..50c7502b
+index 00000000..a1a92539
 --- /dev/null
 +++ b/es-app/src/guis/GuiPantherWifi.cpp
-@@ -0,0 +1,694 @@
+@@ -0,0 +1,826 @@
 +#include "guis/GuiPantherWifi.h"
 +
 +#include "guis/GuiMsgBox.h"
@@ -569,6 +569,101 @@ index 00000000..50c7502b
 +	return out;
 +}
 +
++// nmcli con sudo, como el resto, y en inglés para poder leer sus errores
++static std::string nmcli(const std::string& args)
++{
++	return ArkOSUtil::executeCommand("sudo env LC_ALL=C nmcli " + args + " 2>&1");
++}
++
++static std::string primeraLinea(const std::string& text)
++{
++	auto l = lineas(text);
++	return l.empty() ? std::string() : l.front();
++}
++
++// Si el Wi-Fi está conectado de verdad a esa conexión. No vale el código de salida de nmcli:
++// con --wait da error aunque la red acabe conectando un poco después, y antes eso hacía borrar
++// una red que sí funcionaba. Mientras siga «connecting» se espera, hasta «segundos».
++static bool conectadoA(const std::string& name, int segundos)
++{
++	for (int i = 0; ; i++)
++	{
++		bool conectando = false;
++		for (auto& line : lineas(ArkOSUtil::executeCommand("nmcli -t -f TYPE,STATE,CONNECTION device 2>/dev/null")))
++		{
++			auto f = campos(line);
++			if (f.size() < 3 || f[0] != "wifi")
++				continue;
++
++			if (f[1].compare(0, 9, "connected") == 0 && f[2] == name)
++				return true;
++
++			if (f[1].compare(0, 10, "connecting") == 0)
++				conectando = true;
++		}
++
++		if (i >= segundos || (!conectando && i >= 3))
++			return false;
++
++		std::this_thread::sleep_for(std::chrono::seconds(1));
++	}
++}
++
++static bool hay(const std::string& text, const char* what)
++{
++	return text.find(what) != std::string::npos;
++}
++
++static bool esDeEmpresa(const std::string& security)
++{
++	return hay(security, "802.1X") || hay(security, "EAP");
++}
++
++static bool esContrasena(const std::string& out)
++{
++	std::string o = Utils::String::toLower(out);
++	return hay(o, "secrets were required") || hay(o, "no secrets") || (hay(o, "psk") && hay(o, "invalid"));
++}
++
++// Por qué no se pudo, dicho para el usuario. Si no se sabe, va la primera línea de nmcli
++// entre paréntesis, que sirve para saber qué ha pasado.
++static std::string motivo(const std::string& out, const std::string& security)
++{
++	std::string o = Utils::String::toLower(out);
++	std::string texto;
++
++	if (esContrasena(out))
++		texto = "La contraseña no es correcta. Ojo con las mayúsculas.";
++	else if (hay(o, "no network with ssid") || hay(o, "not found"))
++		texto = "No se encuentra la red. Acércate al router. La consola sólo ve redes de 2,4 GHz.";
++	else if (hay(o, "timeout") || hay(o, "timed out"))
++		texto = "La red no contesta. Acércate al router y prueba otra vez.";
++	else if (hay(o, "ip configuration") || hay(o, "ip-config") || hay(o, "dhcp"))
++		texto = "La red no le da dirección a la consola. Prueba otra vez o reinicia el router.";
++	else if (hay(o, "802-1x") || hay(o, "key-mgmt") || esDeEmpresa(security))
++		texto = "Esta red pide usuario además de contraseña (de instituto o de empresa). La consola no puede entrar en esas.";
++	else if (hay(o, "not authorized") || hay(o, "insufficient privileges") || hay(o, "password is required") || hay(o, "a terminal is required"))
++		texto = "El sistema no deja cambiar el Wi-Fi (falta permiso).";
++	else if (hay(o, "not running") || hay(o, "could not create nmclient") || hay(o, "command not found"))
++		texto = "El servicio del Wi-Fi no está en marcha. Apaga la consola del todo y vuelve a encenderla.";
++	else if (hay(o, "unavailable") || hay(o, "no suitable device") || hay(o, "no wi-fi device") || hay(o, "rfkill"))
++		texto = "El Wi-Fi de la consola no responde. Apágala del todo y vuelve a encenderla.";
++	else
++	{
++		texto = "No se pudo conectar.";
++		std::string l = primeraLinea(out);
++		if (l.compare(0, 7, "Error: ") == 0)
++			l = l.substr(7);
++		if (!l.empty())
++			texto += "\n(" + (l.size() > 90 ? l.substr(0, 90) + "…" : l) + ")";
++	}
++
++	if (hay(security, "WPA3") && !hay(security, "WPA2") && !esContrasena(out))
++		texto += "\nSi es la zona Wi-Fi de un móvil, ponla en WPA2 o «máxima compatibilidad».";
++
++	return texto;
++}
++
 +static GuiPantherWifi::Estado leerEstado(bool rescan)
 +{
 +	GuiPantherWifi::Estado e;
@@ -606,7 +701,8 @@ index 00000000..50c7502b
 +		GuiPantherWifi::Red red;
 +		red.ssid = f[1];
 +		red.signal = atoi(f[2].c_str());
-+		red.secure = !(f[3].empty() || f[3] == "--");
++		red.security = f[3] == "--" ? "" : f[3];
++		red.secure = !red.security.empty();
 +		red.active = f[0].find('*') != std::string::npos;
 +		red.saved = saved.count(red.ssid) > 0;
 +
@@ -618,6 +714,8 @@ index 00000000..50c7502b
 +			it->signal = std::max(it->signal, red.signal);
 +			it->active = it->active || red.active;
 +			it->secure = it->secure || red.secure;
++			if (it->security.empty())
++				it->security = red.security;
 +		}
 +	}
 +
@@ -787,43 +885,61 @@ index 00000000..50c7502b
 +
 +void GuiPantherWifi::connect(const Red& red)
 +{
++	if (esDeEmpresa(red.security))
++	{
++		mWindow->pushGui(new GuiMsgBox(mWindow, corta(red.ssid, 24) + " pide usuario además de contraseña (es de instituto o de empresa).\n"
++			"La consola sólo entra en redes con contraseña normal, como la de casa o la zona Wi-Fi del móvil.", "OK", nullptr));
++		return;
++	}
++
 +	if (red.saved)
 +	{
-+		std::string ssid = red.ssid;
-+		bool secure = red.secure;
-+		runJob("Conectando a " + corta(ssid, 18) + "…", false, [ssid]()
-+		{
-+			bool ok = runOk("sudo nmcli --wait 25 connection up id " + q(ssid));
-+			runOk("touch /tmp/es-wifi-changed");
-+			return ok;
-+		}, [this, ssid, secure](bool ok)
-+		{
-+			if (ok)
-+				showMessage("Conectado a " + corta(ssid, 24));
-+			else if (secure)
-+			{
-+				showMessage("No se pudo conectar. Escribe otra vez la contraseña.");
-+				askPassword(ssid, true);
-+			}
-+			else
-+				showMessage("No se pudo conectar a " + corta(ssid, 24));
-+		});
++		connectSaved(red.ssid, red.secure, red.security);
 +		return;
 +	}
 +
 +	if (!red.secure)
 +	{
-+		connectWithPassword(red.ssid, "", false);
++		connectWithPassword(red.ssid, "", false, red.security);
 +		return;
 +	}
 +
-+	askPassword(red.ssid, false);
++	askPassword(red.ssid, false, red.security);
 +}
 +
-+void GuiPantherWifi::askPassword(const std::string& ssid, bool replaceSaved)
++void GuiPantherWifi::showFailure(const std::string& ssid, const std::string& reason)
++{
++	mWindow->pushGui(new GuiMsgBox(mWindow, "No se pudo conectar a " + corta(ssid, 24) + ".\n" + reason, "OK", nullptr));
++}
++
++// Red guardada: si no conecta NO se borra (antes se borraba y se perdía la contraseña de casa)
++void GuiPantherWifi::connectSaved(const std::string& ssid, bool secure, const std::string& security)
++{
++	auto out = std::make_shared<std::string>();
++	runJob("Conectando a " + corta(ssid, 18) + "…", false, [ssid, out]()
++	{
++		*out = nmcli("--wait 40 connection up id " + q(ssid));
++		bool ok = conectadoA(ssid, 20);
++		runOk("touch /tmp/es-wifi-changed");
++		return ok;
++	}, [this, ssid, secure, security, out](bool ok)
++	{
++		if (ok)
++			showMessage("Conectado a " + corta(ssid, 24));
++		else if (secure && esContrasena(*out))
++		{
++			showMessage("La contraseña guardada ya no vale. Escríbela otra vez.");
++			askPassword(ssid, true, security);
++		}
++		else
++			showFailure(ssid, motivo(*out, security));
++	});
++}
++
++void GuiPantherWifi::askPassword(const std::string& ssid, bool replaceSaved, const std::string& security)
 +{
 +	auto alive = mAlive;
-+	mWindow->pushGui(new GuiTextEditPopupKeyboard(mWindow, "Contraseña de " + corta(ssid, 20), "", [this, alive, ssid, replaceSaved](const std::string& password)
++	mWindow->pushGui(new GuiTextEditPopupKeyboard(mWindow, "Contraseña de " + corta(ssid, 20), "", [this, alive, ssid, replaceSaved, security](const std::string& password)
 +	{
 +		if (!*alive)
 +			return;
@@ -834,30 +950,46 @@ index 00000000..50c7502b
 +			return;
 +		}
 +
-+		connectWithPassword(ssid, password, replaceSaved);
++		connectWithPassword(ssid, password, replaceSaved, security);
 +	}, false, "CONECTAR"));
 +}
 +
-+void GuiPantherWifi::connectWithPassword(const std::string& ssid, const std::string& password, bool replaceSaved)
++void GuiPantherWifi::connectWithPassword(const std::string& ssid, const std::string& password, bool replaceSaved, const std::string& security)
 +{
-+	runJob("Conectando a " + corta(ssid, 18) + "…", false, [ssid, password, replaceSaved]()
++	auto out = std::make_shared<std::string>();
++	runJob("Conectando a " + corta(ssid, 18) + "…", false, [ssid, password, replaceSaved, out]()
 +	{
++		bool ok;
 +		if (replaceSaved)
-+			runOk("sudo nmcli connection delete id " + q(ssid));
++		{
++			// se cambia la contraseña de la red guardada; si la nueva tampoco va, vuelve la de antes
++			std::string antes = primeraLinea(ArkOSUtil::executeCommand("sudo nmcli -s -g 802-11-wireless-security.psk connection show id " + q(ssid) + " 2>/dev/null"));
++			*out = nmcli("connection modify id " + q(ssid) + " 802-11-wireless-security.psk " + q(password));
++			*out += nmcli("--wait 40 connection up id " + q(ssid));
++			ok = conectadoA(ssid, 20);
++			if (!ok && !antes.empty())
++				nmcli("connection modify id " + q(ssid) + " 802-11-wireless-security.psk " + q(antes));
++		}
++		else
++		{
++			std::string cmd = "--wait 40 device wifi connect " + q(ssid);
++			if (!password.empty())
++				cmd += " password " + q(password);
 +
-+		std::string cmd = "sudo nmcli --wait 30 device wifi connect " + q(ssid);
-+		if (!password.empty())
-+			cmd += " password " + q(password);
-+
-+		bool ok = runOk(cmd);
-+		if (!ok)
-+			runOk("sudo nmcli connection delete id " + q(ssid)); // no dejar una red guardada a medias
++			*out = nmcli(cmd);
++			ok = conectadoA(ssid, 20);
++			if (!ok)
++				nmcli("connection delete id " + q(ssid)); // es nueva: que no quede guardada a medias
++		}
 +
 +		runOk("touch /tmp/es-wifi-changed");
 +		return ok;
-+	}, [this, ssid](bool ok)
++	}, [this, ssid, security, out](bool ok)
 +	{
-+		showMessage(ok ? "Conectado a " + corta(ssid, 24) : "No se pudo conectar. Revisa la contraseña.");
++		if (ok)
++			showMessage("Conectado a " + corta(ssid, 24));
++		else
++			showFailure(ssid, motivo(*out, security));
 +	});
 +}
 +
@@ -1187,10 +1319,10 @@ index 00000000..50c7502b
 +}
 diff --git a/es-app/src/guis/GuiPantherWifi.h b/es-app/src/guis/GuiPantherWifi.h
 new file mode 100644
-index 00000000..e262182c
+index 00000000..6f964cf3
 --- /dev/null
 +++ b/es-app/src/guis/GuiPantherWifi.h
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,88 @@
 +#pragma once
 +#ifndef ES_APP_GUIS_GUIPANTHERWIFI_H
 +#define ES_APP_GUIS_GUIPANTHERWIFI_H
@@ -1220,6 +1352,7 @@ index 00000000..e262182c
 +		bool secure = false;
 +		bool saved = false;
 +		bool active = false;
++		std::string security; // lo que dice nmcli: «WPA2», «WPA1 WPA2», «WPA3», «WPA2 802.1X»…
 +	};
 +
 +	struct Estado
@@ -1248,8 +1381,10 @@ index 00000000..e262182c
 +	void refresh(bool rescan);
 +	void toggle();
 +	void connect(const Red& red);
-+	void askPassword(const std::string& ssid, bool replaceSaved);
-+	void connectWithPassword(const std::string& ssid, const std::string& password, bool replaceSaved);
++	void connectSaved(const std::string& ssid, bool secure, const std::string& security);
++	void askPassword(const std::string& ssid, bool replaceSaved, const std::string& security);
++	void connectWithPassword(const std::string& ssid, const std::string& password, bool replaceSaved, const std::string& security);
++	void showFailure(const std::string& ssid, const std::string& reason);
 +	void forget();
 +	void showMessage(const std::string& text, int ms = 3500);
 +
