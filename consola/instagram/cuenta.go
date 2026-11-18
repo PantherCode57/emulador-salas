@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"regexp"
@@ -138,22 +140,35 @@ func valorCookie(cookie, nombre string) string {
 
 var reNombreCookie = regexp.MustCompile(`^[A-Za-z0-9_\-.]+$`)
 
-// limpiarCookies acepta la cabecera «cookie» copiada del navegador (con o sin «cookie:» delante) o
-// un cookies.txt (el de las extensiones que exportan cookies) y devuelve «a=b; c=d».
+// limpiarCookies acepta la cabecera «cookie» copiada del navegador (con o sin «cookie:» delante), un
+// cookies.txt (el de las extensiones que exportan cookies) o solo el valor de sessionid (el que se
+// copia en F12 → Aplicación → Cookies), y devuelve «a=b; c=d».
 func limpiarCookies(s string) string {
 	s = strings.TrimSpace(s)
+	if v := strings.Trim(s, "\"' \r\n"); v != "" && !strings.ContainsAny(v, "=;\t\n ") {
+		// solo el valor de sessionid; si estaba «decodificado como URL», con «:» en vez de «%3A»
+		return "sessionid=" + strings.ReplaceAll(v, ":", "%3A")
+	}
 	var pares []string
-	if strings.Contains(s, "\t") { // cookies.txt: dominio, …, nombre, valor (separados por tabuladores)
+	if strings.Contains(s, "\t") { // separado por tabuladores: un cookies.txt o filas de la tabla de F12
 		for _, l := range strings.Split(s, "\n") {
 			l = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "#HttpOnly_"))
+			if l == "" || strings.HasPrefix(l, "#") {
+				continue
+			}
 			c := strings.Split(l, "\t")
-			if len(c) < 7 || strings.HasPrefix(l, "#") {
+			for i := range c {
+				c[i] = strings.TrimSpace(c[i])
+			}
+			if d := strings.TrimPrefix(c[0], "."); d == "instagram.com" || strings.HasSuffix(d, ".instagram.com") {
+				if len(c) >= 7 { // cookies.txt: dominio, …, nombre, valor
+					pares = append(pares, c[5]+"="+c[6])
+				}
 				continue
 			}
-			if d := strings.TrimPrefix(c[0], "."); d != "instagram.com" && !strings.HasSuffix(d, ".instagram.com") {
-				continue
+			if len(c) >= 2 && c[1] != "" && reNombreCookie.MatchString(c[0]) && !strings.Contains(c[0], ".") {
+				pares = append(pares, c[0]+"="+c[1]) // tabla de F12: nombre, valor, dominio…
 			}
-			pares = append(pares, strings.TrimSpace(c[5])+"="+strings.TrimSpace(c[6]))
 		}
 	} else {
 		s = strings.ReplaceAll(strings.ReplaceAll(s, "\r", ""), "\n", "")
@@ -170,16 +185,73 @@ func limpiarCookies(s string) string {
 	return strings.Join(pares, "; ")
 }
 
+// El sessionid empieza por el número de tu cuenta (lo mismo que ds_user_id) y «%3A».
+var reIDSesion = regexp.MustCompile(`^([0-9]+)%3A`)
+
+// completarCookie: si solo se ha pegado el sessionid, pone ds_user_id (sale del propio sessionid) y
+// el csrftoken (lo da instagram.com al abrirlo, como al navegador). Devuelve "" si el sessionid no
+// tiene la forma de siempre.
+func completarCookie(cookie string) string {
+	sesion := valorCookie(cookie, "sessionid")
+	if valorCookie(cookie, "ds_user_id") == "" {
+		m := reIDSesion.FindStringSubmatch(sesion)
+		if m == nil {
+			return ""
+		}
+		cookie += "; ds_user_id=" + m[1]
+	}
+	if valorCookie(cookie, "csrftoken") == "" {
+		cookie += "; csrftoken=" + tokenCsrf(cookie)
+	}
+	return cookie
+}
+
+var reCsrfPagina = regexp.MustCompile(`"csrf_token":"([A-Za-z0-9]{20,64})"`)
+
+// tokenCsrf: el csrftoken que manda instagram.com al abrir su página con tu sesión (en Set-Cookie o
+// dentro de la página). Si no lo manda, uno al azar con su forma (32 letras y números): Instagram
+// manda el suyo en cuanto quiere otro y se cambia solo (actualizar).
+func tokenCsrf(cookie string) string {
+	if req, err := http.NewRequest(http.MethodGet, urlWeb+"/", nil); err == nil {
+		req.Header.Set("User-Agent", agenteNavegador)
+		req.Header.Set("Accept", "text/html,application/xhtml+xml")
+		req.Header.Set("Accept-Language", "es-ES,es;q=0.9")
+		req.Header.Set("Cookie", cookie)
+		if resp, err := clienteDatos.Do(req); err == nil {
+			b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+			resp.Body.Close()
+			for _, c := range resp.Cookies() {
+				if c.Name == "csrftoken" && reNombreCookie.MatchString(c.Value) {
+					logf("csrftoken de instagram.com (%d)", resp.StatusCode)
+					return c.Value
+				}
+			}
+			if m := reCsrfPagina.FindSubmatch(b); m != nil {
+				logf("csrftoken de la página de instagram.com (%d)", resp.StatusCode)
+				return string(m[1])
+			}
+			logf("instagram.com (%d) no da csrftoken: uno al azar", resp.StatusCode)
+		}
+	}
+	const letras = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	for i := range b {
+		b[i] = letras[int(b[i])%len(letras)]
+	}
+	return string(b)
+}
+
 // ponerCuenta comprueba la sesión con Instagram (que diga de quién es) y la guarda. Si Instagram no
 // contesta bien pero tampoco dice que no valga (errLimite), la guarda igual y devuelve errLimite
 // para avisar.
 func (ig *instagram) ponerCuenta(texto string) error {
 	cookie := limpiarCookies(texto)
-	switch {
-	case valorCookie(cookie, "sessionid") == "":
-		return errors.New("falta la cookie de la sesión (sessionid). Copia la cabecera «cookie» entera de una petición de instagram.com")
-	case valorCookie(cookie, "ds_user_id") == "" || valorCookie(cookie, "csrftoken") == "":
-		return errors.New("faltan cookies (ds_user_id o csrftoken). Copia la cabecera «cookie» entera")
+	if valorCookie(cookie, "sessionid") == "" {
+		return errors.New("ahí no está el sessionid. En F12 → Aplicación → Cookies → https://www.instagram.com, copia el valor de la fila «sessionid»")
+	}
+	if cookie = completarCookie(cookie); cookie == "" {
+		return errors.New("eso no parece el valor de sessionid (empieza por números y %3A). Cópialo entero otra vez")
 	}
 	prueba := &cuenta{Cookie: cookie}
 	otro := &instagram{cuenta: prueba, claim: "0", disp: ig.disp}

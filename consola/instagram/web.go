@@ -12,8 +12,8 @@ import (
 
 // Para entrar en tu cuenta sin navegador en la consola: mientras no hay sesión (o en «Cuenta» al
 // cambiarla), la consola abre una página en la red de casa (http://IP:8767). Desde el PC se pega ahí
-// la cabecera «cookie» de instagram.com y la consola comprueba con Instagram de quién es. La página
-// se cierra al salir.
+// el valor de la cookie sessionid de instagram.com (F12 → Aplicación → Cookies; o la cabecera
+// «cookie» entera) y la consola comprueba con Instagram de quién es. La página se cierra al salir.
 const puertoSesion = 8767
 
 type paginaSesion struct {
@@ -39,17 +39,18 @@ eso.</p>
 %s
 <ol><li>En el PC, abre una <b>ventana de incógnito</b> en Chrome o Edge (<b>Ctrl + Mayús + N</b>) y entra en
 <b>instagram.com</b> con tu cuenta.</li>
-<li>Pulsa <b>F12</b>, ve a la pestaña <b>Red</b> (<i>Network</i>) y pulsa <b>F5</b> para recargar la página.</li>
-<li>En la cajita de <b>Filtrar</b> (<i>Filter</i>) de la pestaña Red escribe <code>graphql</code> y pulsa una de
-las líneas que salen (suelen llamarse <code>query</code>). Si no sale ninguna, escribe <code>api/v1</code>.
-En <b>Encabezados</b> (<i>Headers</i>), baja hasta <b>Encabezados de solicitud</b> y busca <code>cookie</code>.
-No vale la primera línea (<code>www.instagram.com</code>): Chrome no enseña su cookie.</li>
-<li>Clic derecho sobre su valor → <b>Copiar valor</b> (o selecciónalo entero), y pégalo aquí. Tiene que llevar
-<code>sessionid=</code>:</li></ol>
-<form method="post" action="/"><textarea name="cookie" placeholder="Pega aquí la cookie (lleva cosas como csrftoken=…; ds_user_id=…; sessionid=…)" autofocus></textarea>
+<li>Pulsa <b>F12</b> y ve a la pestaña <b>Aplicación</b> (<i>Application</i>). Si no la ves arriba, está
+en <b>»</b> (en Edge, en <b>+</b>).</li>
+<li>A la izquierda, en <b>Almacenamiento</b> (<i>Storage</i>), abre <b>Cookies</b> y pulsa
+<code>https://www.instagram.com</code>.</li>
+<li>En la lista, pulsa la fila <code>sessionid</code>. Abajo sale su valor (<b>Valor de la cookie</b>):
+selecciónalo entero, cópialo con <b>Ctrl + C</b> y pégalo aquí. Empieza por números y <code>%%3A</code>.
+Con eso basta: lo demás lo saca la consola.</li></ol>
+<form method="post" action="/"><textarea name="cookie" placeholder="Pega aquí el valor de sessionid (como 12345678%%3AAbCd…)" autofocus></textarea>
 <button type="submit">Enviar a la consola</button></form>
 <p class="nota">5. Después cierra la ventana de incógnito <b>sin cerrar sesión</b> (si cierras sesión, la consola también
-se sale). También vale el contenido de un <code>cookies.txt</code> de instagram.com.</p></main></body></html>`
+se sale). También vale la cabecera <code>cookie</code> entera de una petición de instagram.com (pestaña
+<b>Red</b>) o un <code>cookies.txt</code>.</p></main></body></html>`
 
 func (p *paginaSesion) abrir() error {
 	mux := http.NewServeMux()
@@ -59,8 +60,8 @@ func (p *paginaSesion) abrir() error {
 			r.Body = http.MaxBytesReader(w, r.Body, 128<<10)
 			texto := r.FormValue("cookie")
 			switch {
-			case len(strings.TrimSpace(texto)) < 40:
-				aviso = `<div class="msg mal">Eso es muy corto: la cookie de Instagram es un texto largo (con sessionid, csrftoken, ds_user_id…).</div>`
+			case len(strings.TrimSpace(texto)) < 20:
+				aviso = `<div class="msg mal">Eso es muy corto: el valor de sessionid es largo (números, <code>%3A</code> y muchas letras). Cópialo entero.</div>`
 			default:
 				if err := p.validar(texto); err != nil {
 					aviso = `<div class="msg mal">No ha valido: ` + html.EscapeString(err.Error()) + `.</div>`

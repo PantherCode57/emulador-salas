@@ -22,6 +22,10 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
     rechaza si Instagram dice que no vale: manda al login o a la portada, o pide confirmar que eres
     tú (`/challenge`). Si solo pone límites (429), la guarda igual y avisa. El registro apunta
     adónde manda cada 302, sin lo que va detrás de «?».
+  - Basta con pegar el valor de `sessionid` (F12 → Aplicación → Cookies → instagram.com). La app
+    saca `ds_user_id` del propio sessionid (empieza por el número de la cuenta). El `csrftoken` lo
+    coge de instagram.com al abrirlo con esa sesión, y si no se lo da, pone uno al azar. También
+    valen la cabecera `cookie` entera, un `cookies.txt` o filas copiadas de la tabla de F12.
 - `claude/`: un chat con la conversación de Claude Code abierta en el PC de casa. La consola no
   lleva a Claude dentro: lo que escribes se deja en `~/.config/panther/claude/pendientes/`, el PC
   lo recoge por SSH (y lo mueve a `leidos/`) y deja la respuesta en `respuestas/`. Mientras el PC
