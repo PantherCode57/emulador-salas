@@ -86,7 +86,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if reg, err := os.OpenFile(filepath.Join(carpetaDatos, "registro.txt"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600); err == nil {
+	// El registro se va añadiendo (para ver luego qué ha fallado), y se vacía si pasa de 256 KB.
+	rutaReg := filepath.Join(carpetaDatos, "registro.txt")
+	if st, err := os.Stat(rutaReg); err == nil && st.Size() > 256<<10 {
+		_ = os.Truncate(rutaReg, 0)
+	}
+	if reg, err := os.OpenFile(rutaReg, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
 		log.SetOutput(io.MultiWriter(reg, os.Stderr))
 	}
 	log.Printf("Spotin de la consola en marcha (%dx%d)", ancho, alto)
@@ -126,6 +131,7 @@ func main() {
 
 	a.luz.encender()
 	a.rep.cerrar()
+	a.yt.cerrar()
 	a.web.cerrar()
 	ra.cerrar()
 	a.cargaHasta = time.Now().Add(time.Hour)

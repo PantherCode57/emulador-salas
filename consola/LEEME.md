@@ -66,6 +66,11 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
   - Problemas de Lichess (`/api/puzzle/next`), con pista (Y) y el resultado mandado a Lichess.
   - `-prueba <carpeta>` dibuja las pantallas con datos inventados; `-probar` dice, con el token
     guardado, qué contesta Lichess (solo si va y cuántos).
+- Spotin (`spotin/`) y yt-dlp: arrancar Python y cargar yt-dlp tarda unos 16 s en la consola, y antes
+  se hacía con cada canción. Ahora `ytdlp_servidor.py` (va dentro del programa) lo deja abierto
+  mientras Spotin está abierto, y cada canción tarda lo que tarda YouTube (~3 s). Si falla o se
+  cuelga, se pide como antes. El registro (`registro.txt`) ya no se borra al abrir: se va añadiendo
+  y se vacía al pasar de 256 KB.
 - `claude/`: un chat con la conversación de Claude Code abierta en el PC de casa. La consola no
   lleva a Claude dentro: lo que escribes se deja en `~/.config/panther/claude/pendientes/`, el PC
   lo recoge por SSH (y lo mueve a `leidos/`) y deja la respuesta en `respuestas/`. Mientras el PC

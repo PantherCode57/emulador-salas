@@ -64,6 +64,28 @@ type youtube struct {
 	cache   map[string]sonidoGuardado
 	// Solo una consulta a yt-dlp a la vez por vídeo (la de tocar y la de adelantarse a la siguiente).
 	enCurso map[string]chan struct{}
+
+	muVivo sync.Mutex
+	vivo   *ytdlpVivo // yt-dlp siempre abierto (ytdlp.go)
+}
+
+// ytdlpVivo: el yt-dlp siempre abierto (si se ha cerrado, se abre otro).
+func (y *youtube) ytdlpVivo() *ytdlpVivo {
+	y.muVivo.Lock()
+	defer y.muVivo.Unlock()
+	if y.vivo == nil || (!y.vivo.vivo() && y.vivo.err == nil) {
+		y.vivo = arrancarYtdlpVivo()
+	}
+	if y.vivo.err != nil {
+		return nil
+	}
+	return y.vivo
+}
+
+func (y *youtube) cerrar() {
+	y.muVivo.Lock()
+	defer y.muVivo.Unlock()
+	y.vivo.cerrar()
 }
 
 type sonidoGuardado struct {
@@ -84,8 +106,10 @@ func ejecutable() string {
 }
 
 func nuevoYouTube() *youtube {
-	return &youtube{http: &http.Client{Timeout: 25 * time.Second}, cache: map[string]sonidoGuardado{},
+	y := &youtube{http: &http.Client{Timeout: 25 * time.Second}, cache: map[string]sonidoGuardado{},
 		enCurso: map[string]chan struct{}{}}
+	y.ytdlpVivo() // se abre ya: cuando elijas una canción, ya estará listo
+	return y
 }
 
 // sonido: la dirección del sonido del vídeo (de la memoria si se pidió hace poco).
@@ -144,6 +168,19 @@ func (y *youtube) sonidoNuevo(video string) (*fuenteSonido, string, error) {
 }
 
 func (y *youtube) sonidoYtdlp(video string) (*fuenteSonido, error) {
+	if v := y.ytdlpVivo(); v != nil {
+		inicio := time.Now()
+		r, err := v.pedir(video, 45*time.Second)
+		if err == nil {
+			logf("sonido de %s en %.1f s", video, time.Since(inicio).Seconds())
+			return fuenteDeYtdlp(r)
+		}
+		var ey errorYouTube
+		if errors.As(err, &ey) {
+			return nil, err // lo dice YouTube: pedirlo otra vez con yt-dlp daría lo mismo
+		}
+		logf("yt-dlp siempre abierto, %s: %v (lo pido como antes)", video, err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, ytdlpBin, "-J", "--no-warnings", "--no-playlist", "--no-progress",
@@ -158,17 +195,15 @@ func (y *youtube) sonidoYtdlp(video string) (*fuenteSonido, error) {
 		}
 		return nil, fmt.Errorf("%v: %s", err, msg)
 	}
-	var d struct {
-		URL       string            `json:"url"`
-		Ext       string            `json:"ext"`
-		Acodec    string            `json:"acodec"`
-		Tamano    float64           `json:"filesize"`
-		Aprox     float64           `json:"filesize_approx"`
-		Cabeceras map[string]string `json:"http_headers"`
-	}
+	var d respuestaYtdlp
 	if err := json.Unmarshal(out, &d); err != nil {
 		return nil, err
 	}
+	return fuenteDeYtdlp(&d)
+}
+
+// fuenteDeYtdlp: lo que dice yt-dlp, como fuente de sonido.
+func fuenteDeYtdlp(d *respuestaYtdlp) (*fuenteSonido, error) {
 	if d.URL == "" {
 		return nil, errors.New("yt-dlp no ha dado la dirección")
 	}
