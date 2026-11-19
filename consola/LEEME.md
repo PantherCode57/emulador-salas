@@ -26,6 +26,22 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
     saca `ds_user_id` del propio sessionid (empieza por el número de la cuenta). El `csrftoken` lo
     coge de instagram.com al abrirlo con esa sesión, y si no se lo da, pone uno al azar. También
     valen la cabecera `cookie` entera, un `cookies.txt` o filas copiadas de la tabla de F12.
+- `duolingo/`: Duolingo con tu cuenta (el valor de la cookie `jwt_token` de duolingo.com se pega
+  desde el PC o el móvil en `http://IP:8768`): tu camino (secciones, unidades y niveles), tu racha,
+  tus gemas, tus vidas, la meta del día y tu liga, y las lecciones con los botones. Al acabar se
+  mandan a Duolingo, así que suman XP y racha como en el móvil. Habla con Duolingo como su web
+  (`2017-06-30/users`, y `sessions` con POST para empezar y PUT para acabar), con las mismas
+  peticiones que DuolingoCLI (un cliente libre de terminal).
+  - Ejercicios: elegir (también rellenar un hueco con una opción), formar la frase con fichas,
+    escuchar y formarla, rellenar huecos con fichas, emparejar y escribir con el teclado en pantalla.
+    Las voces son las de Duolingo (se bajan a la memoria al empezar y suenan con ffmpeg y aplay).
+  - No se piden los ejercicios de hablar (no hay micrófono). Las historias y los cofres se hacen
+    en el móvil. Los niveles ya hechos se repasan con una práctica, y X practica desde el camino.
+  - Lo que fallas vuelve al final de la lección, como en Duolingo. Las tildes y un error de una
+    letra se perdonan, avisando.
+  - `-prueba <carpeta>` dibuja las pantallas con datos inventados.
+  - `-probar` dice, con la sesión guardada, qué contesta Duolingo (cuántas unidades, de qué tipo
+    son los ejercicios). Empieza una lección pero no la manda, así que no cuenta.
 - `claude/`: un chat con la conversación de Claude Code abierta en el PC de casa. La consola no
   lleva a Claude dentro: lo que escribes se deja en `~/.config/panther/claude/pendientes/`, el PC
   lo recoge por SSH (y lo mueve a `leidos/`) y deja la respuesta en `respuestas/`. Mientras el PC
