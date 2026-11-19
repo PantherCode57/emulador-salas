@@ -51,6 +51,8 @@ func numero(v any, k string) (int, bool) {
 			}
 		case float64:
 			return int(x), true
+		case int:
+			return x, true
 		case string:
 			if n, err := strconv.Atoi(x); err == nil {
 				return n, true
@@ -306,6 +308,9 @@ var instrucciones = map[string]string{
 	"partialReverseTranslate":    "Completa la traducción",
 	"typeCloze":                  "Completa la palabra",
 	"typeComplete":               "Completa la frase",
+	"star":                       "Cómete todas las estrellas",
+	"normal":                     "Encuentra la mejor jugada",
+	"fictional_board":            "Encuentra la mejor jugada",
 }
 
 // tiposPedidos: los ejercicios que la consola sabe enseñar (no se piden los de hablar: no hay
@@ -316,6 +321,7 @@ var tiposPedidos = []string{
 	"listenMatch", "match", "name", "listenComprehension", "listenIsolation", "listenTap",
 	"partialReverseTranslate", "readComprehension", "reverseAssist", "select", "selectPronunciation",
 	"selectTranscription", "tapCloze", "tapComplete", "translate", "typeCloze", "typeComplete",
+	"star", "normal", "fictional_board", // el ajedrez
 }
 
 // convertir pasa un ejercicio de Duolingo a uno de la consola (nil si no se sabe enseñar).
@@ -330,6 +336,9 @@ func convertir(c map[string]any, indice int, pf perfil) *ejercicio {
 		e.Idioma = t
 	}
 	prompt := texto(c, "prompt")
+	if convertirAjedrez(c, e) {
+		return e
+	}
 	switch tipo {
 	case "select", "characterSelect", "selectTranscription", "selectPronunciation", "assist", "reverseAssist",
 		"judge", "form", "definition", "readComprehension", "listenComprehension", "dialogue", "gapFill":
@@ -495,7 +504,7 @@ func convertir(c map[string]any, indice int, pf perfil) *ejercicio {
 		}
 		e.Frase = b.String()
 		if tipo != "listenComplete" && prompt != "" {
-			e.Frase = prompt + "  →  " + e.Frase
+			e.Frase = prompt + "  ·  " + e.Frase
 		}
 		e.Piezas = nil // el hueco ya va en la frase
 	case "match", "listenMatch", "characterMatch", "extendedMatch", "extendedListenMatch":

@@ -46,7 +46,13 @@ func itoa(n int) string { return strconv.Itoa(n) }
 func main() {
 	prueba := flag.String("prueba", "", "dibuja las pantallas de ejemplo en esta carpeta y sale")
 	probar := flag.Bool("probar", false, "sin pantalla: con la sesión guardada, dice qué contesta Duolingo (solo cuántos)")
+	volcarA := flag.String("volcar", "", "sin pantalla: guarda en este archivo cómo es tu curso y una lección (sin mandarla)")
 	flag.Parse()
+	if *volcarA != "" {
+		log.SetOutput(os.Stdout)
+		volcar(*volcarA)
+		return
+	}
 	if v, err := strconv.Atoi(os.Getenv("POKEMULADOR_ANCHO")); err == nil && v >= 640 {
 		ancho = v
 	}

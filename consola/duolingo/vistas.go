@@ -304,7 +304,7 @@ func (a *app) cabeceraInicio() {
 	pastilla(icFuego, itoa(p.Racha), fuego)
 	pastilla(icGema, itoa(p.Gemas), colAzulDuo)
 	if p.Vidas < 0 {
-		pastilla(icCorazon, "∞", colRojoDuo)
+		pastilla(icCorazon, "Sin límite", colRojoDuo)
 	} else {
 		pastilla(icCorazon, itoa(p.Vidas), colRojoDuo)
 	}
@@ -579,15 +579,15 @@ func (a *app) dibujarLeccion() {
 		l.redondeado(image.Rect(barra.Min.X, barra.Min.Y, barra.Min.X+max(18, int(float64(barra.Dx())*k)), barra.Max.Y), 9, colVerdeDuo)
 		l.redondeado(image.Rect(barra.Min.X+8, barra.Min.Y+4, barra.Min.X+max(18, int(float64(barra.Dx())*k))-8, barra.Min.Y+8), 2, color.RGBA{0x9e, 0xe5, 0x6a, 0xff})
 	}
-	vidas := "∞"
-	if lec.vidas >= 0 {
-		vidas = itoa(lec.vidas)
-	}
 	vr := image.Rect(ancho-104, 28, ancho-20, 58)
-	l.texto(vr.Min.X+10, baseCentrada(vr, a.f.icono), icCorazon, a.f.icono, colRojoDuo)
-	l.texto(vr.Min.X+38, baseCentrada(vr, a.f.titulo2), vidas, a.f.titulo2, colRojoDuo)
+	if lec.vidas >= 0 { // sin límite (practicando o con Super) no se pintan
+		l.texto(vr.Min.X+10, baseCentrada(vr, a.f.icono), icCorazon, a.f.icono, colRojoDuo)
+		l.texto(vr.Min.X+38, baseCentrada(vr, a.f.titulo2), itoa(lec.vidas), a.f.titulo2, colRojoDuo)
+	}
 
-	l.izquierda(image.Rect(24, 62, ancho-24, 92), recortar(l.f.titulo2, e.Instruccion, ancho-48), l.f.titulo2, colTexto)
+	if e.Tipo != ejAjedrez {
+		l.izquierda(image.Rect(24, 62, ancho-24, 92), recortar(l.f.titulo2, e.Instruccion, ancho-48), l.f.titulo2, colTexto)
+	}
 
 	switch e.Tipo {
 	case ejElegir:
@@ -600,6 +600,8 @@ func (a *app) dibujarLeccion() {
 		a.dibujarParejas(t)
 	case ejEscribir:
 		a.dibujarEscribirEj(t)
+	case ejAjedrez:
+		a.dibujarAjedrez(t)
 	}
 
 	if t.comprobado {
@@ -619,6 +621,8 @@ func (a *app) dibujarLeccion() {
 		a.ayudaAbajo("A  Elegir    IZQ DER  Columna    B  Salir")
 	case ejEscribir:
 		a.ayudaAbajo("A  Letra    B  Borrar    Y  Espacio    X  Letras    START  Comprobar")
+	case ejAjedrez:
+		a.ayudaAbajo("A  Coger y dejar    B  Soltar    Y  Pista")
 	}
 }
 

@@ -44,6 +44,7 @@ var (
 	rutaLetras = entorno("DUOLINGO_LETRAS", "/roms/themes/es-theme-panther/_panther/letra")
 	rutaIconos = entorno("DUOLINGO_ICONOS", "/usr/bin/emulationstation/resources/fontawesome-webfont.ttf")
 	rutaFondo  = entorno("DUOLINGO_FONDO", "/roms/themes/es-theme-panther/_panther/fondo-lista.jpg")
+	rutaPiezas = entorno("DUOLINGO_PIEZAS", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
 )
 
 // Iconos (Font Awesome 4, el que trae EmulationStation).
@@ -72,6 +73,7 @@ const (
 type fuentes struct {
 	titulo, grande, nombre, normal, texto, pequena, mini, hora, horaGrande font.Face
 	negrita, titulo2                                                       font.Face // las páginas
+	piezas                                                                 font.Face // las del ajedrez (nil si no hay letra)
 	iconoGrande, icono, iconoPeq                                           font.Face
 	reg                                                                    *sfnt.Font
 	ic                                                                     *opentype.Font
@@ -135,6 +137,11 @@ func cargarFuentes() *fuentes {
 		if ic, err := opentype.Parse(b); err == nil {
 			f.iconoGrande, f.icono, f.iconoPeq = cara(ic, 26), cara(ic, 18), cara(ic, 15)
 			f.ic, f.icTam = ic, map[int]font.Face{}
+		}
+	}
+	if b, err := os.ReadFile(rutaPiezas); err == nil {
+		if pz, err := opentype.Parse(b); err == nil {
+			f.piezas = cara(pz, 40)
 		}
 	}
 	if f.icono == nil { // sin iconos: no se dibujan

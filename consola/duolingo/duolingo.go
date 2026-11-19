@@ -40,18 +40,65 @@ var experimentosCamino = []string{
 var ligas = []string{"Bronce", "Plata", "Oro", "Zafiro", "Rubí", "Esmeralda", "Amatista", "Perla", "Obsidiana", "Diamante"}
 
 type duolingo struct {
-	cuenta *cuenta
-	mu     sync.Mutex
-	info   map[string]any // el último perfil (para los idiomas y el curso)
+	cuenta  *cuenta
+	mu      sync.Mutex
+	info    map[string]any // el último perfil (para los idiomas y el curso)
+	materia string         // si el curso de ahora no es de idiomas: «chess», «math» o «music»
+}
+
+// nombreMateria: el nombre del curso de ahora si no es de idiomas («Ajedrez»…), o "".
+func (d *duolingo) nombreMateria() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	switch d.materia {
+	case "chess":
+		return "Ajedrez"
+	case "math":
+		return "Matemáticas"
+	case "music":
+		return "Música"
+	}
+	return ""
 }
 
 func nuevoDuolingo(c *cuenta) *duolingo { return &duolingo{cuenta: c} }
 
 // pedir hace una llamada y deja la respuesta (JSON) en «fuera».
 func (d *duolingo) pedir(metodo, ruta string, cuerpo any, fuera *map[string]any) error {
+	codigo, datos, err := d.pedirCrudo(metodo, ruta, cuerpo)
+	if err != nil {
+		return err
+	}
+	switch {
+	case codigo == http.StatusUnauthorized:
+		return errSesion
+	case codigo == http.StatusForbidden && bytes.Contains(datos, []byte("blockScript")):
+		return errBloqueo
+	case codigo == http.StatusTooManyRequests:
+		return errLimite
+	case codigo >= 400:
+		return fmt.Errorf("Duolingo responde %d", codigo)
+	}
+	if fuera == nil || len(bytes.TrimSpace(datos)) == 0 {
+		return nil
+	}
+	if err := leerJSON(datos, fuera); err != nil {
+		return errors.New("Duolingo no ha contestado como siempre")
+	}
+	return nil
+}
+
+func leerJSON(datos []byte, fuera *map[string]any) error {
+	dec := json.NewDecoder(bytes.NewReader(datos))
+	dec.UseNumber()
+	return dec.Decode(fuera)
+}
+
+// pedirCrudo hace la llamada y devuelve el código y lo que conteste, tal cual.
+func (d *duolingo) pedirCrudo(metodo, ruta string, cuerpo any) (int, []byte, error) {
 	token, _ := d.cuenta.datos()
 	if token == "" {
-		return errSesion
+		return 0, nil, errSesion
 	}
 	dir := ruta
 	if !strings.HasPrefix(ruta, "http") {
@@ -61,13 +108,13 @@ func (d *duolingo) pedir(metodo, ruta string, cuerpo any, fuera *map[string]any)
 	if cuerpo != nil {
 		b, err := json.Marshal(cuerpo)
 		if err != nil {
-			return err
+			return 0, nil, err
 		}
 		body = bytes.NewReader(b)
 	}
 	req, err := http.NewRequest(metodo, dir, body)
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
 	h := req.Header
 	h.Set("Authorization", "Bearer "+token)
@@ -87,30 +134,12 @@ func (d *duolingo) pedir(metodo, ruta string, cuerpo any, fuera *map[string]any)
 	resp, err := clienteDatos.Do(req)
 	if err != nil {
 		logf("%s %s: %v", metodo, sinQuery(ruta), err)
-		return err
+		return 0, nil, err
 	}
 	defer resp.Body.Close()
 	datos, _ := io.ReadAll(io.LimitReader(resp.Body, 48<<20))
 	logf("%s %s: %d (%d bytes)", metodo, sinQuery(ruta), resp.StatusCode, len(datos))
-	switch {
-	case resp.StatusCode == http.StatusUnauthorized:
-		return errSesion
-	case resp.StatusCode == http.StatusForbidden && bytes.Contains(datos, []byte("blockScript")):
-		return errBloqueo
-	case resp.StatusCode == http.StatusTooManyRequests:
-		return errLimite
-	case resp.StatusCode >= 400:
-		return fmt.Errorf("Duolingo responde %d", resp.StatusCode)
-	}
-	if fuera == nil || len(bytes.TrimSpace(datos)) == 0 {
-		return nil
-	}
-	dec := json.NewDecoder(bytes.NewReader(datos))
-	dec.UseNumber()
-	if err := dec.Decode(fuera); err != nil {
-		return errors.New("Duolingo no ha contestado como siempre")
-	}
-	return nil
+	return resp.StatusCode, datos, nil
 }
 
 func sinQuery(s string) string {
@@ -226,6 +255,22 @@ func (d *duolingo) Camino() ([]unidad, int, error) {
 		return nil, 0, err
 	}
 	curso := obj(r, "currentCourse")
+	if curso == nil {
+		// los cursos que no son de idiomas (ajedrez, matemáticas, música) solo salen en la API nueva
+		var r2 map[string]any
+		if err := d.pedir("GET", fmt.Sprintf("/2023-05-23/users/%d?fields=currentCourseId,currentCourse,courses", id), nil, &r2); err != nil {
+			return nil, 0, err
+		}
+		curso = obj(r2, "currentCourse")
+		actualID := texto(r2, "currentCourseId")
+		for _, c := range lista(r2, "courses") {
+			if texto(c, "id") == actualID || (actualID == "" && texto(c, "id") == texto(curso, "id")) {
+				d.mu.Lock()
+				d.materia = texto(c, "subject")
+				d.mu.Unlock()
+			}
+		}
+	}
 	if curso == nil {
 		return nil, 0, errors.New("no tienes ningún curso empezado")
 	}
@@ -419,8 +464,31 @@ func (d *duolingo) Empezar(p peticion, pf perfil) (*leccion, error) {
 	if p.tipo != "practica" && pf.Vidas == 0 {
 		return nil, errors.New("no te quedan vidas. Practica (X en el camino) para recuperar una o espera a que se recarguen")
 	}
+	// En los cursos que no son de idiomas (el ajedrez) puede que haga falta decir el curso: si
+	// Duolingo dice que no (400), se prueba con «courseId» y luego sin «learningLanguage».
+	intentos := []map[string]any{cuerpo}
+	d.mu.Lock()
+	materia, cursoID := d.materia, texto(d.info, "currentCourseId")
+	d.mu.Unlock()
+	if materia != "" && cursoID != "" {
+		intentos = append(intentos, conCampos(cuerpo, map[string]any{"courseId": cursoID}),
+			conCampos(cuerpo, map[string]any{"courseId": cursoID, "learningLanguage": nil}))
+	}
 	var s map[string]any
-	if err := d.pedir("POST", "/2017-06-30/sessions", cuerpo, &s); err != nil {
+	var err error
+	for i, c := range intentos {
+		s = nil
+		if err = d.pedir("POST", "/2017-06-30/sessions", c, &s); err == nil {
+			if i > 0 {
+				logf("la lección ha salido con la forma %d", i+1)
+			}
+			break
+		}
+		if errors.Is(err, errSesion) || errors.Is(err, errBloqueo) || errors.Is(err, errLimite) {
+			break
+		}
+	}
+	if err != nil {
 		return nil, err
 	}
 	if texto(s, "id") == "" {

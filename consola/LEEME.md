@@ -42,6 +42,15 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
   - `-prueba <carpeta>` dibuja las pantallas con datos inventados.
   - `-probar` dice, con la sesión guardada, qué contesta Duolingo (cuántas unidades, de qué tipo
     son los ejercicios). Empieza una lección pero no la manda, así que no cuenta.
+  - **Ajedrez:** los cursos que no son de idiomas solo salen en `2023-05-23/users`, y la app los
+    lee de ahí si en `2017-06-30` no hay curso. Los ejercicios de ajedrez llegan con la posición
+    (`fen`) y `chessPuzzleInfo` (`correctMoves`, `enemyMoves`, `validPaths`,
+    `moveEvaluationsForPositions`, `maxMoves`), con las jugadas en UCI. Se juegan en un tablero:
+    la cruceta mueve el cursor, A coge y deja la pieza e Y da una pista. Las respuestas del rival
+    las pone la consola. En los de estrellas, los peones negros son las estrellas que hay que comerse.
+    Las piezas se dibujan con la letra DejaVu Sans de la consola (`DUOLINGO_PIEZAS`).
+  - `-volcar <archivo>` guarda cómo es tu curso y cómo llega una lección (la pide, pero no la
+    manda), sin tu nombre ni tu usuario: sirve para preparar los cursos nuevos.
 - `claude/`: un chat con la conversación de Claude Code abierta en el PC de casa. La consola no
   lleva a Claude dentro: lo que escribes se deja en `~/.config/panther/claude/pendientes/`, el PC
   lo recoge por SSH (y lo mueve a `leidos/`) y deja la respuesta en `respuestas/`. Mientras el PC

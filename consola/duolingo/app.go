@@ -131,6 +131,9 @@ func (a *app) cargar() {
 				return
 			}
 			nuevo := !a.perfilHecho || len(a.camino) == 0
+			if m := a.duo.nombreMateria(); m != "" {
+				p.Curso = m
+			}
 			a.perfil, a.perfilHecho, a.camino = p, true, us
 			if nuevo || a.unidad >= len(us) {
 				a.unidad = actual
@@ -246,6 +249,10 @@ func (a *app) bucle(botones <-chan uint16, ra *retroarch) {
 			}
 			if a.t != nil && !a.t.malHasta.IsZero() && ahora.After(a.t.malHasta) {
 				a.t.malHasta, a.t.malIzq, a.t.malDer, a.cambios = time.Time{}, -1, -1, true
+			}
+			if a.pant == pLeccion && a.t != nil && a.t.ajedrez != nil && !a.t.ajedrez.rivalEn.IsZero() {
+				a.moverRival()
+				a.cambios = true
 			}
 			if a.pant == pCargando || a.cargando || (a.pant == pFin && !a.enviado) {
 				if p := ahora.UnixMilli() / 400; p != a.puntoVisto { // los puntitos (no hace falta más)

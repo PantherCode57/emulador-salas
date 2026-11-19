@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -177,5 +178,51 @@ func dibujarPruebas(f *fuentes, dir string) error {
 	}
 	a.pant = pLeccion
 	a.confirmar("¿Salir de la lección? Lo que llevas no contará.", func() {})
-	return guardar("20-salir")
+	if err := guardar("20-salir"); err != nil {
+		return err
+	}
+	a.confirmTexto, a.confirmSi = "", nil
+
+	// ajedrez: un mate en dos (con la respuesta del rival) y uno de estrellas
+	mate := map[string]any{"type": "normal", "fen": "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1",
+		"chessPuzzleInfo": map[string]any{"correctMoves": []any{"d1d8"}}}
+	dos := map[string]any{"type": "normal", "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 0 1",
+		"chessPuzzleInfo": map[string]any{"correctMoves": []any{"h5f7"}}}
+	estrellas := map[string]any{"type": "star", "fen": "8/8/2p5/8/8/2p2p2/8/2R5 w - - 0 1",
+		"chessPuzzleInfo": map[string]any{"maxMoves": 3}}
+	var ajs []*ejercicio
+	for i, c := range []map[string]any{mate, dos, estrellas} {
+		if e := convertir(c, i, a.perfil); e != nil {
+			ajs = append(ajs, e)
+		}
+	}
+	if len(ajs) != 3 {
+		return fmt.Errorf("ajedrez: solo %d de 3 ejercicios", len(ajs))
+	}
+	a.perfil.Curso = "Ajedrez"
+	a.lec = nuevaLeccion(nil, ajs, -1, "Ajedrez · Unidad 1 · Mates")
+	a.nuevoTurno()
+	a.t.ajedrez.cur, a.t.ajedrez.sel = [2]int{7, 3}, [2]int{7, 3}
+	if err := guardar("21-ajedrez-coger"); err != nil {
+		return err
+	}
+	a.t.ajedrez.cur = [2]int{0, 3}
+	a.jugar(jugada{df: 7, dc: 3, af: 0, ac: 3})
+	if err := guardar("22-ajedrez-mate"); err != nil {
+		return err
+	}
+	a.continuar()
+	a.t.ajedrez.pista = true
+	if err := guardar("23-ajedrez-pista"); err != nil {
+		return err
+	}
+	a.jugar(jugada{df: 3, dc: 7, af: 3, ac: 5}) // mal: la dama a f5
+	if err := guardar("24-ajedrez-mal"); err != nil {
+		return err
+	}
+	a.continuar()
+	a.t.ajedrez.cur, a.t.ajedrez.sel = [2]int{5, 2}, [2]int{7, 2}
+	a.jugar(jugada{df: 7, dc: 2, af: 5, ac: 2})
+	a.t.ajedrez.sel = [2]int{5, 2}
+	return guardar("25-ajedrez-estrellas")
 }

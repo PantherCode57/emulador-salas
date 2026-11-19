@@ -19,6 +19,7 @@ const (
 	ejParejas                // emparejar palabras
 	ejEscribir               // escribir con el teclado
 	ejHuecos                 // rellenar varios huecos con fichas
+	ejAjedrez                // mover piezas en el tablero (el curso de ajedrez)
 )
 
 type opcion struct {
@@ -49,6 +50,7 @@ type ejercicio struct {
 	Izquierda   []opcion // ejParejas: en el idioma que aprendes
 	Derecha     []opcion // ejParejas: su traducción (Derecha[i] va con Izquierda[i])
 	Idioma      string   // el de la respuesta (para el teclado)
+	Ajedrez     *datosAjedrez
 }
 
 // leccion: la sesión de Duolingo y cómo va.

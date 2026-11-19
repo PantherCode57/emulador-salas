@@ -25,6 +25,7 @@ type turno struct {
 	comprobado bool
 	ver        veredicto
 	desde      time.Time
+	ajedrez    *partida // ejAjedrez
 }
 
 func (a *app) nuevoTurno() {
@@ -41,6 +42,9 @@ func (a *app) nuevoTurno() {
 	if e.Tipo == ejEscribir {
 		a.t.escribir = true
 		a.tec.abrir()
+	}
+	if e.Tipo == ejAjedrez {
+		a.empezarAjedrez()
 	}
 	a.son.parar()
 	a.son.decir(e.Audio)
@@ -89,6 +93,8 @@ func (a *app) pulsarLeccion(b uint16) {
 		a.pulsarParejas(b)
 	case ejEscribir:
 		a.pulsarEscribirEj(b)
+	case ejAjedrez:
+		a.pulsarAjedrez(b)
 	}
 }
 
