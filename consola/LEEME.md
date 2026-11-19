@@ -51,6 +51,21 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
     Las piezas se dibujan con la letra DejaVu Sans de la consola (`DUOLINGO_PIEZAS`).
   - `-volcar <archivo>` guarda cómo es tu curso y cómo llega una lección (la pide, pero no la
     manda), sin tu nombre ni tu usuario: sirve para preparar los cursos nuevos.
+- `ajedrez/`: ajedrez con tu cuenta de Lichess, por su API oficial (la «Board API», que es para
+  jugar desde programas y tableros que no son su web). El token personal (`lip_…`) se hace en
+  Lichess con el enlace de la página de la consola (`http://IP:8769`, con los permisos ya marcados)
+  y se guarda en `~/.config/panther/ajedrez/cuenta.json`.
+  - Retar a un amigo por su nombre (o a los últimos retados y a quien sigues), con reloj (5+3,
+    10+0, 15+10, 30+0) o por días; él juega desde el móvil o la web de Lichess. Los retos con reloj
+    se mantienen con `keepAliveStream` mientras se espera.
+  - Contra la máquina de Lichess (Stockfish, niveles 1 a 8), seguir las partidas empezadas y
+    aceptar o rechazar los retos que llegan (por el stream `/api/stream/event`).
+  - La partida llega por `/api/board/game/stream/<id>`; las jugadas van en UCI. Las reglas
+    (`reglas.go`, comprobadas con perft) no dejan mandar jugadas que no valen, y las jugadas se
+    escriben en español (Cf3, 0-0, Dh4#). Con START: tablas, rendirse, anular o salir.
+  - Problemas de Lichess (`/api/puzzle/next`), con pista (Y) y el resultado mandado a Lichess.
+  - `-prueba <carpeta>` dibuja las pantallas con datos inventados; `-probar` dice, con el token
+    guardado, qué contesta Lichess (solo si va y cuántos).
 - `claude/`: un chat con la conversación de Claude Code abierta en el PC de casa. La consola no
   lleva a Claude dentro: lo que escribes se deja en `~/.config/panther/claude/pendientes/`, el PC
   lo recoge por SSH (y lo mueve a `leidos/`) y deja la respuesta en `respuestas/`. Mientras el PC
