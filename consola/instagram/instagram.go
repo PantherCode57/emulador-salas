@@ -621,9 +621,21 @@ func (ig *instagram) MeGusta(pk string, si bool) error {
 		if k == 0 && si {
 			input["container_module"] = "feed_timeline"
 		}
+		vars := map[string]any{"input": input}
 		var m map[string]any
-		if m, err = ig.consulta(f.nombre, "/", map[string]any{"input": input}); err == nil {
-			if ir(m, "data", f.campo) != nil {
+		if m, err = ig.consulta(f.nombre, "/", vars); err == nil {
+			if ir(m, "data", f.campo) == nil { // vacío (no ha hecho nada): por la otra dirección
+				if m2, e := ig.consultaEn(otroFin(finConsulta(f.nombre)), f.nombre, "/", vars); e == nil {
+					m = m2
+				}
+				if ir(m, "data", f.campo) == nil {
+					logf("%s: %s", f.nombre, formaJSON(m, 4))
+				}
+			}
+			if r := ir(m, "data", f.campo); r != nil {
+				if hecho, ok := ir(r, "media", "has_liked").(bool); ok && hecho != si {
+					return errors.New("Instagram no lo ha cambiado")
+				}
 				return nil
 			}
 			err = errors.New("GraphQL no lo ha hecho")

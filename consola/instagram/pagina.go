@@ -452,9 +452,13 @@ func (ig *instagram) consulta(nombre, ruta string, vars map[string]any) (map[str
 	return ig.consultaEn(finConsulta(nombre), nombre, ruta, vars)
 }
 
-// finConsulta: a dónde va cada consulta. Las de los mensajes, a /api/graphql/ (como mautrix-meta: en
-// /graphql/query la bandeja llega vacía); las demás, a /graphql/query, como gallery-dl.
+// finConsulta: a dónde va cada consulta. Las de los mensajes y las que cambian algo (Mutation), a
+// /api/graphql/, como mautrix-meta: en /graphql/query contestan sin error, pero vacías y sin hacer
+// nada (comprobado el 19/11/2026). Las demás, a /graphql/query, como gallery-dl.
 func finConsulta(nombre string) string {
+	if strings.Contains(nombre, "Mutation") {
+		return "/api/graphql/"
+	}
 	for _, p := range []string{"IGD", "useIGD", "PolarisDirect"} {
 		if strings.HasPrefix(nombre, p) {
 			return "/api/graphql/"

@@ -48,12 +48,19 @@ func main() {
 	prueba := flag.String("prueba", "", "dibuja las pantallas de ejemplo en esta carpeta y sale")
 	probar := flag.Bool("probar", false, "sin pantalla: con la sesión guardada, dice qué contesta Instagram (solo cuántas)")
 	js := flag.Bool("js", false, "con -probar: antes busca los doc_id en los JS de la web de Instagram")
+	megusta := flag.Bool("megusta", false, "con -probar: da «me gusta» a una publicación de tu inicio y lo quita enseguida (cambia tu cuenta)")
+	enviar := flag.String("enviar", "", "con -probar y -chat: manda este texto a ese chat (cambia tu cuenta)")
+	chat := flag.String("chat", "", "con -probar -enviar: el nombre del chat, como sale en la consola")
 	flag.Parse()
 	if v, err := strconv.Atoi(os.Getenv("POKEMULADOR_ANCHO")); err == nil && v >= 640 {
 		ancho = v
 	}
 	if v, err := strconv.Atoi(os.Getenv("POKEMULADOR_ALTO")); err == nil && v >= 400 {
 		alto = v
+	}
+	if *probar && (*megusta || *enviar != "") {
+		probarAcciones(*megusta, *enviar, *chat)
+		return
 	}
 	if *probar {
 		probarSesion(*js)
@@ -243,6 +250,71 @@ func probarSesion(js bool) {
 	for _, n := range []string{"usePolarisLikeMediaXIGLikeMutation", "IGDirectTextSendMutation"} {
 		cs := ig.candidatos(n)
 		fmt.Printf("%s: no se prueba (cambia tu cuenta); %d doc_id para probar\n", n, len(cs))
+	}
+}
+
+// probarAcciones: lo que cambia tu cuenta, solo si lo pides (-megusta, -enviar … -chat …). Tampoco
+// escribe nada de lo que hay dentro: ni de quién es la publicación ni el chat.
+func probarAcciones(megusta bool, texto, nombreChat string) {
+	c := cargarCuenta(filepath.Join(carpetaDatos, "cuenta.json"))
+	if !c.tiene() {
+		fmt.Println("no hay sesión guardada en", carpetaDatos)
+		return
+	}
+	c.ruta = ""
+	ig := nuevoInstagram(c)
+	log.SetOutput(os.Stdout)
+	log.SetFlags(0)
+	if megusta {
+		p, err := ig.Inicio("")
+		var post *Post
+		for i := range p.Posts {
+			if x := &p.Posts[i]; x.PK != "" && !x.Sugerido && !x.MeGusta {
+				post = x
+				break
+			}
+		}
+		switch {
+		case err != nil:
+			fmt.Println("me gusta: no se ha podido abrir el inicio:", siError(err))
+		case post == nil:
+			fmt.Printf("me gusta: en las %d primeras del inicio no hay ninguna sin tu «me gusta»\n", len(p.Posts))
+		default:
+			err := ig.MeGusta(post.PK, true)
+			fmt.Println("me gusta:", siError(err))
+			time.Sleep(3 * time.Second)
+			err2 := ig.MeGusta(post.PK, false)
+			fmt.Println("quitar el me gusta:", siError(err2))
+			if err == nil && err2 != nil {
+				fmt.Println("¡OJO! se ha quedado puesto: quítalo a mano o vuelve a probar")
+			}
+		}
+	}
+	if texto != "" {
+		cs, err := ig.Chats()
+		if err != nil {
+			fmt.Println("enviar: no se han podido abrir los chats:", siError(err))
+			return
+		}
+		quiero := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(nombreChat), "@"))
+		var elegidos []Chat
+		for _, x := range cs {
+			if quiero != "" && strings.ToLower(x.Titulo) == quiero {
+				elegidos = append(elegidos, x)
+			}
+		}
+		if len(elegidos) != 1 {
+			fmt.Printf("enviar: no se manda nada (%d chats con ese nombre entre los %d primeros)\n", len(elegidos), len(cs))
+			return
+		}
+		err = ig.Enviar(elegidos[0].ID, texto)
+		fmt.Println("enviar:", siError(err))
+		if err == nil {
+			time.Sleep(2 * time.Second)
+			ms, _, err := ig.Conversacion(elegidos[0].ID, "")
+			ultimo := len(ms) > 0 && ms[len(ms)-1].Mio && ms[len(ms)-1].Texto == texto
+			fmt.Printf("en la conversación: %s, el último es el tuyo con ese texto: %v\n", siError(err), ultimo)
+		}
 	}
 }
 
