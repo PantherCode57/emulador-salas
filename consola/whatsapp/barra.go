@@ -48,11 +48,11 @@ func bateria() (int, bool) {
 
 // estadoBarra: lo que sale en el recuadro (si no cambia, no se vuelve a pintar).
 type estadoBarra struct {
-	hora      string
-	bateria   int
-	cargando  bool
-	whatsapp  bool
-	grabando  bool
+	hora     string
+	bateria  int
+	cargando bool
+	whatsapp bool
+	grabando bool
 }
 
 func (a *app) estadoBarra() estadoBarra {

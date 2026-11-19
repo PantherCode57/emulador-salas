@@ -51,7 +51,10 @@ type app struct {
 	cargaMin, cargaMax time.Time
 	enCargaAntes       bool
 
-	cambios bool
+	cambios    bool
+	dibujarYa  bool      // un botón: se pinta ya, sin esperar al reloj
+	dibujado   time.Time // la última vez que se pintó
+	panelVisto int       // la versión de los chats que tiene pintada el panel
 
 	// Botones: los que estaban pulsados y cuándo se repiten (para mantener pulsadas las flechas).
 	pulsados  uint16
@@ -79,7 +82,7 @@ type app struct {
 }
 
 func nuevaApp(f *fuentes) *app {
-	a := &app{f: f, l: nuevoLienzo(f), tareas: make(chan func(), 256), salir: make(chan struct{}), cambios: true}
+	a := &app{f: f, l: nuevoLienzo(f), tareas: make(chan func(), 4096), salir: make(chan struct{}), cambios: true}
 	a.av = nuevosAvatares(a)
 	a.cargaMin, a.cargaMax = time.Now().Add(time.Second), time.Now().Add(6*time.Second)
 	return a
@@ -94,6 +97,31 @@ func (a *app) hacer(fn func()) {
 }
 
 func (a *app) redibujar() { a.cambios = true }
+
+// vaciarTareas hace seguidas las que estén esperando (al conectarse llegan cientos de golpe: así se
+// pinta una vez al final y no una vez por cada una). Como mucho 30 ms seguidos: luego se deja pintar
+// y atender los botones, y se sigue en la vuelta siguiente.
+func (a *app) vaciarTareas() {
+	limite := time.Now().Add(30 * time.Millisecond)
+	for k := 0; k < 1000 && time.Now().Before(limite); k++ {
+		select {
+		case fn := <-a.tareas:
+			fn()
+		default:
+			return
+		}
+	}
+}
+
+// tocaPintar: si hay algo nuevo y ha pasado lo bastante desde la última vez (25 imágenes por segundo
+// como mucho), o si se acaba de pulsar un botón.
+func (a *app) tocaPintar() bool {
+	if !a.cambios || (!a.dibujarYa && time.Since(a.dibujado) < 40*time.Millisecond) {
+		return false
+	}
+	a.cambios, a.dibujarYa, a.dibujado = false, false, time.Now()
+	return true
+}
 
 func (a *app) aviso(s string) {
 	a.avisoTexto = s
@@ -123,7 +151,7 @@ func (a *app) terminar() {
 func (a *app) bucle(botones <-chan uint16, ra *retroarch) {
 	reloj := time.NewTicker(40 * time.Millisecond)
 	defer reloj.Stop()
-	guardado := time.NewTicker(5 * time.Second)
+	guardado := time.NewTicker(20 * time.Second)
 	defer guardado.Stop()
 	var raHecho <-chan error
 	if ra != nil {
@@ -139,9 +167,11 @@ func (a *app) bucle(botones <-chan uint16, ra *retroarch) {
 			return
 		case fn := <-a.tareas:
 			fn()
+			a.vaciarTareas()
 			a.cambios = true // cualquier novedad (QR, mensajes, estado) se enseña enseguida
 		case m := <-botones:
 			a.botones(m)
+			a.dibujarYa = true
 		case <-reloj.C:
 			a.repetir()
 			if c := a.enCarga(); c != a.enCargaAntes { // se acaba la pantalla de carga
@@ -157,11 +187,10 @@ func (a *app) bucle(botones <-chan uint16, ra *retroarch) {
 				a.w.guardar()
 			}
 		}
-		if a.cambios {
-			a.cambios = false
+		if a.tocaPintar() {
 			a.dibujar()
 			if a.srv != nil {
-				a.srv.enviar(a.l.marco())
+				a.srv.enviarCon(a.l.marcoEn)
 			}
 		}
 	}
@@ -272,7 +301,7 @@ func (a *app) abrir(c *Chat) {
 		n := min(c.NoLeidos, len(c.Mensajes))
 		a.w.leido(c, c.Mensajes[len(c.Mensajes)-n:])
 		c.NoLeidos = 0
-		a.w.sucio = true
+		a.w.marcar()
 	}
 }
 

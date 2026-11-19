@@ -128,7 +128,7 @@ func servicio(f *fuentes) {
 func (a *app) bucleServicio() {
 	reloj := time.NewTicker(40 * time.Millisecond)
 	defer reloj.Stop()
-	guardado := time.NewTicker(5 * time.Second)
+	guardado := time.NewTicker(20 * time.Second)
 	defer guardado.Stop()
 	var cambiosMando <-chan uint32
 	if a.mando != nil {
@@ -147,14 +147,19 @@ func (a *app) bucleServicio() {
 			return
 		case fn := <-a.tareas:
 			fn()
+			a.vaciarTareas()
 			a.cambios = true
-			a.panelSucio = true
+			if v := a.w.version(); v != a.panelVisto { // el panel, solo si han cambiado los chats
+				a.panelVisto, a.panelSucio = v, true
+			}
 		case m := <-a.botonesCore:
 			if a.modo == modoApp {
 				a.botones(m)
+				a.dibujarYa = true
 			}
 		case e := <-cambiosMando:
 			a.mandoCambia(e)
+			a.dibujarYa = true
 		case d := <-a.teclasVol:
 			a.cambiarVolumen(5 * d)
 		case <-barraReloj.C:
@@ -182,13 +187,15 @@ func (a *app) bucleServicio() {
 		case <-guardado.C:
 			a.w.guardar()
 		}
-		if a.cambios {
-			a.cambios = false
+		if a.modo == modoFondo {
+			a.cambios = false // sin pantalla no se pinta nada
+		}
+		if a.tocaPintar() {
 			switch a.modo {
 			case modoApp:
 				a.dibujar()
 				if a.srv != nil {
-					a.srv.enviar(a.l.marco())
+					a.srv.enviarCon(a.l.marcoEn)
 				}
 			case modoCapa:
 				if !a.esperaSoltar {
@@ -331,7 +338,7 @@ func (a *app) pedirAbrir(c net.Conn) {
 	a.cargaMin, a.cargaMax = time.Now().Add(time.Second), time.Now().Add(6*time.Second)
 	a.dibujarCarga()
 	pintarFB(a.l.img)
-	a.srv.enviar(a.l.marco())
+	a.srv.enviarCon(a.l.marcoEn)
 	ra, err := abrirRetroArch()
 	if err != nil {
 		logf("no se pudo abrir la pantalla: %v", err)
@@ -352,6 +359,7 @@ func (a *app) pedirAbrir(c net.Conn) {
 }
 
 func (a *app) cerrarApp() {
+	a.w.guardar() // al salir, lo de ahora ya guardado
 	if a.ra != nil {
 		a.ra.cerrar()
 		a.ra = nil

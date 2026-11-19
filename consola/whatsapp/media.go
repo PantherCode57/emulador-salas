@@ -88,7 +88,8 @@ func (md *medios) rutaPB(m *Mensaje) string {
 // guardar apunta lo necesario para pedirlo más tarde; la miniatura, solo en memoria.
 func (md *medios) guardar(m *Mensaje, sub proto.Message, mini []byte) {
 	if b, err := proto.Marshal(sub); err == nil {
-		escribirAtomico(md.rutaPB(m), b)
+		ruta := md.rutaPB(m)
+		go escribirAtomico(ruta, b) // aparte: con el historial llegan muchas y la tarjeta es lenta
 	}
 	if len(mini) > 0 {
 		md.minis[m.ID] = mini

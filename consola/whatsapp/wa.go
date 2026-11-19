@@ -10,11 +10,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
@@ -50,14 +52,17 @@ type Chat struct {
 }
 
 func (c *Chat) añadir(m *Mensaje) bool {
-	for i, v := range c.Mensajes {
-		if v.ID == m.ID && m.ID != "" {
+	for i := len(c.Mensajes) - 1; i >= 0; i-- { // los repetidos suelen ser de los últimos
+		if v := c.Mensajes[i]; v.ID == m.ID && m.ID != "" {
 			c.Mensajes[i] = m
 			return false
 		}
 	}
+	n := len(c.Mensajes)
 	c.Mensajes = append(c.Mensajes, m)
-	sort.SliceStable(c.Mensajes, func(i, j int) bool { return c.Mensajes[i].Hora.Before(c.Mensajes[j].Hora) })
+	if n > 0 && m.Hora.Before(c.Mensajes[n-1].Hora) { // solo se ordena si llega uno antiguo
+		sort.SliceStable(c.Mensajes, func(i, j int) bool { return c.Mensajes[i].Hora.Before(c.Mensajes[j].Hora) })
+	}
 	if len(c.Mensajes) > maxMensajes {
 		c.Mensajes = c.Mensajes[len(c.Mensajes)-maxMensajes:]
 	}
@@ -102,6 +107,7 @@ type wa struct {
 	cli          *whatsmeow.Client
 	chats        map[string]*Chat
 	sucio        bool
+	ver          int               // sube con cada cambio en los chats
 	nombres      map[string]string // pushnames vistos
 	pedidoNombre map[string]bool
 	// chats a los que ya se ha pedido el historial al móvil
@@ -158,7 +164,10 @@ func nuevoWA(a *app) (*wa, error) {
 	store.SetOSInfo("Panther OS", [3]uint32{1, 0, 0})
 	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_DESKTOP.Enum()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(carpetaDatos, "sesion.db")+
-		"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
+		"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"+
+		// con WAL, NORMAL no espera a la tarjeta en cada cambio (que es lo lento) y la base no se
+		// estropea aunque se apague de golpe; y más memoria para lo que más se lee.
+		"&_pragma=synchronous(NORMAL)&_pragma=cache_size(-8000)&_pragma=temp_store(MEMORY)")
 	if err != nil {
 		return nil, err
 	}
@@ -185,8 +194,25 @@ func (w *wa) cargar() {
 	}
 }
 
+// marcar: han cambiado los chats (se guardan luego y el panel se vuelve a pintar).
+func (w *wa) marcar() {
+	w.marcar()
+	w.ver++
+}
+
+func (w *wa) version() int {
+	if w == nil {
+		return 0
+	}
+	return w.ver
+}
+
+var escribiendoChats sync.Mutex
+
+// guardar: los chats a chats.json. Se preparan aquí (en el bucle, que es el dueño de los chats) y
+// se escriben aparte, para no parar la app mientras la tarjeta escribe.
 func (w *wa) guardar() {
-	if !w.sucio {
+	if w == nil || !w.sucio {
 		return
 	}
 	w.sucio = false
@@ -194,7 +220,18 @@ func (w *wa) guardar() {
 	if err != nil {
 		return
 	}
-	escribirAtomico(archivoChats(), b)
+	go func() {
+		escribiendoChats.Lock()
+		defer escribiendoChats.Unlock()
+		escribirAtomico(archivoChats(), b)
+	}()
+}
+
+// guardarYa: lo mismo, esperando a que esté escrito (al cerrar).
+func (w *wa) guardarYa() {
+	w.guardar()
+	escribiendoChats.Lock()
+	escribiendoChats.Unlock()
 }
 
 // visibles: los chats que se enseñan en la lista (los que tienen algún mensaje o sin leer).
@@ -305,7 +342,7 @@ func (w *wa) desvincular() {
 		}
 		w.app.hacer(func() {
 			w.chats = map[string]*Chat{}
-			w.sucio = true
+			w.marcar()
 			w.guardar()
 			w.app.estado = waDesvinculado
 		})
@@ -316,7 +353,7 @@ func (w *wa) cerrar() {
 	if w.cli != nil {
 		w.cli.Disconnect()
 	}
-	w.guardar()
+	w.guardarYa()
 }
 
 func (w *wa) evento(evt any) {
@@ -335,7 +372,7 @@ func (w *wa) evento(evt any) {
 		w.app.aviso("Has abierto WhatsApp en otro sitio con esta sesión")
 	case *events.LoggedOut:
 		w.chats = map[string]*Chat{}
-		w.sucio = true
+		w.marcar()
 		w.app.estado = waDesvinculado
 	case *events.PushName:
 		if e.NewPushName != "" {
@@ -402,7 +439,7 @@ func (w *wa) mensaje(e *events.Message, enVivo bool) {
 		w.app.media.guardar(m, sub, mini) // no se descarga: solo al abrirla con Y, y a la memoria
 	}
 	nuevo := c.añadir(m)
-	w.sucio = true
+	w.marcar()
 	if c.Nombre == "" {
 		w.ponerNombre(c, e.Info.Chat, e.Info.PushName, e.Info.IsFromMe)
 	}
@@ -426,7 +463,14 @@ func (w *wa) historial(e *events.HistorySync) {
 			w.nombres[p.GetID()] = p.GetPushname()
 		}
 	}
-	for _, conv := range e.Data.GetConversations() {
+	w.historialDesde(e.Data.GetConversations(), 0)
+}
+
+// historialDesde: el historial llega de golpe (cientos de chats con sus mensajes). Se hace de 10 en
+// 10 chats, y entre medias la app pinta y atiende los botones: así no se queda parada.
+func (w *wa) historialDesde(convs []*waHistorySync.Conversation, desde int) {
+	hasta := min(desde+10, len(convs))
+	for _, conv := range convs[desde:hasta] {
 		jid, err := types.ParseJID(conv.GetID())
 		if err != nil || ignorar(jid) {
 			continue
@@ -465,8 +509,12 @@ func (w *wa) historial(e *events.HistorySync) {
 			w.ponerNombre(c, jid, "", false)
 		}
 	}
+	w.marcar()
+	if hasta < len(convs) {
+		go w.app.hacer(func() { w.historialDesde(convs, hasta) })
+		return
+	}
 	w.renombrar()
-	w.sucio = true
 }
 
 // ponerNombre busca cómo se llama un chat: agenda, nombre del grupo o el que se pone cada uno.
@@ -483,7 +531,7 @@ func (w *wa) ponerNombre(c *Chat, jid types.JID, pushName string, deMi bool) {
 				return
 			}
 			nombre := info.Name
-			w.app.hacer(func() { c.Nombre = w.app.f.limpiar(nombre); w.sucio = true })
+			w.app.hacer(func() { c.Nombre = w.app.f.limpiar(nombre); w.marcar() })
 		}()
 		return
 	}
@@ -559,7 +607,8 @@ func (w *wa) renombrar() {
 		}
 		if !c.Grupo && sinNombre(c.Nombre) {
 			if n := w.nombreDe(jid, ""); n != c.Nombre && !(n == "Contacto" && c.Nombre != "") {
-				c.Nombre, w.sucio = n, true
+				c.Nombre = n
+				w.marcar()
 			}
 		}
 		if c.Grupo && c.Nombre == "" {
@@ -569,7 +618,8 @@ func (w *wa) renombrar() {
 			if c.Grupo && !m.Mio && sinNombre(m.De) && m.Remite != "" {
 				if r, err := types.ParseJID(m.Remite); err == nil {
 					if n := w.nombreDe(r, ""); n != m.De && n != "Contacto" {
-						m.De, w.sucio = n, true
+						m.De = n
+						w.marcar()
 					}
 				}
 			}
@@ -629,7 +679,7 @@ func (w *wa) enviar(c *Chat, texto string) {
 	}
 	m := &Mensaje{ID: string(w.cli.GenerateMessageID()), Mio: true, Texto: w.app.f.limpiar(texto), Hora: time.Now()}
 	c.añadir(m)
-	w.sucio = true
+	w.marcar()
 	cli := w.cli
 	go func() {
 		_, err := cli.SendMessage(context.Background(), chat, &waE2E.Message{Conversation: proto.String(texto)},

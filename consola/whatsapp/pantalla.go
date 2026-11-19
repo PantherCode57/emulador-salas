@@ -36,17 +36,24 @@ const (
 	bR
 )
 
+// servidorPantalla guarda el último marco y se lo manda al núcleo. Los marcos van en tres memorias
+// que se reutilizan (antes cada marco pedía 2,4 MB nuevos, y con muchos mensajes seguidos la consola
+// se pasaba el rato limpiando memoria): una es la que se está mandando, otra la última que se dejó y
+// en la tercera se pinta la siguiente.
 type servidorPantalla struct {
 	botones chan<- uint16
 	ln      net.Listener
 	mu      sync.Mutex
-	ultimo  []byte
+	bufs    [3][]byte
+	actual  int    // la última que se dejó (-1: ninguna)
+	enUso   [3]int // conexiones mandándola
 	version int
 	nuevo   *sync.Cond
+	prod    sync.Mutex // un solo pintor a la vez
 }
 
 func nuevoServidorPantalla(botones chan<- uint16) *servidorPantalla {
-	s := &servidorPantalla{botones: botones}
+	s := &servidorPantalla{botones: botones, actual: -1}
 	s.nuevo = sync.NewCond(&s.mu)
 	return s
 }
@@ -77,23 +84,47 @@ func (s *servidorPantalla) cerrar() {
 	}
 }
 
-// enviar deja un marco nuevo para el núcleo.
-func (s *servidorPantalla) enviar(pixeles []byte) {
-	cab := make([]byte, 5, 5+len(pixeles))
-	cab[0] = 'F'
-	binary.LittleEndian.PutUint16(cab[1:], uint16(ancho))
-	binary.LittleEndian.PutUint16(cab[3:], uint16(alto))
+// enviarCon deja un marco nuevo: llenar pinta los píxeles (XRGB8888) en la memoria que se le da.
+func (s *servidorPantalla) enviarCon(llenar func(px []byte)) {
+	s.prod.Lock()
+	defer s.prod.Unlock()
 	s.mu.Lock()
-	s.ultimo = append(cab, pixeles...)
+	i := 0
+	for ; i < 3; i++ {
+		if i != s.actual && s.enUso[i] == 0 {
+			break
+		}
+	}
+	if i == 3 { // dos conexiones a la vez (no debería pasar): se pinta encima de una
+		i = (s.actual + 1) % 3
+	}
+	n := 5 + ancho*alto*4
+	if len(s.bufs[i]) != n {
+		s.bufs[i] = make([]byte, n)
+	}
+	b := s.bufs[i]
+	s.mu.Unlock()
+	b[0] = 'F'
+	binary.LittleEndian.PutUint16(b[1:], uint16(ancho))
+	binary.LittleEndian.PutUint16(b[3:], uint16(alto))
+	llenar(b[5:])
+	s.mu.Lock()
+	s.actual = i
 	s.version++
 	s.nuevo.Broadcast()
 	s.mu.Unlock()
+}
+
+// enviar deja un marco ya hecho.
+func (s *servidorPantalla) enviar(pixeles []byte) {
+	s.enviarCon(func(px []byte) { copy(px, pixeles) })
 }
 
 func (s *servidorPantalla) atender(c net.Conn) {
 	defer c.Close()
 	if tc, ok := c.(*net.TCPConn); ok {
 		_ = tc.SetNoDelay(true)
+		_ = tc.SetWriteBuffer(4 << 20)
 	}
 	cerrado := make(chan struct{})
 	go func() { // botones
@@ -114,7 +145,7 @@ func (s *servidorPantalla) atender(c net.Conn) {
 		s.nuevo.Broadcast()
 		s.mu.Unlock()
 	}()
-	visto := -1
+	visto := 0
 	for {
 		s.mu.Lock()
 		for s.version == visto {
@@ -126,9 +157,15 @@ func (s *servidorPantalla) atender(c net.Conn) {
 			}
 			s.nuevo.Wait()
 		}
-		datos, v := s.ultimo, s.version
+		i, v := s.actual, s.version
+		datos := s.bufs[i]
+		s.enUso[i]++
 		s.mu.Unlock()
-		if _, err := c.Write(datos); err != nil {
+		_, err := c.Write(datos)
+		s.mu.Lock()
+		s.enUso[i]--
+		s.mu.Unlock()
+		if err != nil {
 			return
 		}
 		visto = v

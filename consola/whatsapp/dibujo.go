@@ -226,10 +226,15 @@ func (l *lienzo) pistas(p ...[2]string) {
 
 // marco pasa la imagen al formato del núcleo (XRGB8888 en little endian: B, G, R, X).
 func (l *lienzo) marco() []byte {
+	out := make([]byte, len(l.img.Pix))
+	l.marcoEn(out)
+	return out
+}
+
+// marcoEn hace lo mismo en una memoria que ya existe (la del servidor de la pantalla).
+func (l *lienzo) marcoEn(out []byte) {
 	px := l.img.Pix
-	out := make([]byte, len(px))
-	for i := 0; i < len(px); i += 4 {
+	for i := 0; i+3 < len(px) && i+3 < len(out); i += 4 {
 		out[i], out[i+1], out[i+2], out[i+3] = px[i+2], px[i+1], px[i], 0xff
 	}
-	return out
 }
