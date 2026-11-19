@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,10 +18,10 @@ import (
 )
 
 // Instagram como lo pide su web (www.instagram.com) con tu sesión: las mismas direcciones y cabeceras
-// que manda el navegador. El inicio y los reels van por GraphQL (doc_id, los de la web de 2026) y, si
-// eso falla, por las direcciones de siempre (api/v1); las historias, los mensajes y los «me gusta»,
-// por api/v1. Los doc_id se pueden cambiar sin compilar (INSTAGRAM_DOC_INICIO…) por si Instagram los
-// cambia.
+// que manda el navegador. Casi todo va por GraphQL, como en la web de noviembre de 2026 (ver
+// pagina.go: los tokens de la página y los doc_id de sus JS) y, si eso falla, por las direcciones de
+// siempre (api/v1). La fila de historias va por api/v1, que sigue contestando. Un doc_id se puede
+// cambiar sin compilar con INSTAGRAM_DOC_<nombre de la consulta>.
 const (
 	agenteNavegador = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 	urlWeb          = "https://www.instagram.com"
@@ -28,9 +29,6 @@ const (
 
 var (
 	appID        = entorno("INSTAGRAM_APP_ID", "936619743392459")
-	docInicio    = entorno("INSTAGRAM_DOC_INICIO", "26307883352181852")
-	docInicioMas = entorno("INSTAGRAM_DOC_INICIO_MAS", "26038778959150000")
-	docReels     = entorno("INSTAGRAM_DOC_REELS", "26136666099278270")
 	errSesion    = errors.New("la sesión no vale")
 	errMensajes  = errors.New("Instagram no deja ver los mensajes desde aquí")
 	errSinCuenta = errors.New("sin cuenta")
@@ -101,6 +99,16 @@ type instagram struct {
 	mu     sync.Mutex
 	claim  string // x-ig-www-claim, lo da Instagram en las respuestas
 	disp   string // un id de aparato para el inicio (como la web)
+	nReq   int    // __req de GraphQL
+	dispDM string // el aparato de los mensajes, si la página no lo dice
+	yoFB   string // tu número en los mensajes (interop_messaging_user_fbid)
+
+	muWeb   sync.Mutex           // la página de Instagram se pide de una en una
+	paginas map[string]*datosWeb // los tokens de la página (pagina.go), por ruta
+	muDocs  sync.Mutex
+	docs    *docsWeb             // los doc_id de sus JS
+	buscado map[string]time.Time // cuándo se buscó en los JS cada consulta
+	muBusca sync.Mutex           // se buscan de una en una
 }
 
 func nuevoInstagram(c *cuenta) *instagram {
@@ -118,14 +126,24 @@ func uuid() string {
 	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
 }
 
-// pedir: una petición a la web de Instagram con tu sesión. form != nil la hace POST.
-func (ig *instagram) pedir(metodo, ruta string, consulta url.Values, form url.Values, extra map[string]string) (map[string]any, error) {
+var reNumLargo = regexp.MustCompile(`\d{6,}`)
+
+// rutaLog: una ruta para el registro, sin los números largos (de personas, publicaciones o chats).
+func rutaLog(r string) string { return reNumLargo.ReplaceAllString(r, "N") }
+
+// pedirCrudo: una petición a la web de Instagram con tu sesión, como la haría el navegador (pagina:
+// como al abrir la página; si no, como sus peticiones de datos). form != nil la hace POST. Las
+// redirecciones al login o a confirmar que eres tú, y los 429, ya salen como error.
+func (ig *instagram) pedirCrudo(metodo, ruta string, consulta url.Values, form url.Values, extra map[string]string, pagina bool) (int, []byte, error) {
 	c := ig.cuenta
+	if c == nil {
+		return 0, nil, errSinCuenta
+	}
 	c.mu.Lock()
 	cookie := c.Cookie
 	c.mu.Unlock()
 	if cookie == "" {
-		return nil, errSinCuenta
+		return 0, nil, errSinCuenta
 	}
 	dir := urlWeb + ruta
 	if strings.HasPrefix(ruta, "https://") {
@@ -140,26 +158,35 @@ func (ig *instagram) pedir(metodo, ruta string, consulta url.Values, form url.Va
 	}
 	req, err := http.NewRequest(metodo, dir, cuerpo)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 	ig.mu.Lock()
 	claim := ig.claim
 	ig.mu.Unlock()
 	h := req.Header
 	h.Set("User-Agent", agenteNavegador)
-	h.Set("Accept", "*/*")
 	h.Set("Accept-Language", "es-ES,es;q=0.9")
 	h.Set("Cookie", cookie)
-	h.Set("Referer", urlWeb+"/")
-	h.Set("X-IG-App-ID", appID)
-	h.Set("X-ASBD-ID", "129477")
-	h.Set("X-IG-WWW-Claim", claim)
-	h.Set("X-Requested-With", "XMLHttpRequest")
-	h.Set("Sec-Fetch-Dest", "empty")
-	h.Set("Sec-Fetch-Mode", "cors")
-	h.Set("Sec-Fetch-Site", "same-origin")
-	if t := valorCookie(cookie, "csrftoken"); t != "" {
-		h.Set("X-CSRFToken", t)
+	if pagina {
+		h.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+		h.Set("Sec-Fetch-Dest", "document")
+		h.Set("Sec-Fetch-Mode", "navigate")
+		h.Set("Sec-Fetch-Site", "none")
+		h.Set("Sec-Fetch-User", "?1")
+		h.Set("Upgrade-Insecure-Requests", "1")
+	} else {
+		h.Set("Accept", "*/*")
+		h.Set("Referer", urlWeb+"/")
+		h.Set("X-IG-App-ID", appID)
+		h.Set("X-ASBD-ID", "359341")
+		h.Set("X-IG-WWW-Claim", claim)
+		h.Set("X-Requested-With", "XMLHttpRequest")
+		h.Set("Sec-Fetch-Dest", "empty")
+		h.Set("Sec-Fetch-Mode", "cors")
+		h.Set("Sec-Fetch-Site", "same-origin")
+		if t := valorCookie(cookie, "csrftoken"); t != "" {
+			h.Set("X-CSRFToken", t)
+		}
 	}
 	if form != nil {
 		h.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -170,7 +197,7 @@ func (ig *instagram) pedir(metodo, ruta string, consulta url.Values, form url.Va
 	}
 	resp, err := clienteDatos.Do(req)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 	defer resp.Body.Close()
 	if v := resp.Header.Get("X-IG-Set-WWW-Claim"); v != "" {
@@ -185,58 +212,52 @@ func (ig *instagram) pedir(metodo, ruta string, consulta url.Values, form url.Va
 		// no vale; a /challenge, que quiere que confirmes que eres tú; a otro sitio, no se sabe
 		destino := ""
 		if u, err := url.Parse(resp.Header.Get("Location")); err == nil {
-			destino = u.Host + u.Path
+			destino = rutaLog(u.Host + u.Path)
 		}
-		logf("%s %s: %d a %s", metodo, ruta, resp.StatusCode, destino)
+		logf("%s %s: %d a %s", metodo, rutaLog(ruta), resp.StatusCode, destino)
 		switch {
 		case strings.Contains(destino, "/challenge") || strings.Contains(destino, "/checkpoint"):
-			return nil, errReto
+			return 0, nil, errReto
 		case destino == "" || strings.Contains(destino, "/accounts/login") || strings.HasSuffix(destino, "instagram.com/"):
-			return nil, errSesion
+			return 0, nil, errSesion
 		}
-		return nil, fmt.Errorf("Instagram manda a otra página (%d)", resp.StatusCode)
-	}
-	if resp.StatusCode == 401 || resp.StatusCode == 403 {
-		logf("%s %s: %d", metodo, ruta, resp.StatusCode)
-		return nil, errSesion
+		return 0, nil, fmt.Errorf("Instagram manda a otra página (%d)", resp.StatusCode)
 	}
 	if resp.StatusCode == 429 {
-		logf("%s %s: 429 (demasiadas peticiones)", metodo, ruta)
-		return nil, errLimite
+		logf("%s %s: 429 (demasiadas peticiones)", metodo, rutaLog(ruta))
+		return 0, nil, errLimite
 	}
-	var m map[string]any
-	if err := json.Unmarshal(rb, &m); err != nil {
-		logf("%s %s: %d, no es JSON (%d bytes)", metodo, ruta, resp.StatusCode, len(rb))
-		return nil, fmt.Errorf("Instagram responde %d", resp.StatusCode)
-	}
-	if msg := txt(m, "message"); msg == "checkpoint_required" || msg == "challenge_required" {
-		logf("%s %s: %s", metodo, ruta, msg)
-		return nil, errReto
-	} else if msg == "login_required" || txt(m, "require_login") == "true" {
-		logf("%s %s: %s", metodo, ruta, msg)
-		return nil, errSesion
-	}
-	if resp.StatusCode != 200 {
-		logf("%s %s: %d %s", metodo, ruta, resp.StatusCode, txt(m, "message"))
-		if msg := txt(m, "message"); msg != "" {
-			return m, fmt.Errorf("Instagram: %s", msg)
-		}
-		return m, fmt.Errorf("Instagram responde %d", resp.StatusCode)
-	}
-	return m, nil
+	return resp.StatusCode, rb, nil
 }
 
-// graphql: una consulta como las de la web (POST /graphql/query con doc_id).
-func (ig *instagram) graphql(doc, nombre string, variables map[string]any) (map[string]any, error) {
-	v, _ := json.Marshal(variables)
-	form := url.Values{"doc_id": {doc}, "variables": {string(v)}, "fb_api_caller_class": {"RelayModern"},
-		"fb_api_req_friendly_name": {nombre}, "server_timestamps": {"true"}}
-	m, err := ig.pedir(http.MethodPost, "/graphql/query", nil, form, map[string]string{"X-FB-Friendly-Name": nombre})
+// pedir: una petición de datos (api/v1) a la web de Instagram con tu sesión. form != nil la hace POST.
+func (ig *instagram) pedir(metodo, ruta string, consulta url.Values, form url.Values, extra map[string]string) (map[string]any, error) {
+	st, rb, err := ig.pedirCrudo(metodo, rutaLog(ruta), consulta, form, extra, false)
 	if err != nil {
 		return nil, err
 	}
-	if errs := lista(m, "errors"); len(errs) > 0 && ir(m, "data") == nil {
-		return nil, fmt.Errorf("GraphQL: %s", txt(errs[0], "message"))
+	if st == 401 || st == 403 {
+		logf("%s %s: %d", metodo, rutaLog(ruta), st)
+		return nil, errSesion
+	}
+	var m map[string]any
+	if err := json.Unmarshal(rb, &m); err != nil {
+		logf("%s %s: %d, no es JSON (%d bytes)", metodo, rutaLog(ruta), st, len(rb))
+		return nil, fmt.Errorf("Instagram responde %d", st)
+	}
+	if msg := txt(m, "message"); msg == "checkpoint_required" || msg == "challenge_required" {
+		logf("%s %s: %s", metodo, rutaLog(ruta), msg)
+		return nil, errReto
+	} else if msg == "login_required" || txt(m, "require_login") == "true" {
+		logf("%s %s: %s", metodo, rutaLog(ruta), msg)
+		return nil, errSesion
+	}
+	if st != 200 {
+		logf("%s %s: %d %s", metodo, rutaLog(ruta), st, txt(m, "message"))
+		if msg := txt(m, "message"); msg != "" {
+			return m, fmt.Errorf("Instagram: %s", msg)
+		}
+		return m, fmt.Errorf("Instagram responde %d", st)
 	}
 	return m, nil
 }
@@ -414,12 +435,12 @@ func (ig *instagram) Inicio(cursor string) (Pagina, error) {
 			"is_async_ads_rti": "0", "rti_delivery_backend": "0"},
 		"after": nil, "before": nil, "first": 12, "last": nil, "variant": "home",
 	}
-	doc, nombre := docInicio, "PolarisFeedTimelineRootV2Query"
+	nombre := "PolarisFeedTimelineRootV2Query"
 	if cursor != "" {
 		vars["after"] = cursor
-		doc, nombre = docInicioMas, "PolarisFeedRootPaginationCachedQuery_subscribe"
+		nombre = "PolarisFeedRootPaginationCachedQuery_subscribe"
 	}
-	m, err := ig.graphql(doc, nombre, vars)
+	m, err := ig.consulta(nombre, "/", vars)
 	if err == nil {
 		if conn := ir(m, "data", "xdt_api__v1__feed__timeline__connection"); conn != nil {
 			if p := deConexion(conn); len(p.Posts) > 0 || !p.Mas {
@@ -428,7 +449,7 @@ func (ig *instagram) Inicio(cursor string) (Pagina, error) {
 		}
 		err = errors.New("GraphQL sin inicio")
 	}
-	if errors.Is(err, errSesion) {
+	if errors.Is(err, errSesion) || errors.Is(err, errSinCuenta) {
 		return Pagina{}, err
 	}
 	logf("inicio por GraphQL: %v; pruebo api/v1", err)
@@ -449,30 +470,22 @@ func (ig *instagram) Inicio(cursor string) (Pagina, error) {
 
 // Reels: los reels que te recomienda Instagram (la pestaña de Reels de la web).
 func (ig *instagram) Reels(cursor string) (Pagina, error) {
-	var err error
-	// Dos formas de pedirlo: la de la web y la que usan otros programas (por si una deja de valer).
-	for _, datos := range []map[string]any{{"container_module": "clips_tab_desktop_page"}, {"count": 10}} {
-		vars := map[string]any{"data": datos, "after": nil, "before": nil, "first": 10, "last": nil}
-		if cursor != "" {
-			vars["after"] = cursor
-		}
-		var m map[string]any
-		m, err = ig.graphql(docReels, "PolarisClipsTabDesktopPaginationQuery", vars)
-		if errors.Is(err, errSesion) {
-			return Pagina{}, err
-		}
-		if err == nil {
-			if conn := ir(m, "data", "xdt_api__v1__clips__home__connection_v2"); conn != nil {
-				p := deConexion(conn)
-				p.Posts = soloVideos(p.Posts)
-				if len(p.Posts) > 0 {
-					return p, nil
-				}
-			}
-			err = errors.New("GraphQL sin reels")
-		}
+	vars := map[string]any{"data": map[string]any{"container_module": "clips_tab_desktop_page"}, "after": nil, "before": nil, "first": 10, "last": nil}
+	if cursor != "" {
+		vars["after"] = cursor
 	}
-	if errors.Is(err, errSesion) {
+	m, err := ig.consulta("PolarisClipsTabRootPaginationQuery", "/reels/", vars)
+	if err == nil {
+		if conn := ir(m, "data", "xdt_api__v1__clips__home__connection_v2"); conn != nil {
+			p := deConexion(conn)
+			p.Posts = soloVideos(p.Posts)
+			if len(p.Posts) > 0 {
+				return p, nil
+			}
+		}
+		err = errors.New("GraphQL sin reels")
+	}
+	if errors.Is(err, errSesion) || errors.Is(err, errSinCuenta) {
 		return Pagina{}, err
 	}
 	logf("reels por GraphQL: %v; pruebo api/v1", err)
@@ -522,19 +535,9 @@ func (ig *instagram) Historias() ([]Bandeja, error) {
 	return bs, nil
 }
 
-// HistoriasDe: las historias de una persona de la fila.
-func (ig *instagram) HistoriasDe(id string) ([]Post, error) {
-	m, err := ig.pedir(http.MethodGet, "/api/v1/feed/reels_media/", url.Values{"reel_ids": {id}}, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	reel := ir(m, "reels", id)
-	if reel == nil {
-		if l := lista(m, "reels_media"); len(l) > 0 {
-			reel = l[0]
-		}
-	}
-	var ps []Post
+// historiasDeReel: las historias de un «reel» (lo de una persona), venga de donde venga.
+func historiasDeReel(reel any) []Post {
+	ps := []Post{}
 	for _, it := range lista(reel, "items") {
 		if p, ok := leerPost(it); ok {
 			if p.Usuario == "" {
@@ -544,17 +547,104 @@ func (ig *instagram) HistoriasDe(id string) ([]Post, error) {
 			ps = append(ps, p)
 		}
 	}
-	return ps, nil
+	return ps
 }
 
-// MeGusta pone o quita tu «me gusta».
+// reelDe: de una lista de reels, el de esa persona (o el primero).
+func reelDe(reels []any, id string) any {
+	for _, r := range reels {
+		if txt(r, "id") == id || txt(r, "user", "pk") == id || txt(r, "user", "id") == id {
+			return r
+		}
+	}
+	if len(reels) > 0 {
+		return reels[0]
+	}
+	return nil
+}
+
+// HistoriasDe: las historias de una persona de la fila. Como la web de 2026: por GraphQL (la página de
+// las historias de una persona o la galería) y, si no, por api/v1 (en noviembre de 2026 daba 500).
+func (ig *instagram) HistoriasDe(id string) ([]Post, error) {
+	var errs []string
+	m, err := ig.consulta("PolarisStoriesV3ReelPageStandaloneQuery", "/", map[string]any{"media_id": nil, "reel_ids_arr": []string{id}, "is_highlight": false})
+	if err == nil {
+		if rm := ir(m, "data", "xdt_api__v1__feed__reels_media"); rm != nil {
+			return historiasDeReel(reelDe(lista(rm, "reels_media"), id)), nil
+		}
+		err = errors.New("sin historias")
+	}
+	if errors.Is(err, errSesion) || errors.Is(err, errSinCuenta) {
+		return nil, err
+	}
+	errs = append(errs, "GraphQL: "+err.Error())
+	m, err = ig.consulta("PolarisStoriesV3ReelPageGalleryQuery", "/", map[string]any{"initial_reel_id": id, "reel_ids": []string{id}, "first": 1})
+	if err == nil {
+		if conn := ir(m, "data", "xdt_api__v1__feed__reels_media__connection"); conn != nil {
+			var reels []any
+			for _, e := range lista(conn, "edges") {
+				if n := ir(e, "node"); n != nil {
+					reels = append(reels, n)
+				}
+			}
+			return historiasDeReel(reelDe(reels, id)), nil
+		}
+		err = errors.New("sin historias")
+	}
+	if errors.Is(err, errSesion) || errors.Is(err, errSinCuenta) {
+		return nil, err
+	}
+	errs = append(errs, "galería: "+err.Error())
+	logf("historias por GraphQL: %s; pruebo api/v1", strings.Join(errs, "; "))
+	m2, err := ig.pedir(http.MethodGet, "/api/v1/feed/reels_media/", url.Values{"reel_ids": {id}}, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	reel := ir(m2, "reels", id)
+	if reel == nil {
+		reel = reelDe(lista(m2, "reels_media"), id)
+	}
+	return historiasDeReel(reel), nil
+}
+
+// MeGusta pone o quita tu «me gusta». Como la web de 2026 (la mutación de GraphQL de su botón) y, si
+// no, como la de antes (en noviembre de 2026 daba 404).
 func (ig *instagram) MeGusta(pk string, si bool) error {
+	type forma struct{ nombre, campo string }
+	formas := []forma{{"usePolarisLikeMediaXIGLikeMutation", "xig_media_like"}, {"PolarisAPILikePostMutation", "xig_media_like"}}
+	if !si {
+		formas = []forma{{"usePolarisLikeMediaXIGUnlikeMutation", "xig_media_unlike"}, {"PolarisAPIUnlikePostMutation", "xig_media_unlike"}}
+	}
+	var err error
+	for k, f := range formas {
+		input := map[string]any{"media_id": pk}
+		if k == 0 && si {
+			input["container_module"] = "feed_timeline"
+		}
+		var m map[string]any
+		if m, err = ig.consulta(f.nombre, "/", map[string]any{"input": input}); err == nil {
+			if ir(m, "data", f.campo) != nil {
+				return nil
+			}
+			err = errors.New("GraphQL no lo ha hecho")
+			if es := lista(m, "errors"); len(es) > 0 {
+				logf("%s: %s", f.nombre, corto(txt(es[0], "message")))
+			}
+		}
+		if errors.Is(err, errSesion) || errors.Is(err, errSinCuenta) || errors.Is(err, errLimite) {
+			return err
+		}
+		logf("me gusta por %s: %v", f.nombre, err)
+	}
 	que := "unlike"
 	if si {
 		que = "like"
 	}
-	_, err := ig.pedir(http.MethodPost, "/api/v1/web/likes/"+url.PathEscape(pk)+"/"+que+"/", nil, url.Values{}, nil)
-	return err
+	_, err2 := ig.pedir(http.MethodPost, "/api/v1/web/likes/"+url.PathEscape(pk)+"/"+que+"/", nil, url.Values{}, nil)
+	if err2 != nil && !errors.Is(err2, errSesion) && !errors.Is(err2, errLimite) {
+		return err // el de GraphQL dice más
+	}
+	return err2
 }
 
 // ---- Mensajes ------------------------------------------------------------------------------------
@@ -565,16 +655,16 @@ const urlMovil = "https://i.instagram.com"
 // direct_v2), por i.instagram.com. Lo que diga i.instagram.com de la sesión no cuenta: allí una
 // sesión de la web puede no valer aunque en la web sí.
 func (ig *instagram) pedirMensajes(metodo, ruta string, consulta, form url.Values) (map[string]any, error) {
-	m, err := ig.pedir(metodo, ruta, consulta, form, nil)
+	m, err := ig.pedir(metodo, rutaLog(ruta), consulta, form, nil)
 	if err == nil || errors.Is(err, errSesion) || errors.Is(err, errSinCuenta) {
 		return m, err
 	}
-	logf("%s en la web: %v; pruebo %s", ruta, err, urlMovil)
+	logf("%s en la web: %v; pruebo %s", rutaLog(ruta), err, urlMovil)
 	m2, err2 := ig.pedir(metodo, urlMovil+ruta, consulta, form, nil)
 	if err2 == nil {
 		return m2, nil
 	}
-	logf("%s en %s: %v", ruta, urlMovil, err2)
+	logf("%s en %s: %v", rutaLog(ruta), urlMovil, err2)
 	if !hayRed() {
 		return nil, err2
 	}
@@ -671,8 +761,8 @@ func leerChat(t any, yo string) Chat {
 	return c
 }
 
-// Chats: tus conversaciones (las de la bandeja principal).
-func (ig *instagram) Chats() ([]Chat, error) {
+// chatsV1: tus conversaciones por api/v1 (la bandeja principal; en noviembre de 2026, 404).
+func (ig *instagram) chatsV1() ([]Chat, error) {
 	m, err := ig.pedirMensajes(http.MethodGet, "/api/v1/direct_v2/inbox/", url.Values{"persistentBadging": {"true"}, "folder": {""},
 		"limit": {"20"}, "thread_message_limit": {"1"}}, nil)
 	if err != nil {
@@ -691,8 +781,8 @@ func (ig *instagram) Chats() ([]Chat, error) {
 	return cs, nil
 }
 
-// Conversacion: los últimos mensajes de un chat (cursor: los de antes).
-func (ig *instagram) Conversacion(id, cursor string) ([]Mensaje, string, error) {
+// conversacionV1: los últimos mensajes de un chat por api/v1 (cursor: los de antes).
+func (ig *instagram) conversacionV1(id, cursor string) ([]Mensaje, string, error) {
 	q := url.Values{"limit": {"20"}}
 	if cursor != "" {
 		q.Set("cursor", cursor)
@@ -724,8 +814,8 @@ func (ig *instagram) Conversacion(id, cursor string) ([]Mensaje, string, error) 
 	return ms, sig, nil
 }
 
-// Enviar manda un mensaje de texto a un chat.
-func (ig *instagram) Enviar(id, texto string) error {
+// enviarV1 manda un mensaje de texto a un chat por api/v1.
+func (ig *instagram) enviarV1(id, texto string) error {
 	ctx := uuid()
 	form := url.Values{"action": {"send_item"}, "client_context": {ctx}, "mutation_token": {ctx},
 		"offline_threading_id": {ctx}, "text": {texto}, "thread_ids": {"[" + id + "]"}}

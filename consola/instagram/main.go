@@ -9,7 +9,7 @@
 //
 // Con -prueba <carpeta> no se conecta a nada: dibuja las pantallas con datos de ejemplo en PNG.
 // Con -probar dice, con la sesión guardada, qué contesta Instagram a cada cosa (solo cuántas y si
-// ha ido bien; nada de lo que hay dentro).
+// ha ido bien; nada de lo que hay dentro). Con -probar -js, antes busca los doc_id en los JS de la web.
 package main
 
 import (
@@ -20,7 +20,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -45,6 +47,7 @@ func itoa(n int) string { return strconv.Itoa(n) }
 func main() {
 	prueba := flag.String("prueba", "", "dibuja las pantallas de ejemplo en esta carpeta y sale")
 	probar := flag.Bool("probar", false, "sin pantalla: con la sesión guardada, dice qué contesta Instagram (solo cuántas)")
+	js := flag.Bool("js", false, "con -probar: antes busca los doc_id en los JS de la web de Instagram")
 	flag.Parse()
 	if v, err := strconv.Atoi(os.Getenv("POKEMULADOR_ANCHO")); err == nil && v >= 640 {
 		ancho = v
@@ -53,7 +56,7 @@ func main() {
 		alto = v
 	}
 	if *probar {
-		probarSesion()
+		probarSesion(*js)
 		return
 	}
 	f := cargarFuentes()
@@ -115,19 +118,62 @@ func main() {
 	time.Sleep(100 * time.Millisecond)
 }
 
-// probarSesion: con la sesión de la consola, qué contesta Instagram a cada pestaña (cuántas cosas y
-// si van con foto o vídeo). No escribe nada de lo que hay dentro (ni nombres ni textos).
-func probarSesion() {
+// probarSesion: con la sesión de la consola, qué contesta Instagram a cada pestaña (cuántas cosas,
+// si van con foto o vídeo y por dónde han ido). No escribe nada de lo que hay dentro (ni nombres ni
+// textos ni tokens). Con js, antes busca los doc_id en los JS de la web (y los guarda en docs.json).
+// Los «me gusta» y mandar mensajes no se prueban: cambian tu cuenta.
+func probarSesion(js bool) {
 	c := cargarCuenta(filepath.Join(carpetaDatos, "cuenta.json"))
 	if !c.tiene() {
 		fmt.Println("no hay sesión guardada en", carpetaDatos)
 		return
 	}
-	c.ruta = "" // no se guarda nada al probar
+	c.ruta = "" // no se guarda nada de la cuenta al probar
 	ig := nuevoInstagram(c)
 	log.SetOutput(os.Stdout)
+	log.SetFlags(0)
 	_, _, _, err := ig.QuienSoy()
 	fmt.Println("quién soy:", siError(err))
+	for _, r := range []string{"/", rutaMensajes} {
+		d, err := ig.pagina(r, false)
+		if err != nil {
+			fmt.Printf("página %s: %s\n", r, siError(err))
+			continue
+		}
+		fmt.Printf("página %s: bien (lsd %v, fb_dtsg %v, versión %v, aparato %v, %d JS)\n", r, d.lsd != "", d.dtsg != "",
+			d.hs != "" && d.spinR != "", d.dispDirect != "", len(d.scripts))
+	}
+	if js {
+		nombres := make([]string, 0, len(docsIncluidos))
+		for n := range docsIncluidos {
+			nombres = append(nombres, n)
+		}
+		sort.Strings(nombres)
+		for _, r := range []string{"/", rutaMensajes} {
+			ig.muDocs.Lock()
+			ig.buscado = nil
+			ig.muDocs.Unlock()
+			var faltan []string
+			for _, n := range nombres {
+				if ig.cargarDocs().Docs[n] == "" || time.Since(ig.cargarDocs().Cuando) > time.Minute {
+					faltan = append(faltan, n)
+				}
+			}
+			n, err := ig.descubrir(r, faltan...)
+			fmt.Printf("doc_id en los JS de %s: %s, %d de %d\n", r, siError(err), n, len(faltan))
+		}
+		for _, n := range nombres {
+			web := ig.cargarDocs().Docs[n]
+			estado := "no está en los JS"
+			switch {
+			case web == docsIncluidos[n]:
+				estado = "el incluido"
+			case web != "":
+				estado = "otro (" + web + ")"
+			}
+			fmt.Printf("  %s: %s, %d variables\n", n, estado, len(ig.cargarDocs().Prov[n]))
+		}
+	}
 	contar := func(nombre string, p Pagina, err error) {
 		fotos, videos, varias := 0, 0, 0
 		for _, x := range p.Posts {
@@ -150,18 +196,61 @@ func probarSesion() {
 	}
 	p, err = ig.Reels("")
 	contar("reels", p, err)
+	if err == nil && p.Mas {
+		p2, err := ig.Reels(p.Cursor)
+		contar("reels (más)", p2, err)
+	}
 	bs, err := ig.Historias()
 	fmt.Printf("historias: %s, %d personas\n", siError(err), len(bs))
-	if err == nil && len(bs) > 0 {
-		items, err := ig.HistoriasDe(bs[0].ID)
-		fmt.Printf("historias de la primera: %s, %d\n", siError(err), len(items))
+	for i := 0; err == nil && i < len(bs) && i < 2; i++ {
+		items, err := ig.HistoriasDe(bs[i].ID)
+		contar(fmt.Sprintf("historias de la %dª", i+1), Pagina{Posts: items}, err)
 	}
 	cs, err := ig.Chats()
-	fmt.Printf("chats: %s, %d\n", siError(err), len(cs))
-	if err == nil && len(cs) > 0 {
-		ms, _, err := ig.Conversacion(cs[0].ID, "")
-		fmt.Printf("mensajes del primero: %s, %d\n", siError(err), len(ms))
+	sin, conNombre, conFoto, conUltimo, conHora := 0, 0, 0, 0, 0
+	for _, c := range cs {
+		sin += uno(c.SinLeer)
+		conNombre += uno(c.Titulo != "")
+		conFoto += uno(c.Foto != "")
+		conUltimo += uno(c.Ultimo != "" && !strings.HasSuffix(c.Ultimo, "[Mensaje]"))
+		conHora += uno(!c.Cuando.IsZero())
 	}
+	fmt.Printf("chats: %s, %d (sin leer %d; con nombre %d, foto %d, último mensaje %d, hora %d)\n",
+		siError(err), len(cs), sin, conNombre, conFoto, conUltimo, conHora)
+	if err == nil && len(cs) > 0 {
+		ms, sig, err := ig.Conversacion(cs[0].ID, "")
+		mios, conQuien, conTexto, conHora := 0, 0, 0, 0
+		for _, m := range ms {
+			mios += uno(m.Mio)
+			conQuien += uno(!m.Mio && m.Quien != "")
+			conTexto += uno(m.Texto != "" && m.Texto != "[Mensaje]")
+			conHora += uno(!m.Cuando.IsZero())
+		}
+		otros := map[string]bool{}
+		for _, m := range ms {
+			if !m.Mio {
+				otros[m.Quien] = true
+			}
+		}
+		fmt.Printf("mensajes del primero: %s, %d (tuyos %d; de otros con nombre %d, de %d personas; con texto %d, hora %d), hay de antes: %v\n",
+			siError(err), len(ms), mios, conQuien, len(otros), conTexto, conHora, sig != "")
+		if err == nil && sig != "" && len(ms) > 0 {
+			ms2, _, err := ig.Conversacion(cs[0].ID, sig)
+			viejos := len(ms2) > 0 && !ms2[len(ms2)-1].Cuando.After(ms[0].Cuando)
+			fmt.Printf("los de antes: %s, %d, más viejos que los primeros: %v\n", siError(err), len(ms2), viejos)
+		}
+	}
+	for _, n := range []string{"usePolarisLikeMediaXIGLikeMutation", "IGDirectTextSendMutation"} {
+		cs := ig.candidatos(n)
+		fmt.Printf("%s: no se prueba (cambia tu cuenta); %d doc_id para probar\n", n, len(cs))
+	}
+}
+
+func uno(si bool) int {
+	if si {
+		return 1
+	}
+	return 0
 }
 
 func siError(err error) string {
