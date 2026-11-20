@@ -8,6 +8,11 @@
 #ifndef PANTHER_H
 #define PANTHER_H
 
+/* Lo primero: las opciones con las que se compiló mGBA (ENABLE_SCRIPTING, M_CORE_GBA, USE_LUA…).
+ * Sus cabeceras no las incluyen solas: sin esto el programa salía sin los scripts de Lua (sin las
+ * salas de GBA-PK) y con las estructuras de mGBA distintas de las de la biblioteca. */
+#include <mgba/flags.h>
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

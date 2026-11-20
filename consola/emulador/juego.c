@@ -16,11 +16,13 @@
 #include <mgba/core/log.h>
 #include <mgba/core/serialize.h>
 #include <mgba-util/vfs.h>
-#ifdef ENABLE_SCRIPTING
+/* Sin scripts no van las salas de GBA (GBA-PK): mejor que no compile a que salga sin ellos. */
+#ifndef ENABLE_SCRIPTING
+#error "mGBA viene sin scripts de Lua (ENABLE_SCRIPTING): las salas de GBA no irían"
+#endif
 #include <mgba-util/socket.h>
 #include <mgba/core/scripting.h>
 #include <mgba/script/context.h>
-#endif
 
 #include <fcntl.h>
 #include <limits.h>

@@ -165,6 +165,29 @@ jobs:
       - name: Emulador
         working-directory: consola/emulador
         run: make MGBA=$GITHUB_WORKSPACE/fuera/mgba-lib
+      # Las salas de GBA (GBA-PK) son un script de Lua con red: se prueba que el emulador lo carga, lo
+      # llama en cada imagen y le deja usar sockets. El «juego» es una ROM mínima hecha aquí (un bucle).
+      - name: Probar los scripts de Lua (salas de GBA)
+        working-directory: consola/emulador
+        run: |
+          python3 -c "r=bytearray(0x400); r[0:4]=(0xEAFFFFFE).to_bytes(4,'little'); r[0xB2]=0x96; open('/tmp/prueba.gba','wb').write(r)"
+          cat > /tmp/prueba.lua <<'EOF'
+          local srv = assert(socket.bind(nil, 47123))
+          assert(srv:listen())
+          local cli = assert(socket.connect("127.0.0.1", 47123))
+          local acc = assert(srv:accept())
+          assert(cli:send("hola"))
+          local n = 0
+          callbacks:add("frame", function()
+          	n = n + 1
+          	if n == 10 then console:error("prueba: recibido " .. tostring(acc:receive(4))) end
+          end)
+          console:error("prueba: emu " .. tostring(emu ~= nil) .. ", juego " .. tostring(emu:getGameCode()))
+          EOF
+          ./emulador --medir 30 --script /tmp/prueba.lua /tmp/prueba.gba 2>&1 | tee /tmp/prueba.txt
+          grep -q "prueba.lua: en marcha" /tmp/prueba.txt
+          grep -q "prueba: emu true" /tmp/prueba.txt
+          grep -q "prueba: recibido hola" /tmp/prueba.txt
       - name: Captura de pantalla
         working-directory: consola/captura
         run: gcc -O2 -Wall -o captura captura.c $(pkg-config --cflags --libs libdrm) -lz
