@@ -52,8 +52,8 @@ type fuenteVideo struct {
 	Cabeceras map[string]string // las que hay que mandar al pedirlo (las que dice yt-dlp)
 	Duracion  time.Duration
 	FPS       float64
-	Vertical  bool     // más alto que ancho (los Shorts): se enseña a 270×480
-	Titulo    string   // lo que dice yt-dlp (los Shorts de la secuencia llegan sin título)
+	Vertical  bool   // más alto que ancho (los Shorts): se enseña a 270×480
+	Titulo    string // lo que dice yt-dlp (los Shorts de la secuencia llegan sin título)
 	Canal     string
 	Vistas    string
 	Tubo      []string // si hay: yt-dlp con estos argumentos lo saca por su salida (sin poder adelantar)

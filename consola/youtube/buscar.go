@@ -2,14 +2,12 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -376,9 +374,7 @@ func segundosDe(s string) int {
 
 // buscarYtdlp: la búsqueda de yt-dlp (20 resultados, sin bajar nada de cada vídeo).
 func buscarYtdlp(q string) ([]Video, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, ytdlpBin, "-J", "--flat-playlist", "--no-warnings", "ytsearch20:"+q).Output()
+	out, err := ytdlpJSON([]string{"-J", "--flat-playlist", "--no-warnings"}, "ytsearch20:"+q, 45*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -525,19 +521,10 @@ type formatoYtdlp struct {
 }
 
 func fuenteYtdlp(id string, forma formaVer) (*fuenteVideo, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
 	args := append([]string{"-J", "--no-warnings", "--no-playlist", "-f", forma.formato}, forma.extra...)
-	cmd := exec.CommandContext(ctx, ytdlpBin, append(args, urlVideo(id))...)
-	var errOut bytes.Buffer
-	cmd.Stderr = &errOut
-	out, err := cmd.Output()
+	out, err := ytdlpJSON(args, urlVideo(id), 60*time.Second)
 	if err != nil {
-		msg := strings.TrimSpace(errOut.String())
-		if i := strings.LastIndex(msg, "\n"); i >= 0 {
-			msg = msg[i+1:]
-		}
-		return nil, fmt.Errorf("%v: %s", err, msg)
+		return nil, err
 	}
 	var d struct {
 		formatoYtdlp

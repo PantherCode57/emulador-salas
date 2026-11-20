@@ -71,6 +71,9 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
   mientras Spotin está abierto, y cada canción tarda lo que tarda YouTube (~3 s). Si falla o se
   cuelga, se pide como antes. El registro (`registro.txt`) ya no se borra al abrir: se va añadiendo
   y se vacía al pasar de 256 KB.
+  El YouTube de la consola hace lo mismo (`youtube/ytdlp_servidor.py`, con las mismas opciones que la
+  línea de órdenes y la misma respuesta que `yt-dlp -J`): el primer vídeo tarda ~11 s (baja el
+  reproductor de YouTube) y los siguientes ~5,5 s, en vez de ~27 s cada uno.
 - `claude/`: un chat con la conversación de Claude Code abierta en el PC de casa. La consola no
   lleva a Claude dentro: lo que escribes se deja en `~/.config/panther/claude/pendientes/`, el PC
   lo recoge por SSH (y lo mueve a `leidos/`) y deja la respuesta en `respuestas/`. Mientras el PC

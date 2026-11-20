@@ -18,12 +18,12 @@ import (
 // más tarde»…); los vídeos se siguen sacando sin cuenta, que es lo más seguro para ella.
 // Se guardan solo en la consola (cuenta.json, que solo puede leer ark) y nunca salen en el registro.
 type cuenta struct {
-	mu     sync.Mutex
-	ruta   string
-	Cookie string `json:"cookie"`
-	Nombre string `json:"nombre"`
+	mu      sync.Mutex
+	ruta    string
+	Cookie  string `json:"cookie"`
+	Nombre  string `json:"nombre"`
 	Usuario string `json:"usuario,omitempty"` // @lo_que_sea
-	Foto   string `json:"foto,omitempty"`
+	Foto    string `json:"foto,omitempty"`
 }
 
 func cargarCuenta(ruta string) *cuenta {

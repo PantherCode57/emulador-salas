@@ -23,8 +23,8 @@ type Descargado struct {
 	FPS      float64 `json:"fps,omitempty"`
 	Vertical bool    `json:"vertical,omitempty"`
 	Archivo  string  `json:"-"`
-	Bytes   int64   `json:"bytes,omitempty"`
-	Cuando  int64   `json:"cuando"`
+	Bytes    int64   `json:"bytes,omitempty"`
+	Cuando   int64   `json:"cuando"`
 }
 
 const maxHistorial = 60
