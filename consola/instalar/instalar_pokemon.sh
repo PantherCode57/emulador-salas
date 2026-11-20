@@ -10,7 +10,7 @@ mkdir -p $P ~/.config/panther/pokemon
 install -m 755 $I/pokemon-arm64 $P/pokemon
 [ -f $I/enlace ] && install -m 755 $I/enlace $P/enlace
 [ -f $I/mgba_libretro.so ] && install -m 644 $I/mgba_libretro.so $P/mgba_libretro.so
-# GBA-PK (veros por el mapa en GBA) y los Caramelos Raros de Rojo Fuego: scripts de Lua del mGBA.
+# GBA-PK (veros por el mapa en GBA): scripts de Lua del mGBA. (caramelos-frlg.lua ya no lo usa la app: los Caramelos Raros van en el menú del emulador.)
 install -m 644 $I/pokemon-lua/*.lua $P/
 cp ~/panther/whatsapp/pokemulador_libretro.so $P/
 [ -f $I/tarjetas-pokemon/pokemon.png ] && cp $I/tarjetas-pokemon/pokemon.png $I/tema-panther/tarjetas/

@@ -31,7 +31,8 @@ func carpetaPerfil(s *Sala) string {
 func carpetaSistema() string  { return filepath.Join(carpetaDatos, "sistema") }
 func carpetaCapturas() string { return filepath.Join(carpetaDatos, "capturas") }
 
-// esRojoFuego: Rojo Fuego o Verde Hoja (donde valen los Caramelos Raros infinitos).
+// esRojoFuego: Rojo Fuego o Verde Hoja (donde valen los Caramelos Raros infinitos, que se ponen y
+// se quitan en el menú del emulador: SELECT + START mientras juegas).
 func esRojoFuego(j Juego) bool {
 	b := strings.ToLower(j.base())
 	return j.Sistema == "gba" && (strings.Contains(b, "firered") || strings.Contains(b, "leafgreen") ||
@@ -45,12 +46,11 @@ type orden struct {
 	guardados  string
 	devolverA  string // a dónde vuelve la partida de siempre al terminar
 	conGbaPk   bool
-	conCaramel bool
 }
 
 // prepararJuego deja todo listo para abrir el juego. modo: nil sin sala, true si tenemos la sala
 // abierta, false si es la de un amigo.
-func prepararJuego(j Juego, s *Sala, modo *bool, jug *Jugador, caramelos bool) (orden, error) {
+func prepararJuego(j Juego, s *Sala, modo *bool, jug *Jugador) (orden, error) {
 	if _, ok := sistemas[j.Sistema]; !ok {
 		return orden{}, fmt.Errorf("no sé abrir este juego")
 	}
@@ -82,15 +82,6 @@ func prepararJuego(j Juego, s *Sala, modo *bool, jug *Jugador, caramelos bool) (
 		} else {
 			lua.WriteString(texto)
 			o.conGbaPk = true
-		}
-	}
-	if gbapk && caramelos && esRojoFuego(j) {
-		if b, err := os.ReadFile(filepath.Join(carpetaPrograma, "caramelos-frlg.lua")); err == nil {
-			lua.WriteString("\n")
-			lua.Write(b)
-			o.conCaramel = true
-		} else {
-			logf("caramelos: %v", err)
 		}
 	}
 	if lua.Len() > 0 {

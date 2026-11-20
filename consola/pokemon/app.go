@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/json"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -31,10 +29,9 @@ type app struct {
 	salir  chan struct{}
 	avisos chan struct{} // la sala activa ha cambiado
 
-	jug       *Jugador
-	juegos    []Juego
-	salas     []Sala
-	caramelos map[string]bool // juego (ruta relativa) → Caramelos Raros infinitos
+	jug    *Jugador
+	juegos []Juego
+	salas  []Sala
 
 	pant       pantalla
 	selJuego   int
@@ -77,10 +74,6 @@ func nuevaApp(f *fuentes) *app {
 	a.jug = cargarJugador()
 	a.juegos = buscarJuegos()
 	a.salas = cargarSalas()
-	a.caramelos = map[string]bool{}
-	if b, err := os.ReadFile(filepath.Join(carpetaDatos, "caramelos.json")); err == nil {
-		_ = json.Unmarshal(b, &a.caramelos)
-	}
 	a.cargaHasta = time.Now().Add(900 * time.Millisecond)
 	if !a.jug.Elegido { // la primera vez, cómo te llamas en las salas
 		a.abrirTeclado("nombre")
@@ -282,16 +275,6 @@ func (a *app) pulsarJuegos(b uint16) {
 	case bY:
 		if a.juegoElegido() != nil {
 			a.pant, a.selOpcion = pSalas, 0
-		}
-	case bX:
-		if j := a.juegoElegido(); j != nil && esRojoFuego(*j) {
-			a.caramelos[j.Relativa] = !a.caramelos[j.Relativa]
-			guardarJSON(filepath.Join(carpetaDatos, "caramelos.json"), a.caramelos)
-			if a.caramelos[j.Relativa] {
-				a.aviso("Caramelos Raros infinitos: activados")
-			} else {
-				a.aviso("Caramelos Raros infinitos: desactivados")
-			}
 		}
 	case bStart:
 		a.abrirTeclado("nombre")
@@ -526,7 +509,7 @@ func (a *app) jugar(j Juego, s *Sala) {
 			modo = &m
 		}
 	}
-	o, err := prepararJuego(j, s, modo, a.jug, a.caramelos[j.Relativa])
+	o, err := prepararJuego(j, s, modo, a.jug)
 	if err != nil {
 		a.aviso("No se pudo abrir el juego: " + err.Error())
 		return
@@ -535,7 +518,7 @@ func (a *app) jugar(j Juego, s *Sala) {
 	if modo != nil {
 		papel = map[bool]string{true: "sala abierta por nosotros", false: "sala de un amigo"}[*modo]
 	}
-	logf("jugando a %s (%s, GBA-PK %v, caramelos %v)", j.Relativa, papel, o.conGbaPk, o.conCaramel)
+	logf("jugando a %s (%s, GBA-PK %v)", j.Relativa, papel, o.conGbaPk)
 	// El logo con el nombre del juego mientras se cambia de una pantalla a otra.
 	a.dibujarCarga("Abriendo " + j.Titulo + "…")
 	a.srv.enviar(a.l.marco())

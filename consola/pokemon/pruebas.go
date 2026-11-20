@@ -42,7 +42,6 @@ func dibujarPruebas(f *fuentes, carpeta string) error {
 	guardarJSON(filepath.Join(carpetaAmigos("k7p2qx"), "lucia.json"), Progreso{Version: 1, ID: "LUCIA", Nombre: "Lucía",
 		Juego: "Pokémon Zafiro", Partida: "principal", JugadoMs: 48 * 3600000, UltimaVez: ahora - 2*3600000})
 	guardarJSON(archivoPropio("k7p2qx"), Progreso{Version: 1, ID: a.jug.ID, Nombre: a.jug.Nombre, JugadoMs: 31 * 3600000})
-	a.caramelos[a.juegos[2].Relativa] = true
 
 	guardar := func(nombre string) error {
 		a.dibujar()

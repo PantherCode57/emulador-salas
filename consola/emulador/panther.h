@@ -130,7 +130,8 @@ int juego(const struct opciones *o);
 
 /* ---- menu.c: el menú de pausa ---- */
 enum accion_menu { MENU_NADA, MENU_SEGUIR, MENU_GUARDAR, MENU_CARGAR, MENU_SALIR, MENU_REINICIAR };
-void menu_abrir(const char *titulo, bool hay_partida);
+/* con_caramelos: el juego es uno donde valen los Caramelos Raros infinitos (sale la opción). */
+void menu_abrir(const char *titulo, bool hay_partida, bool con_caramelos);
 enum accion_menu menu_pulsar(uint32_t nuevos, int *factor_rapido);
 void menu_dibujar(void);
 
@@ -149,8 +150,10 @@ bool guardar_png(const char *ruta, const uint8_t *px, int w, int h, int paso);
 /* ---- apps.c: la pantalla de las apps de la consola ---- */
 int pantalla_apps(void);
 
-/* ---- ajustes.c: lo que se guarda entre partidas (velocidad rápida…) ---- */
+/* ---- ajustes.c: lo que se guarda entre partidas (velocidad rápida, Caramelos Raros) ---- */
 int ajuste_factor_rapido(void);
 void ajuste_guardar_factor(int f);
+bool ajuste_caramelos(void);
+void ajuste_guardar_caramelos(bool si);
 
 #endif

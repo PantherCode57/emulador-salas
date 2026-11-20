@@ -11,28 +11,36 @@ static const struct color APAGADO = {96, 90, 116, 255};
 static const struct color VIOLETA = {124, 77, 255, 255};
 static const struct color LINEA = {255, 255, 255, 22};
 
-enum { O_SEGUIR, O_GUARDAR, O_CARGAR, O_VELOCIDAD, O_REINICIAR, O_SALIR, N_OPCIONES };
+enum { O_SEGUIR, O_GUARDAR, O_CARGAR, O_VELOCIDAD, O_CARAMELOS, O_REINICIAR, O_SALIR, N_OPCIONES };
 static const char *nombres[N_OPCIONES] = {
 	"Seguir jugando", "Guardar partida rápida", "Cargar partida rápida", "Velocidad con R2",
-	"Empezar el juego de nuevo", "Salir del juego",
+	"Caramelos Raros mod", "Empezar el juego de nuevo", "Salir del juego",
 };
 static const int velocidades[] = {2, 3, 4, 5};
 #define N_VEL (int)(sizeof(velocidades) / sizeof(velocidades[0]))
 
 static char titulo[160];
-static bool hay_partida, sucio, confirmar;
+static bool hay_partida, sucio, confirmar, con_caramelos, caramelos;
 static int sel, factor = 3;
 static struct capa_textura tex;
+/* Las opciones que salen (la de los Caramelos, solo en los juegos donde valen). */
+static int vistas[N_OPCIONES], n_vistas;
 
 #define MW 400
 #define FILA 42
 #define ARRIBA 74
-#define MH (ARRIBA + N_OPCIONES * FILA + 52)
+#define MH (ARRIBA + n_vistas * FILA + 52)
 
-void menu_abrir(const char *t, bool partida) {
+void menu_abrir(const char *t, bool partida, bool caramelos_aqui) {
 	snprintf(titulo, sizeof(titulo), "%s", t && *t ? t : "Juego");
 	hay_partida = partida;
-	sel = O_SEGUIR;
+	con_caramelos = caramelos_aqui;
+	caramelos = ajuste_caramelos();
+	n_vistas = 0;
+	for (int i = 0; i < N_OPCIONES; i++)
+		if (i != O_CARAMELOS || con_caramelos)
+			vistas[n_vistas++] = i;
+	sel = 0;
 	confirmar = false;
 	factor = ajuste_factor_rapido();
 	sucio = true;
@@ -43,8 +51,8 @@ static bool activa(int i) { return i != O_CARGAR || hay_partida; }
 static void mover(int d) {
 	int i = sel;
 	do
-		i = (i + d + N_OPCIONES) % N_OPCIONES;
-	while (!activa(i));
+		i = (i + d + n_vistas) % n_vistas;
+	while (!activa(vistas[i]));
 	sel = i;
 	confirmar = false;
 }
@@ -57,7 +65,13 @@ enum accion_menu menu_pulsar(uint32_t nuevos, int *factor_rapido) {
 		mover(-1);
 	if (nuevos & BOT_ABAJO)
 		mover(1);
-	if (sel == O_VELOCIDAD && (nuevos & (BOT_IZQ | BOT_DER | BOT_A))) {
+	int op = vistas[sel];
+	if (op == O_CARAMELOS && (nuevos & (BOT_IZQ | BOT_DER | BOT_A))) {
+		caramelos = (nuevos & BOT_A) ? !caramelos : (nuevos & BOT_DER) != 0;
+		ajuste_guardar_caramelos(caramelos);
+		return MENU_NADA;
+	}
+	if (op == O_VELOCIDAD && (nuevos & (BOT_IZQ | BOT_DER | BOT_A))) {
 		int k = 0;
 		while (k < N_VEL && velocidades[k] != factor)
 			k++;
@@ -73,17 +87,17 @@ enum accion_menu menu_pulsar(uint32_t nuevos, int *factor_rapido) {
 	if (nuevos & (BOT_B | BOT_START))
 		return MENU_SEGUIR;
 	if (nuevos & BOT_A) {
-		switch (sel) {
+		switch (op) {
 		case O_SEGUIR: return MENU_SEGUIR;
 		case O_GUARDAR: return MENU_GUARDAR;
 		case O_CARGAR: return MENU_CARGAR;
 		case O_REINICIAR:
 		case O_SALIR:
-			if (sel == O_REINICIAR && !confirmar) { /* empezar de nuevo pierde lo no guardado: se pregunta */
+			if (op == O_REINICIAR && !confirmar) { /* empezar de nuevo pierde lo no guardado: se pregunta */
 				confirmar = true;
 				return MENU_NADA;
 			}
-			return sel == O_SALIR ? MENU_SALIR : MENU_REINICIAR;
+			return op == O_SALIR ? MENU_SALIR : MENU_REINICIAR;
 		}
 	}
 	return MENU_NADA;
@@ -96,9 +110,10 @@ static void pintar(void) {
 	lienzo_redondeado(&l, 0, 0, MW, MH, 18, FONDO);
 	lienzo_redondeado(&l, 24, 56, MW - 48, 2, 1, VIOLETA);
 	texto_recortado(&l, 24, 40, MW - 48, LETRA_NEGRITA, 22, BLANCO, titulo);
-	for (int i = 0; i < N_OPCIONES; i++) {
-		int y = ARRIBA + i * FILA;
-		if (i == sel)
+	for (int k = 0; k < n_vistas; k++) {
+		int i = vistas[k];
+		int y = ARRIBA + k * FILA;
+		if (k == sel)
 			lienzo_redondeado(&l, 12, y, MW - 24, FILA - 4, (FILA - 4) / 2, VIOLETA);
 		struct color c = !activa(i) ? APAGADO : BLANCO;
 		const char *nombre = nombres[i];
@@ -109,7 +124,13 @@ static void pintar(void) {
 			char v[24];
 			snprintf(v, sizeof(v), "‹  ×%d  ›", factor);
 			int vw = texto_ancho(LETRA_NEGRITA, 19, v);
-			texto(&l, MW - 30 - vw, y + 26, LETRA_NEGRITA, 19, i == sel ? BLANCO : SUAVE, v);
+			texto(&l, MW - 30 - vw, y + 26, LETRA_NEGRITA, 19, vistas[sel] == i ? BLANCO : SUAVE, v);
+		}
+		if (i == O_CARAMELOS) {
+			const char *v = caramelos ? "‹  ON  ›" : "‹  OFF  ›";
+			int vw = texto_ancho(LETRA_NEGRITA, 19, v);
+			struct color cv = vistas[sel] == i ? BLANCO : caramelos ? (struct color){120, 220, 140, 255} : SUAVE;
+			texto(&l, MW - 30 - vw, y + 26, LETRA_NEGRITA, 19, cv, v);
 		}
 		if (i == O_CARGAR && !hay_partida) {
 			const char *n = "no hay";

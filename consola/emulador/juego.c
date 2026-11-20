@@ -5,8 +5,9 @@
  * - R2: ir rápido (×3, o lo que se elija en el menú). SELECT + START: el menú de pausa.
  * - Al salir se guarda dónde ibas y, la próxima vez, sigues ahí (si nadie ha jugado entretanto a ese
  *   juego con otra partida).
- * - Los scripts de Lua de mGBA (las salas de GBA-PK y los Caramelos Raros) con --script, o el de
+ * - Los scripts de Lua de mGBA (las salas de GBA-PK) con --script, o el de
  *   <sistema>/pokemulador/multijugador.lua como hacía el núcleo de Pokemulador.
+ * - Caramelos Raros infinitos en Rojo Fuego y Verde Hoja: se ponen y se quitan en el menú de pausa.
  */
 #include "panther.h"
 
@@ -150,6 +151,53 @@ static void guiones_empezar(struct mCore *core, const char **rutas, int n) { (vo
 static void guiones_avisar(const char *que) { (void)que; }
 static void guiones_acabar(void) {}
 #endif
+
+/* ---- Caramelos Raros infinitos (Pokémon Rojo Fuego y Verde Hoja de EE. UU.) ----
+ * Lo mismo que hacía consola/trucos/caramelos-frlg.lua, pero aquí dentro para poder ponerlo y quitarlo
+ * desde el menú de pausa en cualquier momento (también en las salas). Con la opción en ON, cada medio
+ * segundo busca los Caramelos Raros en el bolsillo de objetos de la mochila y los deja en 999; si no
+ * hay ninguno, los pone en el primer hueco libre. Con OFF no toca nada. No cambia la ROM.
+ *
+ * Dónde está cada cosa (del proyecto pret/pokefirered, que descompiló el juego):
+ *   gSaveBlock1Ptr = 0x03005008, gSaveBlock2Ptr = 0x0300500C (los dos se mueven por la memoria)
+ *   SaveBlock1 + 0x310: bolsillo de objetos, 42 huecos de {id u16, cantidad u16}
+ *   SaveBlock2 + 0xF20: clave con la que va cifrada la cantidad (cantidad XOR clave & 0xFFFF)
+ *   Caramelo Raro = objeto 68 */
+enum { CARAMELO = 68, CARAMELOS_CUANTOS = 999, BOLSILLO_HUECOS = 42 };
+
+static bool caramelos_valen(struct mCore *core) {
+	if (core->platform(core) != mPLATFORM_GBA)
+		return false;
+	char codigo[16] = {0};
+	core->getGameCode(core, codigo);
+	return !strcmp(codigo, "AGB-BPRE") || !strcmp(codigo, "AGB-BPGE");
+}
+
+static bool en_ewram(uint32_t p) { return p >= 0x02000000 && p < 0x02040000 - 0x1000; }
+
+static void caramelos_poner(struct mCore *core) {
+	uint32_t sb1 = core->busRead32(core, 0x03005008), sb2 = core->busRead32(core, 0x0300500C);
+	if (!en_ewram(sb1) || !en_ewram(sb2))
+		return; /* todavía no hay partida cargada */
+	uint16_t clave = (uint16_t)(core->busRead32(core, sb2 + 0xF20) & 0xFFFF);
+	uint16_t cantidad = (uint16_t)(CARAMELOS_CUANTOS ^ clave);
+	uint32_t bolsillo = sb1 + 0x310, libre = 0;
+	for (int i = 0; i < BOLSILLO_HUECOS; i++) {
+		uint32_t hueco = bolsillo + (uint32_t)i * 4;
+		uint16_t id = (uint16_t)core->busRead16(core, hueco);
+		if (id == CARAMELO) {
+			if ((uint16_t)core->busRead16(core, hueco + 2) != cantidad)
+				core->busWrite16(core, hueco + 2, cantidad);
+			return;
+		}
+		if (id == 0 && !libre)
+			libre = hueco;
+	}
+	if (libre) {
+		core->busWrite16(core, libre, CARAMELO);
+		core->busWrite16(core, libre + 2, cantidad);
+	}
+}
 
 /* ---- Archivos ---- */
 
@@ -369,6 +417,8 @@ int juego(const struct opciones *o) {
 
 	static int16_t muestras[4096 * 2];
 	bool en_menu = false, rapido = false, chat = false;
+	bool con_caramelos = caramelos_valen(core);
+	unsigned imagenes = 0;
 	int factor = ajuste_factor_rapido(), salto_puesto = 0;
 	uint64_t r2_desde = 0;
 	Uint64 frec_reloj = SDL_GetPerformanceFrequency();
@@ -403,7 +453,7 @@ int juego(const struct opciones *o) {
 			bool combo = (estado & BOT_SELECT) && (estado & BOT_START) && (nuevos & (BOT_SELECT | BOT_START));
 			if (combo) { /* (R3 y F son del chat de WhatsApp: los mira el servicio) */
 				en_menu = true;
-				menu_abrir(titulo, existe(rapido_ruta));
+				menu_abrir(titulo, existe(rapido_ruta), con_caramelos);
 			} else {
 				/* R2 va rápido, pero L2 + R2 es grabar la pantalla (lo hace el servicio): se espera
 				 * un poquito por si llega L2. */
@@ -464,6 +514,8 @@ int juego(const struct opciones *o) {
 			for (int i = 0; i < n; i++) {
 				core->setKeys(core, k);
 				core->runFrame(core);
+				if (con_caramelos && ++imagenes % 30 == 0 && ajuste_caramelos())
+					caramelos_poner(core);
 				int hay = blip_samples_avail(izq);
 				while (hay > 0) {
 					int m = hay > 4096 ? 4096 : hay;

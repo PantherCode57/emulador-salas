@@ -159,11 +159,7 @@ func (a *app) dibujarJuegos() {
 	l.rect(image.Rect(x0, 130, ancho-24, 131), color.RGBA{70, 70, 70, 70})
 	y := 142
 	if esRojoFuego(j) {
-		estado, col := "no", color.Color(colApagado)
-		if a.caramelos[j.Relativa] {
-			estado, col = "sí", colVerde
-		}
-		l.arriba(x0, y, "Caramelos Raros infinitos: "+estado, l.f.chica, col)
+		l.arriba(x0, y, recortar(l.f.chica, "Caramelos Raros: SELECT + START al jugar", w), l.f.chica, colApagado)
 		y += 24
 	}
 	l.arriba(x0, y, "TUS SALAS DE ESTE JUEGO", l.f.mini, colApagado)
@@ -192,11 +188,7 @@ func (a *app) dibujarJuegos() {
 			y += 20
 		}
 	}
-	ayuda := "A  Jugar solo      Y  Salas      B  Salir"
-	if esRojoFuego(j) {
-		ayuda = "A  Jugar solo      Y  Salas      X  Caramelos      B  Salir"
-	}
-	l.ayuda(ayuda, x0)
+	l.ayuda("A  Jugar solo      Y  Salas      B  Salir", x0)
 }
 
 // ---- Salas de un juego --------------------------------------------------------------------------
