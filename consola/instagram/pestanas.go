@@ -133,11 +133,18 @@ func (a *app) pulsarInicio(b uint16) {
 	a.adelantarInicio()
 }
 
+// Dónde va el vídeo grande del inicio: empieza por debajo del recuadro de la batería y la hora de
+// Panther (arriba a la derecha, hasta y = 26) para no quedar tapado por él.
+const (
+	yVideoGrande    = 30
+	altoVideoGrande = 378
+)
+
 // verVideo: un vídeo del inicio, en grande (vuelve a empezar al acabar, como en el móvil).
 func (a *app) verVideo(p Post, m Medio) {
 	a.videoPost, a.videoMedio, a.videoVolver = p, m, a.pant
 	a.pant = pVideo
-	a.tocarVideo("video:"+p.PK+m.Video, m, 0, 8, ancho, 400)
+	a.tocarVideo("video:"+p.PK+m.Video, m, 0, yVideoGrande, ancho, altoVideoGrande)
 }
 
 func (a *app) pulsarVideo(b uint16) {

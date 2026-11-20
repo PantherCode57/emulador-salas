@@ -74,11 +74,11 @@ const (
 )
 
 type fuentes struct {
-	titulo, grande, nombre, normal, texto, pequena, mini, hora, horaGrande font.Face
-	iconoGrande, icono, iconoPeq                                           font.Face
-	reg                                                                    *sfnt.Font
-	ic                                                                     *opentype.Font
-	icTam                                                                  map[int]font.Face
+	titulo, grande, nombre, normal, texto, pequena, mini font.Face
+	iconoGrande, icono, iconoPeq                         font.Face
+	reg                                                  *sfnt.Font
+	ic                                                   *opentype.Font
+	icTam                                                map[int]font.Face
 }
 
 // iconoDe: los iconos a cualquier tamaño (para las portadas dibujadas).
@@ -119,18 +119,15 @@ func cara(f *opentype.Font, tam float64) font.Face {
 func cargarFuentes() *fuentes {
 	reg := cargarLetra("selawk.ttf", goregular.TTF)
 	semi := cargarLetra("selawksb.ttf", gobold.TTF)
-	fina := cargarLetra("selawksl.ttf", goregular.TTF)
 	f := &fuentes{
-		titulo:     cara(semi, 26),
-		grande:     cara(semi, 28),
-		nombre:     cara(semi, 17),
-		normal:     cara(reg, 16),
-		texto:      cara(reg, 18),
-		pequena:    cara(reg, 15),
-		mini:       cara(reg, 13),
-		hora:       cara(fina, 26),
-		horaGrande: cara(fina, 30),
-		reg:        reg,
+		titulo:  cara(semi, 26),
+		grande:  cara(semi, 28),
+		nombre:  cara(semi, 17),
+		normal:  cara(reg, 16),
+		texto:   cara(reg, 18),
+		pequena: cara(reg, 15),
+		mini:    cara(reg, 13),
+		reg:     reg,
 	}
 	if b, err := os.ReadFile(rutaIconos); err == nil {
 		if ic, err := opentype.Parse(b); err == nil {

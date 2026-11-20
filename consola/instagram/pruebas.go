@@ -146,7 +146,7 @@ func dibujarPruebas(f *fuentes, carpeta string) error {
 	// Con vídeo: se pinta la pantalla y encima un degradado donde iría el vídeo.
 	a.pant = pVideo
 	a.videoPost, a.videoMedio = posts[1], posts[1].Medios[0]
-	conVideo(a.videoMedio, 0, 8, ancho, 400)
+	conVideo(a.videoMedio, 0, yVideoGrande, ancho, altoVideoGrande)
 	a.dibujar()
 	pintarVideo(0.12)
 	if err := guardarPNG(filepath.Join(carpeta, "16-video.png"), a.l.img); err != nil {
