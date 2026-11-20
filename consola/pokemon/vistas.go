@@ -66,18 +66,8 @@ func (a *app) dibujarCarga(texto string) {
 	l.centrado(image.Rect(0, alto-48, ancho, alto-20), "Pokemulador · Panther OS", l.f.mini, colSuave)
 }
 
-func (a *app) hora(grande bool) {
-	t := time.Now()
-	if t.Year() < 2001 {
-		return
-	}
-	s := t.Format("15:04")
-	if grande {
-		a.l.texto(ancho-20-medir(a.l.f.horaGrande, s), 14+a.l.f.horaGrande.Metrics().Ascent.Round(), s, a.l.f.horaGrande, colTexto)
-	} else {
-		a.l.medioDerecha(ancho-24, 40, s, a.l.f.hora, colTexto)
-	}
-}
+// hora: ya no se pinta; la hora ya sale en el recuadro de arriba de la consola.
+func (a *app) hora(grande bool) {}
 
 func (a *app) ayudaAbajo(s string) {
 	l := a.l
@@ -97,7 +87,7 @@ func (a *app) dibujarAviso() {
 func (a *app) cabecera(titulo string) {
 	l := a.l
 	l.medio(28, 40, icUsuarios, l.f.iconoGrande, colRojo)
-	l.medio(66, 40, recortar(l.f.grande, titulo, ancho-66-110), l.f.grande, colTexto)
+	l.medio(66, 40, recortar(l.f.grande, titulo, ancho-66-28), l.f.grande, colTexto)
 	a.hora(false)
 }
 

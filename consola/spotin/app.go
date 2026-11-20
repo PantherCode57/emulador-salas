@@ -414,7 +414,13 @@ func (a *app) pulsarLista(b uint16) {
 			a.pant = pSonando
 		}
 	case bY:
-		a.descargarLista()
+		if a.lista.Tipo == tipoBusqueda { // en lo buscado, solo la canción marcada
+			if a.selCancion < n {
+				a.descargar([]Cancion{a.canciones[a.selCancion]})
+			}
+		} else {
+			a.descargar(a.canciones)
+		}
 	case bX:
 		if a.rep.sonando() || a.buscando {
 			a.pant = pSonando
@@ -696,28 +702,38 @@ func (a *app) lineaActual() int {
 
 // ---- Descargas ------------------------------------------------------------------------------------
 
-func (a *app) descargarLista() {
+// descargar pone estas canciones en la cola de descargas (las que no estén ya).
+func (a *app) descargar(cs []Cancion) {
 	if !hayRed() {
 		a.aviso("Sin internet no se puede descargar")
 		return
 	}
-	n := 0
-	for _, c := range a.canciones {
+	n, nombre := 0, ""
+	for _, c := range cs {
 		if _, ok := a.alm.descargada(c.ID); ok {
 			continue
 		}
 		select {
 		case a.descCola <- c:
 			n++
+			nombre = c.Nombre
 		default:
 		}
 	}
-	if n == 0 {
+	switch {
+	case n == 0 && len(cs) == 1:
+		a.aviso("Esta canción ya está descargada")
+		return
+	case n == 0:
 		a.aviso("Ya está todo descargado")
 		return
 	}
 	a.descPend += n
-	a.aviso(fmt.Sprintf("Descargando %d canciones", n))
+	if n == 1 {
+		a.aviso("Descargando " + nombre)
+	} else {
+		a.aviso(fmt.Sprintf("Descargando %d canciones", n))
+	}
 }
 
 // descargador: baja las canciones de la cola una a una (en su propio hilo).

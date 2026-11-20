@@ -363,7 +363,10 @@ func (a *app) dibujarLista() {
 	if mini {
 		a.miniReproductor(396)
 	}
-	ayuda := "A  Reproducir      Y  Descargar      B  Volver"
+	ayuda := "A  Reproducir      Y  Descargar todas      B  Volver"
+	if a.lista.Tipo == tipoBusqueda {
+		ayuda = "A  Reproducir      Y  Descargar esta      B  Volver"
+	}
 	if a.lista.Tipo == tipoDescargadas {
 		ayuda = "A  Reproducir      B  Volver"
 	}
