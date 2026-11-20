@@ -188,6 +188,12 @@ jobs:
           grep -q "prueba.lua: en marcha" /tmp/prueba.txt
           grep -q "prueba: emu true" /tmp/prueba.txt
           grep -q "prueba: recibido hola" /tmp/prueba.txt
+      - name: Probar el combate a medias de GBA-PK (si tu amigo se va, se acaba solo)
+        working-directory: consola/emulador
+        run: |
+          ./emulador --medir 300 --script pruebas/combate_solo.lua --script ../../terceros/gba-pk/pokemulador_final.lua /tmp/prueba.gba 2>&1 | tee /tmp/combate.txt
+          grep -q "pokemulador_final.lua: en marcha" /tmp/combate.txt
+          grep -q "prueba combate: todo bien" /tmp/combate.txt
       - name: Captura de pantalla
         working-directory: consola/captura
         run: gcc -O2 -Wall -o captura captura.c $(pkg-config --cflags --libs libdrm) -lz

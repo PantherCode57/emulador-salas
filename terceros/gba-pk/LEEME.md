@@ -13,3 +13,8 @@ con dos cambios: el nombre del jugador y, al final, unas líneas que abren la pa
 tienes la sala abierta) o entran en la del anfitrión, siempre en `127.0.0.1:4096`. El enlace de la
 sala lleva esa conexión por Tailscale (`pc/enlace/juego.go`). El núcleo de mGBA de Pokemulador
 carga ese archivo al abrir el juego (`nucleos/mgba`).
+
+Si tu amigo se va (o se le corta) en mitad de un combate, GBA-PK deja de llevarlo y el juego se
+quedaba en «Link standby...» para siempre. `pokemulador_final.lua` acaba entonces el combate por el
+camino que ya trae GBA-PK para un combate atascado: vuelves al mapa con el equipo como antes del
+combate. Lo prueba `consola/emulador/pruebas/combate_solo.lua` (en `consola.yml`).
