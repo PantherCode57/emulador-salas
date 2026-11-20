@@ -103,8 +103,8 @@ type instagram struct {
 	dispDM string // el aparato de los mensajes, si la página no lo dice
 	yoFB   string // tu número en los mensajes (interop_messaging_user_fbid)
 
-	muWeb   sync.Mutex           // la página de Instagram se pide de una en una
-	paginas map[string]*datosWeb // los tokens de la página (pagina.go), por ruta
+	muWeb   sync.Mutex // la página de Instagram se pide de una en una
+	web     *datosWeb  // los tokens de la página (pagina.go)
 	muDocs  sync.Mutex
 	docs    *docsWeb             // los doc_id de sus JS
 	buscado map[string]time.Time // cuándo se buscó en los JS cada consulta

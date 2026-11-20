@@ -16,27 +16,47 @@ import (
 
 // Fotos de Instagram (las de las publicaciones, las historias y las caras de la gente): se bajan
 // solo a la memoria (nada a la tarjeta), se reducen a 480 px y se guardan ya escaladas para cada
-// tamaño que se pinta. Las últimas pedidas van primero.
+// tamaño que se pinta. Las que se ven van primero. Bajarlas y escalarlas se hace en sus hilos, nunca
+// en el de la pantalla, y solo se repinta cuando llega una que está a la vista (las que se piden por
+// adelantado no repintan nada).
 type imagenes struct {
-	app     *app
-	mu      sync.Mutex
-	orig    map[string]image.Image
-	orden   []string // para tirar las más viejas
-	listo   map[string]*image.RGBA
-	pedidas map[string]bool
-	cola    chan [2]string
-	prisa   chan [2]string
+	app        *app
+	mu         sync.Mutex
+	orig       map[string]image.Image
+	orden      []string // para tirar las más viejas
+	listo      map[string]*image.RGBA
+	pedidas    map[string]bool
+	quiere     map[string][]encargo // los tamaños que se han pedido de una que aún no ha llegado
+	preparando map[string]bool
+	cola       chan [2]string
+	prisa      chan [2]string
+	escalas    chan encargo
 }
 
-const maxOriginales = 50
+// encargo: una foto a un tamaño (lo que pide pedir).
+type encargo struct {
+	ck, k  string
+	w, h   int
+	llenar bool
+	radio  int
+}
+
+const maxOriginales = 80
 
 func nuevasImagenes(a *app) *imagenes {
 	m := &imagenes{app: a, orig: map[string]image.Image{}, listo: map[string]*image.RGBA{}, pedidas: map[string]bool{},
-		cola: make(chan [2]string, 256), prisa: make(chan [2]string, 64)}
-	for i := 0; i < 3; i++ {
+		quiere: map[string][]encargo{}, preparando: map[string]bool{},
+		cola: make(chan [2]string, 256), prisa: make(chan [2]string, 64), escalas: make(chan encargo, 64)}
+	for i := 0; i < 4; i++ {
 		go m.trabajar()
 	}
 	return m
+}
+
+func (m *imagenes) redibujar() {
+	if m.app != nil {
+		m.app.redibujar()
+	}
 }
 
 // clave: la dirección sin lo de después de «?» (las firmas cambian, la foto no).
@@ -51,15 +71,29 @@ func clave(u string) string {
 func (m *imagenes) trabajar() {
 	for {
 		var p [2]string
-		select {
+		select { // primero lo que está a la vista
+		case e := <-m.escalas:
+			m.preparar(e)
+			m.redibujar()
+			continue
 		case p = <-m.prisa:
 		default:
 			select {
+			case e := <-m.escalas:
+				m.preparar(e)
+				m.redibujar()
+				continue
 			case p = <-m.prisa:
 			case p = <-m.cola:
 			}
 		}
 		k, u := p[0], p[1]
+		m.mu.Lock()
+		_, ya := m.orig[k] // pedida dos veces (sin prisa y luego con prisa) y ya está
+		m.mu.Unlock()
+		if ya {
+			continue
+		}
 		im, err := bajarImagen(u)
 		if err != nil {
 			logf("foto: %v", err)
@@ -84,11 +118,54 @@ func (m *imagenes) trabajar() {
 			delete(m.orig, viejo)
 			delete(m.pedidas, viejo)
 		}
+		es := m.quiere[k]
+		delete(m.quiere, k)
 		m.mu.Unlock()
-		if m.app != nil {
-			m.app.hacer(func() {}) // redibujar
+		if len(es) > 0 { // está a la vista: ya a su tamaño, y se repinta una vez
+			for _, e := range es {
+				m.preparar(e)
+			}
+			m.redibujar()
 		}
 	}
+}
+
+// preparar: la foto ya bajada, al tamaño del encargo (en un hilo de las fotos).
+func (m *imagenes) preparar(e encargo) {
+	m.mu.Lock()
+	im, ok := m.orig[e.k]
+	_, hecho := m.listo[e.ck]
+	m.mu.Unlock()
+	if ok && !hecho {
+		r := hacerTamano(im, e)
+		m.mu.Lock()
+		if len(m.listo) > 120 { // que no crezca sin fin
+			m.listo = map[string]*image.RGBA{}
+		}
+		m.listo[e.ck] = r
+		m.mu.Unlock()
+	}
+	m.mu.Lock()
+	delete(m.preparando, e.ck)
+	m.mu.Unlock()
+}
+
+func hacerTamano(im image.Image, e encargo) *image.RGBA {
+	var r *image.RGBA
+	if e.llenar {
+		r = escalar(im, e.w, e.h, true)
+	} else {
+		b := im.Bounds()
+		k := min(float64(e.w)/float64(b.Dx()), float64(e.h)/float64(b.Dy()))
+		r = escalar(im, max(1, int(float64(b.Dx())*k+0.5)), max(1, int(float64(b.Dy())*k+0.5)), false)
+	}
+	switch {
+	case e.radio < 0:
+		circular(r)
+	case e.radio > 0:
+		redondear(r, e.radio)
+	}
+	return r
 }
 
 func bajarImagen(u string) (image.Image, error) {
@@ -116,44 +193,47 @@ func bajarImagen(u string) (image.Image, error) {
 }
 
 // pedir: la foto de «u» a w×h (recortada para llenarlo si llenar; si no, entera y del tamaño que
-// quepa) con esquinas de radio (radio < 0: redonda). nil si aún no está (y se pide).
+// quepa) con esquinas de radio (radio < 0: redonda). nil si aún no está a ese tamaño: se baja o se
+// escala en los hilos de las fotos y luego se repinta. (Sin hilos, en las pruebas, se escala aquí.)
 func (m *imagenes) pedir(u string, w, h int, llenar bool, radio int) *image.RGBA {
 	if u == "" || w <= 0 || h <= 0 {
 		return nil
 	}
 	k := clave(u)
-	ck := fmt.Sprintf("%s|%d|%d|%t|%d", k, w, h, llenar, radio)
+	e := encargo{ck: fmt.Sprintf("%s|%d|%d|%t|%d", k, w, h, llenar, radio), k: k, w: w, h: h, llenar: llenar, radio: radio}
 	m.mu.Lock()
-	if r, ok := m.listo[ck]; ok {
+	if r, ok := m.listo[e.ck]; ok {
 		m.mu.Unlock()
 		return r
 	}
 	im, ok := m.orig[k]
 	if !ok {
+		ya := false
+		for _, x := range m.quiere[k] {
+			ya = ya || x.ck == e.ck
+		}
+		if !ya && m.quiere != nil {
+			m.quiere[k] = append(m.quiere[k], e)
+		}
 		m.pedirSinCandado(k, u, true)
 		m.mu.Unlock()
 		return nil
 	}
+	if m.escalas != nil {
+		if !m.preparando[e.ck] {
+			select {
+			case m.escalas <- e:
+				m.preparando[e.ck] = true
+			default:
+			}
+		}
+		m.mu.Unlock()
+		return nil
+	}
 	m.mu.Unlock()
-	var r *image.RGBA
-	if llenar {
-		r = escalar(im, w, h, true)
-	} else {
-		b := im.Bounds()
-		k := min(float64(w)/float64(b.Dx()), float64(h)/float64(b.Dy()))
-		r = escalar(im, max(1, int(float64(b.Dx())*k+0.5)), max(1, int(float64(b.Dy())*k+0.5)), false)
-	}
-	switch {
-	case radio < 0:
-		circular(r)
-	case radio > 0:
-		redondear(r, radio)
-	}
+	r := hacerTamano(im, e)
 	m.mu.Lock()
-	if len(m.listo) > 90 { // que no crezca sin fin
-		m.listo = map[string]*image.RGBA{}
-	}
-	m.listo[ck] = r
+	m.listo[e.ck] = r
 	m.mu.Unlock()
 	return r
 }
@@ -172,7 +252,16 @@ func (m *imagenes) adelantar(u string) {
 }
 
 func (m *imagenes) pedirSinCandado(k, u string, prisa bool) {
-	if m.pedidas[k] || m.cola == nil {
+	if m.cola == nil {
+		return
+	}
+	if m.pedidas[k] {
+		if prisa && len(m.quiere[k]) == 1 { // ya estaba pedida sin prisa y ahora se ve: también con prisa
+			select {
+			case m.prisa <- [2]string{k, u}:
+			default:
+			}
+		}
 		return
 	}
 	m.pedidas[k] = true

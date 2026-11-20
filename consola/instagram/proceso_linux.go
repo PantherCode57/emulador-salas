@@ -26,3 +26,6 @@ func señalGrupo(cmd *exec.Cmd, s syscall.Signal) {
 func tamTubo(f *os.File, n int) {
 	_, _, _ = syscall.Syscall(syscall.SYS_FCNTL, f.Fd(), 1031, uintptr(n))
 }
+
+// bajarPrioridad: nice 10 (para el ffmpeg que se prepara mientras se ve otro vídeo).
+func bajarPrioridad(pid int) { _ = syscall.Setpriority(syscall.PRIO_PROCESS, pid, 10) }

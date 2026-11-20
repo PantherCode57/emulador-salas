@@ -100,6 +100,7 @@ type app struct {
 	videoMedio    Medio
 	videoVolver   pantalla
 	videoErr      string
+	ad            *adelantos // los reels siguientes, ya bajados
 
 	// Confirmar
 	confirmTexto  string
@@ -111,6 +112,8 @@ type app struct {
 	cargaHasta time.Time
 
 	cambios   bool
+	dibujarYa bool      // un botón: se pinta ya, sin esperar
+	dibujado  time.Time // la última vez que se pintó
 	pulsados  uint16
 	repetirEn time.Time
 	lrPend    int       // L o R esperando a ver si es L1 + R1 (la captura): -1, +1 o 0
@@ -127,10 +130,11 @@ type vistaVideo struct {
 	w, h   int
 	pos    image.Point // dónde va
 	cuando time.Time
+	desde  time.Time // cuándo se pidió (para el registro: cuánto tarda la primera imagen)
 }
 
 func nuevaApp(f *fuentes) *app {
-	a := &app{f: f, l: nuevoLienzo(f), tareas: make(chan func(), 256), salir: make(chan struct{}), cambios: true,
+	a := &app{f: f, l: nuevoLienzo(f), tareas: make(chan func(), 1024), salir: make(chan struct{}), cambios: true,
 		fotoDe: map[string]int{}, leidos: map[string]bool{}}
 	a.cargaHasta = time.Now().Add(900 * time.Millisecond)
 	return a
@@ -141,6 +145,40 @@ func (a *app) hacer(fn func()) {
 	case a.tareas <- fn:
 	case <-a.salir:
 	}
+}
+
+// redibujar (desde cualquier hilo): hay algo nuevo que pintar. No espera: si la cola está llena, el
+// bucle ya va a pintar.
+func (a *app) redibujar() {
+	select {
+	case a.tareas <- func() {}:
+	default:
+	}
+}
+
+// vaciarTareas hace seguidas las que estén esperando (al abrir llegan muchas fotos y respuestas de
+// golpe: así se pinta una vez y no una por cada una). Como mucho 30 ms seguidos: luego se pinta y se
+// atienden los botones, y se sigue en la vuelta siguiente.
+func (a *app) vaciarTareas() {
+	limite := time.Now().Add(30 * time.Millisecond)
+	for k := 0; k < 500 && time.Now().Before(limite); k++ {
+		select {
+		case fn := <-a.tareas:
+			fn()
+		default:
+			return
+		}
+	}
+}
+
+// tocaPintar: si hay algo nuevo y ha pasado lo bastante desde la última vez (25 imágenes por segundo
+// como mucho; cada una cuesta unos 40 ms en la consola), o si se acaba de pulsar un botón.
+func (a *app) tocaPintar() bool {
+	if !a.cambios || (!a.dibujarYa && time.Since(a.dibujado) < 40*time.Millisecond) {
+		return false
+	}
+	a.cambios, a.dibujarYa, a.dibujado = false, false, time.Now()
+	return true
 }
 
 func (a *app) aviso(s string) {
@@ -214,9 +252,11 @@ func (a *app) bucle(botones <-chan uint16, ra *retroarch) {
 			return
 		case fn := <-a.tareas:
 			fn()
+			a.vaciarTareas()
 			a.cambios = true
 		case m := <-botones:
 			a.botones(m)
+			a.dibujarYa = true
 		case <-reloj.C:
 			a.repetir()
 			a.pestanaPendiente()
@@ -244,8 +284,7 @@ func (a *app) bucle(botones <-chan uint16, ra *retroarch) {
 				}
 			}
 		}
-		if a.cambios {
-			a.cambios = false
+		if a.tocaPintar() {
 			a.dibujar()
 			a.enviarPantalla()
 		}
@@ -286,7 +325,11 @@ func (a *app) componer(px []byte, w, h int) {
 	}
 	v.ultimo, v.cuando = px, time.Now()
 	if v.bandas == nil {
-		go a.hacer(func() {}) // la primera: que la app pinte ya lo de alrededor
+		if !v.desde.IsZero() {
+			logf("vídeo: la primera imagen a los %.2f s", time.Since(v.desde).Seconds())
+			v.desde = time.Time{}
+		}
+		a.redibujar() // la primera: que la app pinte ya lo de alrededor
 		return
 	}
 	a.srv.enviarCon(v.pegar)
@@ -327,11 +370,16 @@ func (a *app) tocarVideo(clave string, md Medio, x, y, maxW, maxH int) {
 		return
 	}
 	w, h := encajar(md.W, md.H, maxW, maxH)
-	f := &fuenteVideo{Video: md.Video, Duracion: time.Duration(md.Duracion * float64(time.Second)), FPS: 30,
-		Vertical: md.H > md.W, AnchoSal: w, AltoSal: h, Cabeceras: map[string]string{"User-Agent": agenteNavegador}}
+	video := md.Video
+	if r := a.ad.ruta(video); r != "" { // ya bajado: sale antes
+		video = r
+	}
+	a.ad.usando(video)
+	f := fuenteDe(md, video, maxW, maxH)
 	a.vv.mu.Lock()
 	a.vv.activo, a.vv.ultimo, a.vv.bandas, a.vv.w, a.vv.h = true, nil, nil, w, h // bandas: las del vídeo anterior no valen
 	a.vv.pos = image.Pt(x+(maxW-w)/2, y+(maxH-h)/2)
+	a.vv.desde = time.Now()
 	a.vv.mu.Unlock()
 	turno, err := a.rep.tocar(f, 0)
 	a.turnoRep, a.reproduciendo, a.fuente, a.videoErr = turno, clave, f, ""
@@ -339,6 +387,14 @@ func (a *app) tocarVideo(clave string, md Medio, x, y, maxW, maxH int) {
 		logf("vídeo: %v", err)
 		a.videoErr = "No se ha podido ver el vídeo"
 	}
+}
+
+// fuenteDe: cómo se le pide a ffmpeg el vídeo de md (video: su dirección o el archivo ya bajado),
+// para verlo dentro de maxW×maxH.
+func fuenteDe(md Medio, video string, maxW, maxH int) *fuenteVideo {
+	w, h := encajar(md.W, md.H, maxW, maxH)
+	return &fuenteVideo{Video: video, Duracion: time.Duration(md.Duracion * float64(time.Second)), FPS: 30,
+		Vertical: md.H > md.W, AnchoSal: w, AltoSal: h, Cabeceras: map[string]string{"User-Agent": agenteNavegador}}
 }
 
 func (a *app) pararVideo() {
@@ -498,6 +554,7 @@ func (a *app) irA(p pantalla) {
 	a.pant = p
 	if p != pReels {
 		a.pararVideo()
+		a.rep.descartar() // el ffmpeg del reel siguiente ya no hace falta
 	}
 	switch p {
 	case pInicio:

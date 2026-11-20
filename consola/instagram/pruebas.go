@@ -11,12 +11,8 @@ import (
 	"time"
 )
 
-// dibujarPruebas (instagram -prueba carpeta): todas las pantallas con datos inventados, en PNG.
-// Las fotos son degradados (no se baja nada) y los vídeos, un degradado puesto donde iría el vídeo.
-func dibujarPruebas(f *fuentes, carpeta string) error {
-	if err := os.MkdirAll(carpeta, 0o755); err != nil {
-		return err
-	}
+// appDePrueba: la app con datos inventados (para -prueba y -medir). Las fotos son degradados.
+func appDePrueba(f *fuentes) (*app, []Post, *Chat, func(float64, int, int) string) {
 	redOK.Store(true)
 	a := nuevaApp(f)
 	a.cargaHasta = time.Time{}
@@ -71,6 +67,18 @@ func dibujarPruebas(f *fuentes, carpeta string) error {
 		{Texto: "¿Mañana vienes al final?", Cuando: ahora.Add(-4 * time.Minute)},
 	}}
 
+	return a, posts, chat, foto
+}
+
+// dibujarPruebas (instagram -prueba carpeta): todas las pantallas con datos inventados, en PNG.
+// Las fotos son degradados (no se baja nada) y los vídeos, un degradado puesto donde iría el vídeo.
+func dibujarPruebas(f *fuentes, carpeta string) error {
+	if err := os.MkdirAll(carpeta, 0o755); err != nil {
+		return err
+	}
+	a, posts, chat, foto := appDePrueba(f)
+	cara := func(tono float64) string { return foto(tono, 150, 150) }
+	redOK.Store(true)
 	guardar := func(nombre string) error {
 		a.dibujar()
 		fh, err := os.Create(filepath.Join(carpeta, nombre+".png"))

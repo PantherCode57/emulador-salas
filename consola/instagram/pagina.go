@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -73,6 +75,9 @@ var (
 	errDoc = errors.New("Instagram no reconoce la consulta")
 	// errRecargar: Instagram pide abrir otra vez la página (los tokens han caducado).
 	errRecargar = errors.New("Instagram pide recargar la página")
+	// errTemporal: Instagram ha fallado al hacerla («execution error»): pasa a ratos y a la segunda
+	// suele ir. No es el doc_id (no se buscan otros).
+	errTemporal = errors.New("Instagram ha fallado esta vez")
 )
 
 // datosWeb: lo que hace falta de la página de Instagram para pedir por GraphQL como su web.
@@ -80,11 +85,86 @@ type datosWeb struct {
 	lsd, dtsg, jazoest  string
 	hs, hsi, rev        string
 	spinR, spinB, spinT string
-	usuario, av         string   // USER_ID y ACCOUNT_ID de la página (con tu sesión pueden ser «0»)
-	dtsgSesion          bool     // el fb_dtsg es el de una sesión (DTSGInitialData), no el de invitado
-	dispDirect          string   // el aparato de los mensajes (IGDMqttWebDeviceID)
-	scripts             []string // sus JS (primero los que la página carga ya)
+	usuario, av         string // USER_ID y ACCOUNT_ID de la página (con tu sesión pueden ser «0»)
+	dtsgSesion          bool   // el fb_dtsg es el de una sesión (DTSGInitialData), no el de invitado
+	dispDirect          string // el aparato de los mensajes (IGDMqttWebDeviceID)
 	cuando              time.Time
+}
+
+// paginaTokens: la página de la que se sacan. Vale cualquiera con tu sesión; la de los mensajes es la
+// más ligera (800 KB y 1,3 s en la consola; la de inicio, 1,1 MB y 3,3 s) y trae el aparato de los
+// mensajes.
+const paginaTokens = rutaMensajes
+
+// duraTokens: cuánto se usan los tokens sin volver a abrir la página. Si Instagram dice antes que ya
+// no valen, se abre otra vez.
+const duraTokens = 6 * time.Hour
+
+// tokensGuardados: lo de la página que se guarda en web.json (solo para ti, como cuenta.json), para no
+// bajarla cada vez que se abre la app. Va atado a tu sesión (un resumen del sessionid, no el sessionid).
+type tokensGuardados struct {
+	Sesion  string    `json:"sesion"`
+	Cuando  time.Time `json:"cuando"`
+	Lsd     string    `json:"lsd"`
+	Dtsg    string    `json:"dtsg"`
+	Jazoest string    `json:"jazoest"`
+	Hs      string    `json:"hs"`
+	Hsi     string    `json:"hsi"`
+	Rev     string    `json:"rev"`
+	SpinR   string    `json:"spin_r"`
+	SpinB   string    `json:"spin_b"`
+	SpinT   string    `json:"spin_t"`
+	Usuario string    `json:"usuario"`
+	Av      string    `json:"av"`
+	Disp    string    `json:"disp"`
+}
+
+func rutaTokens() string { return filepath.Join(carpetaDatos, "web.json") }
+
+// resumenSesion: de qué sesión son los tokens (sha256 del sessionid, recortado).
+func (ig *instagram) resumenSesion() string {
+	ig.cuenta.mu.Lock()
+	s := valorCookie(ig.cuenta.Cookie, "sessionid")
+	ig.cuenta.mu.Unlock()
+	if s == "" {
+		return ""
+	}
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:8])
+}
+
+func (ig *instagram) leerTokens() *datosWeb {
+	b, err := os.ReadFile(rutaTokens())
+	if err != nil {
+		return nil
+	}
+	var t tokensGuardados
+	if json.Unmarshal(b, &t) != nil || t.Sesion == "" || t.Sesion != ig.resumenSesion() || t.Dtsg == "" || t.Lsd == "" ||
+		time.Since(t.Cuando) > duraTokens || time.Until(t.Cuando) > time.Minute {
+		return nil
+	}
+	return &datosWeb{lsd: t.Lsd, dtsg: t.Dtsg, jazoest: t.Jazoest, hs: t.Hs, hsi: t.Hsi, rev: t.Rev, spinR: t.SpinR,
+		spinB: t.SpinB, spinT: t.SpinT, usuario: t.Usuario, av: t.Av, dtsgSesion: true, dispDirect: t.Disp, cuando: t.Cuando}
+}
+
+// guardarTokens: en web.json (no al probar: ahí no se guarda nada de la cuenta).
+func (ig *instagram) guardarTokens(d *datosWeb) {
+	ig.cuenta.mu.Lock()
+	guardar := ig.cuenta.ruta != ""
+	ig.cuenta.mu.Unlock()
+	if !guardar {
+		return
+	}
+	t := tokensGuardados{Sesion: ig.resumenSesion(), Cuando: d.cuando, Lsd: d.lsd, Dtsg: d.dtsg, Jazoest: d.jazoest, Hs: d.hs,
+		Hsi: d.hsi, Rev: d.rev, SpinR: d.spinR, SpinB: d.spinB, SpinT: d.spinT, Usuario: d.usuario, Av: d.av, Disp: d.dispDirect}
+	b, err := json.Marshal(t)
+	if err != nil {
+		return
+	}
+	tmp := rutaTokens() + ".nuevo"
+	if os.WriteFile(tmp, b, 0o600) == nil {
+		_ = os.Rename(tmp, rutaTokens())
+	}
 }
 
 // docsWeb: los doc_id encontrados en los JS de la web (en docs.json).
@@ -132,6 +212,25 @@ func primero(re *regexp.Regexp, s string) string {
 		return m[1]
 	}
 	return ""
+}
+
+// scriptsDe: los JS de la página, primero los que carga (href/src) y después los que tiene apuntados.
+func scriptsDe(pag string) []string {
+	var r []string
+	visto := map[string]bool{}
+	for _, m := range reJSAttr.FindAllStringSubmatch(pag, -1) {
+		if u := html.UnescapeString(m[1]); !visto[u] {
+			visto[u] = true
+			r = append(r, u)
+		}
+	}
+	for _, u := range reJSTexto.FindAllString(strings.ReplaceAll(pag, `\/`, `/`), -1) {
+		if !visto[u] {
+			visto[u] = true
+			r = append(r, u)
+		}
+	}
+	return r
 }
 
 // leerDatosWeb saca de la página lo que hace falta (como gallery-dl y mautrix-meta en 2026).
@@ -186,44 +285,44 @@ func leerDatosWeb(pag string) *datosWeb {
 	if i := strings.Index(pag, `"IGDMqttWebDeviceID"`); i >= 0 {
 		d.dispDirect = cadenaTras(pag[i:min(len(pag), i+400)], `"clientId":"`)
 	}
-	// los JS: primero los que la página carga (href/src) y después los que tiene apuntados
-	visto := map[string]bool{}
-	for _, m := range reJSAttr.FindAllStringSubmatch(pag, -1) {
-		if u := html.UnescapeString(m[1]); !visto[u] {
-			visto[u] = true
-			d.scripts = append(d.scripts, u)
-		}
-	}
-	for _, u := range reJSTexto.FindAllString(strings.ReplaceAll(pag, `\/`, `/`), -1) {
-		if !visto[u] {
-			visto[u] = true
-			d.scripts = append(d.scripts, u)
-		}
-	}
 	return d
 }
 
-// pagina: los datos de la página de Instagram (ruta: "/" o "/direct/inbox/"), de hace menos de una hora.
-func (ig *instagram) pagina(ruta string, otraVez bool) (*datosWeb, error) {
-	ig.muWeb.Lock()
-	defer ig.muWeb.Unlock()
-	if d := ig.paginas[ruta]; d != nil && !otraVez && time.Since(d.cuando) < time.Hour {
-		return d, nil
-	}
+// bajarPagina: una página de instagram.com con tu sesión, como la abre el navegador.
+func (ig *instagram) bajarPagina(ruta string) ([]byte, error) {
 	st, cuerpo, err := ig.pedirCrudo(http.MethodGet, ruta, nil, nil, nil, true)
 	if err != nil {
 		return nil, err
 	}
 	if st != 200 {
 		logf("página %s: %d", ruta, st)
-		if st == 429 {
-			return nil, errLimite
-		}
 		return nil, fmt.Errorf("Instagram responde %d", st)
 	}
+	return cuerpo, nil
+}
+
+// pagina: los tokens de la página de Instagram (los mismos para cualquier ruta): los de la memoria o
+// los de web.json si son de hace menos de duraTokens; si no (u otraVez), se abre la página.
+func (ig *instagram) pagina(_ string, otraVez bool) (*datosWeb, error) {
+	ig.muWeb.Lock()
+	defer ig.muWeb.Unlock()
+	if !otraVez {
+		if d := ig.web; d != nil && time.Since(d.cuando) < duraTokens {
+			return d, nil
+		}
+		if d := ig.leerTokens(); d != nil {
+			ig.web = d
+			return d, nil
+		}
+	}
+	t := time.Now()
+	cuerpo, err := ig.bajarPagina(paginaTokens)
+	if err != nil {
+		return nil, err
+	}
 	d := leerDatosWeb(string(cuerpo))
-	logf("página %s: %d KB, lsd %v, fb_dtsg %v (de sesión %v), versión %v, aparato %v, %d JS", ruta, len(cuerpo)>>10,
-		d.lsd != "", d.dtsg != "", d.dtsgSesion, d.hs != "" && d.spinR != "", d.dispDirect != "", len(d.scripts))
+	logf("página %s: %d KB en %.2f s, lsd %v, fb_dtsg %v (de sesión %v), versión %v, aparato %v", paginaTokens, len(cuerpo)>>10,
+		time.Since(t).Seconds(), d.lsd != "", d.dtsg != "", d.dtsgSesion, d.hs != "" && d.spinR != "", d.dispDirect != "")
 	if !d.dtsgSesion {
 		// la página es la de sin sesión (solo trae el fb_dtsg de invitado): GraphQL tampoco te
 		// reconocería (api/v1 puede que sí)
@@ -232,10 +331,8 @@ func (ig *instagram) pagina(ruta string, otraVez bool) (*datosWeb, error) {
 	if d.lsd == "" || d.dtsg == "" {
 		return nil, errors.New("en la página de Instagram no están sus datos")
 	}
-	if ig.paginas == nil {
-		ig.paginas = map[string]*datosWeb{}
-	}
-	ig.paginas[ruta] = d
+	ig.web = d
+	ig.guardarTokens(d)
 	return d, nil
 }
 
@@ -330,10 +427,11 @@ func (ig *instagram) buscarLuego(ruta, nombre string) {
 func (ig *instagram) descubrir(ruta string, faltan ...string) (int, error) {
 	ig.muBusca.Lock()
 	defer ig.muBusca.Unlock()
-	d, err := ig.pagina(ruta, false)
+	pag, err := ig.bajarPagina(ruta)
 	if err != nil {
 		return 0, err
 	}
+	scripts := scriptsDe(string(pag))
 	docs := map[string]string{}
 	prov := map[string][]string{}
 	valor := map[string]any{}
@@ -347,7 +445,7 @@ func (ig *instagram) descubrir(ruta string, faltan ...string) (int, error) {
 	}
 	leidos, bytes := 0, 0
 	fin := time.Now().Add(2 * time.Minute)
-	for _, u := range d.scripts {
+	for _, u := range scripts {
 		if !quedan() || bytes > 60<<20 || leidos >= 400 || time.Now().After(fin) {
 			break
 		}
@@ -407,7 +505,7 @@ func (ig *instagram) descubrir(ruta string, faltan ...string) (int, error) {
 			encontrados = append(encontrados, n)
 		}
 	}
-	logf("doc_id: %d JS (%d KB) de %d, %d consultas; de las que faltaban, %d de %d", leidos, bytes>>10, len(d.scripts), len(docs), len(encontrados), len(faltan))
+	logf("doc_id: %d JS (%d KB) de %d, %d consultas; de las que faltaban, %d de %d", leidos, bytes>>10, len(scripts), len(docs), len(encontrados), len(faltan))
 	if len(docs) == 0 {
 		return 0, errors.New("en los JS de Instagram no hay doc_id")
 	}
@@ -452,6 +550,13 @@ func (ig *instagram) consulta(nombre, ruta string, vars map[string]any) (map[str
 	return ig.consultaEn(finConsulta(nombre), nombre, ruta, vars)
 }
 
+// tokensViejos: los tokens no son de hace un momento (vienen de web.json o de hace un rato).
+func (ig *instagram) tokensViejos() bool {
+	ig.muWeb.Lock()
+	defer ig.muWeb.Unlock()
+	return ig.web != nil && time.Since(ig.web.cuando) > 10*time.Minute
+}
+
 // finConsulta: a dónde va cada consulta. Las de los mensajes y las que cambian algo (Mutation), a
 // /api/graphql/, como mautrix-meta: en /graphql/query contestan sin error, pero vacías y sin hacer
 // nada (comprobado el 19/11/2026). Las demás, a /graphql/query, como gallery-dl.
@@ -483,6 +588,15 @@ func (ig *instagram) consultaEn(fin, nombre, ruta string, vars map[string]any) (
 	recargada := false
 	for _, c := range ig.candidatos(nombre) {
 		m, err := ig.enviarConsulta(fin, nombre, ruta, c, vars)
+		if errors.Is(err, errTemporal) { // una vez más, un poco después
+			time.Sleep(400 * time.Millisecond)
+			if m, err = ig.enviarConsulta(fin, nombre, ruta, c, vars); errors.Is(err, errTemporal) {
+				return nil, err
+			}
+		}
+		if errors.Is(err, errDoc) && !recargada && ig.tokensViejos() {
+			err = errRecargar // puede que sea por los tokens: primero, con la página recién abierta
+		}
 		if errors.Is(err, errRecargar) && !recargada { // otra vez con la página recién abierta
 			recargada = true
 			if _, e := ig.pagina(ruta, true); e == nil {
@@ -583,7 +697,11 @@ func leerRespuestaGraphql(nombre string, st int, cuerpo []byte) (map[string]any,
 	}
 	if ir(m, "data") == nil {
 		if errs := lista(m, "errors"); len(errs) > 0 {
-			logf("%s: %d, %s", nombre, st, corto(txt(errs[0], "message")))
+			msg := txt(errs[0], "message")
+			logf("%s: %d, %s", nombre, st, corto(msg))
+			if strings.Contains(strings.ToLower(msg), "execution error") {
+				return nil, errTemporal
+			}
 		} else {
 			logf("%s: %d, sin datos", nombre, st)
 		}

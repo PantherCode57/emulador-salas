@@ -51,6 +51,7 @@ func main() {
 	megusta := flag.Bool("megusta", false, "con -probar: da «me gusta» a una publicación de tu inicio y lo quita enseguida (cambia tu cuenta)")
 	enviar := flag.String("enviar", "", "con -probar y -chat: manda este texto a ese chat (cambia tu cuenta)")
 	chat := flag.String("chat", "", "con -probar -enviar: el nombre del chat, como sale en la consola")
+	medir := flag.Bool("medir", false, "sin pantalla: cuánto tarda cada cosa con la sesión guardada (solo tiempos)")
 	flag.Parse()
 	if v, err := strconv.Atoi(os.Getenv("POKEMULADOR_ANCHO")); err == nil && v >= 640 {
 		ancho = v
@@ -67,6 +68,10 @@ func main() {
 		return
 	}
 	f := cargarFuentes()
+	if *medir {
+		medirTiempos(f)
+		return
+	}
 	if *prueba != "" {
 		if err := dibujarPruebas(f, *prueba); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -79,7 +84,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if reg, err := os.OpenFile(filepath.Join(carpetaDatos, "registro.txt"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600); err == nil {
+	// el registro se va añadiendo (para ver luego qué ha tardado) y se vacía al pasar de 256 KB
+	modo, rutaReg := os.O_APPEND, filepath.Join(carpetaDatos, "registro.txt")
+	if fi, err := os.Stat(rutaReg); err == nil && fi.Size() > 256<<10 {
+		modo = os.O_TRUNC
+	}
+	if reg, err := os.OpenFile(rutaReg, os.O_CREATE|os.O_WRONLY|modo, 0o600); err == nil {
 		log.SetOutput(io.MultiWriter(reg, os.Stderr))
 	}
 	log.Printf("Instagram de la consola en marcha (%dx%d)", ancho, alto)
@@ -88,6 +98,7 @@ func main() {
 	a.ig = nuevoInstagram(cargarCuenta(filepath.Join(carpetaDatos, "cuenta.json")))
 	a.img = nuevasImagenes(a)
 	a.rep = nuevoReproductorVideo(a.componer, a.videoAcabado, a.videoFallido)
+	a.ad = nuevosAdelantos()
 	botones := make(chan uint16, 64)
 	a.srv = nuevoServidorPantalla(botones)
 	if err := a.srv.escuchar(); err != nil {
@@ -115,6 +126,7 @@ func main() {
 	a.bucle(botones, ra)
 
 	a.rep.cerrar()
+	a.ad.limpiar()
 	a.web.cerrar()
 	ra.cerrar()
 	a.cargaHasta = time.Now().Add(time.Hour)
@@ -141,14 +153,11 @@ func probarSesion(js bool) {
 	log.SetFlags(0)
 	_, _, _, err := ig.QuienSoy()
 	fmt.Println("quién soy:", siError(err))
-	for _, r := range []string{"/", rutaMensajes} {
-		d, err := ig.pagina(r, false)
-		if err != nil {
-			fmt.Printf("página %s: %s\n", r, siError(err))
-			continue
-		}
-		fmt.Printf("página %s: bien (lsd %v, fb_dtsg %v, versión %v, aparato %v, %d JS)\n", r, d.lsd != "", d.dtsg != "",
-			d.hs != "" && d.spinR != "", d.dispDirect != "", len(d.scripts))
+	if d, err := ig.pagina("/", false); err != nil {
+		fmt.Printf("tokens de la página: %s\n", siError(err))
+	} else {
+		fmt.Printf("tokens de la página: bien (lsd %v, fb_dtsg %v, versión %v, aparato %v)\n", d.lsd != "", d.dtsg != "",
+			d.hs != "" && d.spinR != "", d.dispDirect != "")
 	}
 	if js {
 		nombres := make([]string, 0, len(docsIncluidos))

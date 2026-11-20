@@ -17,3 +17,5 @@ func señalGrupo(cmd *exec.Cmd, s syscall.Signal) {
 }
 
 func tamTubo(f *os.File, n int) {}
+
+func bajarPrioridad(pid int) {}

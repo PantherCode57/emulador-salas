@@ -29,11 +29,13 @@ const (
 	frecuencia  = 44100
 	bytesPorSeg = frecuencia * 2 * 2 // estéreo, 16 bits
 	ffmpegBin   = "ffmpeg"
-	aplayBin    = "aplay"
 	ytdlpBin    = "yt-dlp" // no se usa en Instagram (los vídeos llegan con su dirección)
 	maxCola     = 40       // imágenes que pueden ir por delante del sonido (unos 37 MB)
 	tuboSonido  = 16 << 10
 )
+
+// aplayBin: el que suena (en -medir se cambia por uno que no suena).
+var aplayBin = "aplay"
 
 // retrasoSonido: lo que tarda en oírse lo que se manda a aplay (su memoria, la del tubo y la de la
 // tarjeta), menos lo que tarda RetroArch en enseñar una imagen. Se puede afinar sin compilar.
@@ -90,7 +92,8 @@ type reproductorVideo struct {
 	turno     int // sube con cada vídeo o salto: los hilos del ffmpeg viejo se callan
 	marcos    int // imágenes enseñadas en este turno
 	libres    chan []byte
-	tam       int // bytes de cada imagen del vídeo de ahora
+	tam       int        // bytes de cada imagen del vídeo de ahora
+	prep      *preparado // el ffmpeg del vídeo que se va a ver después, ya arrancado
 
 	// Avisos (desde otros hilos).
 	alMarco  func(px []byte, w, h int) // una imagen que hay que enseñar ya
@@ -183,6 +186,11 @@ func fpsSalida(fps float64) float64 {
 	return fps
 }
 
+// sondeo: cuánto lee ffmpeg del vídeo antes de empezar. Por defecto lee hasta 5 MB y 5 s para saber
+// cómo es, y en la consola eso es más de un segundo; los MP4 de Instagram lo dicen todo al principio.
+// (analyzeduration 0 sería «el de siempre», no «nada».)
+var sondeo = []string{"-probesize", "65536", "-analyzeduration", "100000"}
+
 func argsEntrada(ruta string, cab map[string]string, desde time.Duration, decodificar bool) []string {
 	var args []string
 	if strings.HasPrefix(ruta, "http") {
@@ -201,6 +209,7 @@ func argsEntrada(ruta string, cab map[string]string, desde time.Duration, decodi
 		}
 	}
 	if decodificar { // el vídeo: los 4 núcleos y los atajos de H.264 que casi no se notan
+		args = append(args, sondeo...)
 		args = append(args, "-threads", "4", "-flags2", "+fast")
 		if os.Getenv("INSTAGRAM_RAPIDO") == "1" {
 			args = append(args, "-skip_loop_filter", "all")
@@ -212,11 +221,28 @@ func argsEntrada(ruta string, cab map[string]string, desde time.Duration, decodi
 	return append(args, "-i", ruta)
 }
 
-func (r *reproductorVideo) empezar(f *fuenteVideo, desde time.Duration) error {
-	r.pararFfmpeg()
-	if err := r.abrirAplay(); err != nil {
-		return err
-	}
+// preparado: un ffmpeg ya arrancado y esperando. En la consola, solo arrancar ffmpeg tarda 1,5 s
+// (carga unas 200 bibliotecas): el del reel siguiente se arranca mientras se ve este, saca sus
+// primeras imágenes y se queda parado hasta que se lean (sus tubos se llenan). Al pasar al siguiente,
+// sale casi al momento.
+type preparado struct {
+	clave     string
+	cmd, tubo *exec.Cmd
+	vr, ar    *os.File
+	errOut    io.ReadCloser
+	fps       float64
+	w, h      int
+	cuando    time.Time
+}
+
+// claveFuente: qué vídeo y cómo (para saber si el preparado es el que se pide).
+func claveFuente(f *fuenteVideo) string {
+	w, h := f.tamano()
+	return fmt.Sprintf("%s|%s|%dx%d|%g", f.Video, f.Audio, w, h, fpsSalida(f.FPS))
+}
+
+// lanzar arranca ffmpeg para f desde «desde», sin leer aún lo que saca.
+func (r *reproductorVideo) lanzar(f *fuenteVideo, desde time.Duration) (*preparado, error) {
 	fps := fpsSalida(f.FPS)
 	w, h := f.tamano()
 	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error"}
@@ -241,13 +267,13 @@ func (r *reproductorVideo) empezar(f *fuenteVideo, desde time.Duration) error {
 
 	vr, vw, err := os.Pipe()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	ar, aw, err := os.Pipe()
 	if err != nil {
 		vr.Close()
 		vw.Close()
-		return err
+		return nil, err
 	}
 	cmd := exec.Command(ffmpegBin, args...)
 	cmd.Stdout = vw
@@ -256,11 +282,11 @@ func (r *reproductorVideo) empezar(f *fuenteVideo, desde time.Duration) error {
 	if tubo != nil {
 		in, err := tubo.StdoutPipe()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		cmd.Stdin = in
 		if err := tubo.Start(); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	if err := cmd.Start(); err != nil {
@@ -271,11 +297,93 @@ func (r *reproductorVideo) empezar(f *fuenteVideo, desde time.Duration) error {
 		if tubo != nil && tubo.Process != nil {
 			_ = tubo.Process.Kill()
 		}
-		return err
+		return nil, err
 	}
 	vw.Close()
 	aw.Close()
 	tamTubo(vr, 1<<20)
+	tamTubo(ar, 1<<20) // si no, el ffmpeg preparado se para con el sonido antes de sacar la primera imagen
+	return &preparado{clave: claveFuente(f), cmd: cmd, tubo: tubo, vr: vr, ar: ar, errOut: errOut, fps: fps, w: w, h: h,
+		cuando: time.Now()}, nil
+}
+
+// preparar deja arrancado el ffmpeg de un vídeo que se va a ver enseguida (desde el principio).
+func (r *reproductorVideo) preparar(f *fuenteVideo) {
+	if len(f.Tubo) > 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.prep != nil && r.prep.clave == claveFuente(f) {
+		return
+	}
+	r.descartarSinCandado()
+	p, err := r.lanzar(f, 0)
+	if err != nil {
+		logf("preparar un vídeo: %v", err)
+		return
+	}
+	// con menos prioridad, para que no frene el vídeo que se está viendo (sus hilos, que crea después de
+	// cargar las bibliotecas, la heredan)
+	bajarPrioridad(p.cmd.Process.Pid)
+	r.prep = p
+	time.AfterFunc(3*time.Minute, func() { // si no se ha usado, que no se quede ahí esperando
+		r.mu.Lock()
+		if r.prep == p {
+			r.descartarSinCandado()
+		}
+		r.mu.Unlock()
+	})
+}
+
+// descartar: fuera el preparado (al salir de los reels, para no tener un ffmpeg esperando).
+func (r *reproductorVideo) descartar() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.descartarSinCandado()
+}
+
+func (r *reproductorVideo) descartarSinCandado() {
+	p := r.prep
+	if p == nil {
+		return
+	}
+	r.prep = nil
+	for _, c := range []*exec.Cmd{p.cmd, p.tubo} {
+		if c != nil && c.Process != nil {
+			_ = c.Process.Signal(syscall.SIGKILL)
+		}
+	}
+	p.vr.Close()
+	p.ar.Close()
+	go func() {
+		_, _ = io.Copy(io.Discard, p.errOut)
+		_ = p.cmd.Wait()
+		if p.tubo != nil {
+			_ = p.tubo.Wait()
+		}
+	}()
+}
+
+func (r *reproductorVideo) empezar(f *fuenteVideo, desde time.Duration) error {
+	r.pararFfmpeg()
+	if err := r.abrirAplay(); err != nil {
+		return err
+	}
+	var p *preparado
+	if r.prep != nil && desde == 0 && r.prep.clave == claveFuente(f) && time.Since(r.prep.cuando) < 3*time.Minute {
+		p, r.prep = r.prep, nil
+		logf("vídeo: ya estaba preparado (desde hace %.1f s)", time.Since(p.cuando).Seconds())
+	} else {
+		if r.prep != nil && time.Since(r.prep.cuando) >= 3*time.Minute {
+			r.descartarSinCandado()
+		}
+		var err error
+		if p, err = r.lanzar(f, desde); err != nil {
+			return err
+		}
+	}
+	cmd, tubo, vr, ar, errOut, fps, w, h := p.cmd, p.tubo, p.vr, p.ar, p.errOut, p.fps, p.w, p.h
 	r.ffmpeg, r.tubo, r.fuente, r.inicio, r.escritos, r.pausado = cmd, tubo, f, desde, 0, false
 	r.finSonido, r.marcos, r.tam = false, 0, w*h*4
 	r.turno++
@@ -494,6 +602,7 @@ func (r *reproductorVideo) parar() {
 func (r *reproductorVideo) cerrar() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.descartarSinCandado()
 	r.pararFfmpeg()
 	r.fuente = nil
 	r.cerrarAplay()

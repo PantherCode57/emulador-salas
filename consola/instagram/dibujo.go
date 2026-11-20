@@ -202,7 +202,73 @@ func escalar(src image.Image, w, h int, llenar bool) *image.RGBA {
 		sr = image.Rect(x0, y0, x0+cw, y0+ch)
 	}
 	dst := image.NewRGBA(image.Rect(0, 0, w, h))
-	xdraw.CatmullRom.Scale(dst, dst.Bounds(), src, sr, xdraw.Src, nil)
+	if w >= sr.Dx() && h >= sr.Dy() { // ampliar: CatmullRom, que queda más fino
+		xdraw.CatmullRom.Scale(dst, dst.Bounds(), src, sr, xdraw.Src, nil)
+		return dst
+	}
+	// Reducir con CatmullRom es lentísimo en la consola (su núcleo crece con la reducción: una foto de
+	// 1080 a 480 y luego a su tamaño tardaba 1,8 s). Primero por cajas hasta que falte menos del doble
+	// y el resto con ApproxBiLinear (en las fotos, casi igual: menos de 0,1 de 255 de diferencia).
+	if f := min(sr.Dx()/max(w, 1), sr.Dy()/max(h, 1)); f >= 2 {
+		src = reducirCaja(src, sr, f)
+		sr = src.Bounds()
+	}
+	xdraw.ApproxBiLinear.Scale(dst, dst.Bounds(), src, sr, xdraw.Src, nil)
+	return dst
+}
+
+// reducirCaja: la parte sr de src, f veces más pequeña, con la media de cada caja de f×f. Las fotos
+// de Instagram llegan en YCbCr (JPEG y WebP): de esas se hace la media de la luz y el color se toma
+// del centro de la caja, sin pasar cada punto a RGB.
+func reducirCaja(src image.Image, sr image.Rectangle, f int) *image.RGBA {
+	w, h := max(sr.Dx()/f, 1), max(sr.Dy()/f, 1)
+	dst := image.NewRGBA(image.Rect(0, 0, w, h))
+	if s, ok := src.(*image.YCbCr); ok {
+		n := f * f
+		for y := 0; y < h; y++ {
+			y0 := sr.Min.Y + y*f
+			p := dst.PixOffset(0, y)
+			for x := 0; x < w; x++ {
+				x0 := sr.Min.X + x*f
+				suma := 0
+				for j := 0; j < f; j++ {
+					o := s.YOffset(x0, y0+j)
+					for _, v := range s.Y[o : o+f] {
+						suma += int(v)
+					}
+				}
+				c := s.COffset(x0+f/2, y0+f/2)
+				r, g, b := color.YCbCrToRGB(uint8(suma/n), s.Cb[c], s.Cr[c])
+				dst.Pix[p], dst.Pix[p+1], dst.Pix[p+2], dst.Pix[p+3] = r, g, b, 0xff
+				p += 4
+			}
+		}
+		return dst
+	}
+	rgba, ok := src.(*image.RGBA)
+	if !ok {
+		rgba = image.NewRGBA(sr)
+		draw.Draw(rgba, sr, src, sr.Min, draw.Src)
+	}
+	n := uint32(f * f)
+	for y := 0; y < h; y++ {
+		p := dst.PixOffset(0, y)
+		for x := 0; x < w; x++ {
+			var s [4]uint32
+			for j := 0; j < f; j++ {
+				o := rgba.PixOffset(sr.Min.X+x*f, sr.Min.Y+y*f+j)
+				for i := 0; i < f; i++ {
+					for k := 0; k < 4; k++ {
+						s[k] += uint32(rgba.Pix[o+i*4+k])
+					}
+				}
+			}
+			for k := 0; k < 4; k++ {
+				dst.Pix[p+k] = uint8(s[k] / n)
+			}
+			p += 4
+		}
+	}
 	return dst
 }
 

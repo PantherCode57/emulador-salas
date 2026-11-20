@@ -20,7 +20,9 @@ func (a *app) cargarInicio(mas bool) {
 	}
 	t.cargando, t.err = true, ""
 	go func() {
+		desde := time.Now()
 		p, err := a.ig.Inicio(cursor)
+		tarda := time.Since(desde).Seconds()
 		a.hacer(func() {
 			t.cargando, t.cargada = false, true
 			if err != nil {
@@ -33,8 +35,11 @@ func (a *app) cargarInicio(mas bool) {
 			}
 			t.posts = append(t.posts, sinRepetir(t.posts, p.Posts)...)
 			t.cursor, t.mas = p.Cursor, p.Mas
-			logf("inicio: %d publicaciones (%d en total)", len(p.Posts), len(t.posts))
+			logf("inicio: %d publicaciones (%d en total) en %.1f s", len(p.Posts), len(t.posts), tarda)
 			a.adelantarInicio()
+			if !mas { // los reels, un poco después, para que la pestaña salga ya con el primero
+				time.AfterFunc(4*time.Second, func() { a.hacer(a.adelantarReels) })
+			}
 		})
 	}()
 }
@@ -175,11 +180,17 @@ func (a *app) cargarReels(mas bool) {
 	}
 	t.cargando, t.err = true, ""
 	go func() {
+		desde := time.Now()
 		p, err := a.ig.Reels(cursor)
+		tarda := time.Since(desde).Seconds()
 		a.hacer(func() {
 			t.cargando, t.cargada = false, true
 			if err != nil {
 				logf("reels: %v", err)
+				if a.pant != pReels && !mas { // se pedían por adelantado: otra vez al entrar
+					a.reels = tira{}
+					return
+				}
 				// Si no llegan los reels, al menos los vídeos de tu inicio.
 				if vs := soloVideos(a.inicio.posts); !mas && len(vs) > 0 {
 					t.posts, a.selReel, t.mas = vs, 0, false
@@ -197,12 +208,36 @@ func (a *app) cargarReels(mas bool) {
 			}
 			t.posts = append(t.posts, sinRepetir(t.posts, p.Posts)...)
 			t.cursor, t.mas = p.Cursor, p.Mas
-			logf("reels: %d (%d en total)", len(p.Posts), len(t.posts))
+			logf("reels: %d (%d en total) en %.1f s", len(p.Posts), len(t.posts), tarda)
 			if a.pant == pReels {
 				a.ponerReel()
+			} else if !mas {
+				a.prepararPrimerReel()
 			}
 		})
 	}()
+}
+
+// adelantarReels: la lista de reels antes de entrar en la pestaña (si no se ha pedido ya).
+func (a *app) adelantarReels() {
+	if a.pant != pReels && !a.reels.cargada && !a.reels.cargando && a.ig.cuenta.tiene() {
+		a.cargarReels(false)
+	}
+}
+
+// prepararPrimerReel: el primer reel, bajado y con su ffmpeg arrancado, para cuando entres en Reels.
+func (a *app) prepararPrimerReel() {
+	if len(a.reels.posts) == 0 {
+		return
+	}
+	md := a.reels.posts[0].Medios[0]
+	a.ad.pedir(md.Video, func(ruta string) {
+		a.hacer(func() {
+			if a.pant != pReels && a.selReel == 0 && a.reproduciendo == "" {
+				a.rep.preparar(fuenteDe(md, ruta, anchoVert, altoVert))
+			}
+		})
+	})
 }
 
 func (a *app) reelActual() *Post {
@@ -219,6 +254,25 @@ func (a *app) ponerReel() {
 		return
 	}
 	a.tocarVideo("reel:"+p.PK, p.Medios[0], (ancho-anchoVert)/2, 0, anchoVert, altoVert)
+	// el siguiente, ya bajado para cuando llegues (un poco después: primero que arranque este)
+	// y, ya bajado, su ffmpeg arrancado y esperando (arrancar ffmpeg cuesta 1,5 s en la consola)
+	if sel := a.selReel; sel+1 < len(a.reels.posts) {
+		sig := a.reels.posts[sel+1].Medios[0]
+		time.AfterFunc(1500*time.Millisecond, func() {
+			a.hacer(func() {
+				if a.selReel != sel || a.pant != pReels {
+					return
+				}
+				a.ad.pedir(sig.Video, func(ruta string) {
+					a.hacer(func() {
+						if a.selReel == sel && a.pant == pReels {
+							a.rep.preparar(fuenteDe(sig, ruta, anchoVert, altoVert))
+						}
+					})
+				})
+			})
+		})
+	}
 	for k := a.selReel + 1; k <= a.selReel+2 && k < len(a.reels.posts); k++ {
 		a.img.adelantar(a.reels.posts[k].Medios[0].Foto)
 		a.img.adelantar(a.reels.posts[k].FotoUsuario)
@@ -273,7 +327,9 @@ func (a *app) cargarHistorias() {
 	}
 	a.histCarga, a.histErr = true, ""
 	go func() {
+		desde := time.Now()
 		bs, err := a.ig.Historias()
+		tarda := time.Since(desde).Seconds()
 		a.hacer(func() {
 			a.histCarga, a.histHecha = false, true
 			if err != nil {
@@ -292,8 +348,11 @@ func (a *app) cargarHistorias() {
 			}
 			a.bandejas = append(nuevas, vistas...)
 			a.selHist = min(a.selHist, max(len(a.bandejas)-1, 0))
-			logf("historias: %d personas", len(a.bandejas))
-			for _, b := range a.bandejas {
+			logf("historias: %d personas en %.1f s", len(a.bandejas), tarda)
+			for i, b := range a.bandejas { // las de las primeras filas (las demás, al verlas)
+				if i >= carasAdelantadas {
+					break
+				}
 				a.img.adelantar(b.Foto)
 			}
 		})
@@ -301,6 +360,10 @@ func (a *app) cargarHistorias() {
 }
 
 const colsHist = 5
+
+// carasAdelantadas: las caras de la fila de historias que se piden al cargarla (antes se pedían las
+// más de cien de golpe y quitaban sitio y tiempo a las fotos del inicio).
+const carasAdelantadas = 20
 
 func (a *app) pulsarHistorias(b uint16) {
 	n := len(a.bandejas)
@@ -346,7 +409,11 @@ func (a *app) abrirHistoria(k, i int) {
 			a.pedidaHist = true
 			id := b.ID
 			go func() {
+				desde := time.Now()
 				items, err := a.ig.HistoriasDe(id)
+				if err == nil {
+					logf("historias de una persona: %d en %.1f s", len(items), time.Since(desde).Seconds())
+				}
 				a.hacer(func() {
 					a.pedidaHist = false
 					for k := range a.bandejas { // se guardan aunque ya se esté viendo a otra persona
@@ -498,7 +565,11 @@ func (a *app) cargarChats() {
 	}
 	a.chatsCarga, a.chatsErr = true, ""
 	go func() {
+		desde := time.Now()
 		cs, err := a.ig.Chats()
+		if err == nil {
+			logf("mensajes: %d chats en %.1f s", len(cs), time.Since(desde).Seconds())
+		}
 		a.hacer(func() {
 			a.chatsCarga, a.chatsHecho, a.chatsEn = false, true, time.Now()
 			if err != nil {
@@ -570,7 +641,11 @@ func (a *app) cargarChat(antes bool) {
 	}
 	a.chatCarga, a.chatEn = true, time.Now()
 	go func() {
+		desde := time.Now()
 		ms, sig, err := a.ig.Conversacion(c.ID, cursor)
+		if err == nil {
+			logf("conversación: %d mensajes en %.1f s", len(ms), time.Since(desde).Seconds())
+		}
 		a.hacer(func() {
 			a.chatCarga, a.chatEn = false, time.Now()
 			if a.chat != c {
