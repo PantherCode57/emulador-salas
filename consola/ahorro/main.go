@@ -3,8 +3,8 @@
 // (con el menú abierto): normal ~630 mA; con la memoria a 194 MHz y la luz a 60, ~330 mA. El
 // procesador casi no cambia nada (ya baja solo con «ondemand»), así que no se toca.
 //
-//   - Jugando (RetroArch, el emulador de Panther con un juego, PPSSPP, mupen64plus, drastic o un juego
-//     de PortMaster) o viendo vídeos (YouTube, Instagram): todo como estaba (no se toca nada).
+//   - Jugando (RetroArch, el emulador de Panther con un juego, PPSSPP, mupen64plus, drastic, un juego
+//     de PortMaster o Zarpa) o viendo vídeos (YouTube, Instagram): todo como estaba (no se toca nada).
 //   - En el menú o en una app (WhatsApp, Spotin, Claude…): la memoria hasta 328 MHz (como mucho).
 //   - Con la pantalla apagada (SELECT en Spotin): la memoria a 194 MHz y la gráfica a 200 MHz.
 //   - Si en el menú o en una app no tocas nada en 60 s, la pantalla baja a un cuarto de luz, y vuelve
@@ -91,7 +91,8 @@ func queSeHace() estado {
 			return enJuego
 		case prog == "emulador" && strings.Contains(todo, "pokemulador_libretro.so"):
 			// el emulador de Panther haciendo de pantalla de una app
-			if strings.Contains(todo, "/panther/youtube/") || strings.Contains(todo, "/panther/instagram/") {
+			if strings.Contains(todo, "/panther/youtube/") || strings.Contains(todo, "/panther/instagram/") ||
+				strings.Contains(todo, "/panther/zarpa/") { // los vídeos y el juego de Zarpa: a toda velocidad
 				e = max(e, enVideo)
 			} else {
 				e = max(e, enApp)

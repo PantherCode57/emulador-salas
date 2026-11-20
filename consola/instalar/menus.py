@@ -116,6 +116,17 @@ NUEVOS = """	<system>
 		<release>2026</release>
 	</system>
 	<system>
+		<name>zarpa</name>
+		<fullname>Zarpa</fullname>
+		<path>/roms/zarpa/</path>
+		<extension>.sh .SH</extension>
+		<command>%ROM%</command>
+		<platform>zarpa</platform>
+		<theme>zarpa</theme>
+		<manufacturer>Panther OS</manufacturer>
+		<release>2026</release>
+	</system>
+	<system>
 		<name>navegador</name>
 		<fullname>Navegador</fullname>
 		<path>/roms/navegador/</path>
@@ -206,5 +217,5 @@ for r in ("/etc/emulationstation/es_systems.cfg", "/etc/emulationstation/es_syst
     sistemas(Path(r))
 idioma(Path("/home/ark/.emulationstation/es_settings.cfg"))
 for c in ("/roms/whatsapp", "/roms/salas", "/roms/spotin", "/roms/pokemon", "/roms/youtube", "/roms/navegador",
-          "/roms/instagram", "/roms/claude", "/roms/duolingo", "/roms/ajedrez"):
+          "/roms/instagram", "/roms/claude", "/roms/duolingo", "/roms/ajedrez", "/roms/zarpa"):
     Path(c).mkdir(exist_ok=True)

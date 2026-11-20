@@ -82,6 +82,16 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
   - si no tocas nada en 60 s (fuera de juegos y vídeos), baja la luz a un cuarto hasta que pulses algo.
   Medido en el menú: normal ~630 mA; con la memoria baja y poca luz, ~330 mA. El procesador ya baja
   solo («ondemand») y no se toca. `-una-vez` dice qué ve sin cambiar nada.
+- `zarpa/`: Zarpa, un juego de carreras hecho para la consola (original: el personaje, los dibujos y
+  la música son propios y salen del código). Zarpa, una pantera pequeña con bufanda y mochila, corre
+  por una autopista de Los Ángeles al atardecer: tres carriles, vallas que saltar, carteles de
+  autopista para pasar agachada, camiones de tacos que esquivar, estrellas, imán y escudo, y trajes
+  en la tienda. El récord y las estrellas se guardan en `~/.config/panther/zarpa/progreso.json`.
+  Sin internet.
+  - Va a 30 imágenes por segundo: los dibujos se hacen al arrancar (2 s) ya escalados, el suelo va
+    por filas ya pintadas y los dibujos se pegan saltando lo transparente (`rapido.go`): ~11 ms
+    por imagen en la XF35H.
+  - `-prueba <carpeta>` dibuja las pantallas; `-medir` dice cuánto tarda cada imagen.
 - `claude/`: un chat con la conversación de Claude Code abierta en el PC de casa. La consola no
   lleva a Claude dentro: lo que escribes se deja en `~/.config/panther/claude/pendientes/`, el PC
   lo recoge por SSH (y lo mueve a `leidos/`) y deja la respuesta en `respuestas/`. Mientras el PC
