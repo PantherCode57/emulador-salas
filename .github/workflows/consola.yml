@@ -232,7 +232,7 @@ jobs:
   release:
     name: Apps para la Panther Store (release «panther-apps»)
     if: github.event_name == 'push' && github.ref == 'refs/heads/desarrollo'
-    needs: [ programas, mgba ]
+    needs: [ programas, mgba, emulador ]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -253,6 +253,12 @@ jobs:
         with:
           name: consola-mgba-arm64
           path: piezas
+      # El emulador de Panther no es una app de la tienda: lo baja Pokemon.sh si el que hay en la
+      # consola es el que salió sin scripts de Lua.
+      - uses: actions/download-artifact@v4
+        with:
+          name: consola-emulador-arm64
+          path: piezas-emulador
       - name: Piezas con el nombre que busca la tienda
         run: |
           set -euo pipefail
@@ -265,6 +271,7 @@ jobs:
             cp "piezas/$n" subir/
           done
           cp piezas/pokemon-lua/*.lua subir/
+          cp piezas-emulador/emulador/emulador subir/emulador
           for f in subir/*; do
             printf '%s\t%s\t%s\n' "$(basename "$f")" "$(stat -c %s "$f")" "$(sha256sum "$f" | cut -d' ' -f1)"
           done > lista.tsv
