@@ -1,9 +1,15 @@
 name: Consola portátil (arm64)
 
-# Programas de la consola portátil (consola/): el WhatsApp, Spotin, YouTube, Instagram, Claude, el Navegador, la Panther Store, Pokémon con su enlace, la
-# animación de arranque, el núcleo de la pantalla (lakka/nucleo) y el mGBA de Pokemulador (scripts
-# de Lua para GBA-PK), compilados en una máquina arm64 de GitHub. Ninguno lleva claves: el enlace de
-# la consola entra en Tailscale con la cuenta de quien la usa (un QR la primera vez).
+# Programas de la consola portátil (consola/): el WhatsApp, Spotin, YouTube, Instagram, Claude,
+# Duolingo, Ajedrez, Zarpa, el Navegador, la Panther Store, Pokémon con su enlace, la animación de
+# arranque, el núcleo de la pantalla (lakka/nucleo) y el mGBA de Pokemulador (scripts de Lua para
+# GBA-PK), compilados en una máquina arm64 de GitHub. Ninguno lleva claves: el enlace de la consola
+# entra en Tailscale con la cuenta de quien la usa (un QR la primera vez).
+#
+# Al subir a «desarrollo», el trabajo «release» deja las apps en la release «panther-apps» (de
+# prueba, nunca la «latest»), con tienda.json (tamaño y sha256 de cada pieza). De ahí las baja la
+# Panther Store de la consola. La crea y la pone al día GITHUB_TOKEN, así que su etiqueta no lanza
+# publish.yml (lo que hace GITHUB_TOKEN no arranca otros flujos).
 on:
   push:
     branches-ignore: [ master ]
@@ -12,6 +18,7 @@ on:
       - 'lakka/nucleo/**'
       - 'nucleos/mgba/**'
       - 'lakka/nucleos/mgba-linux.sh'
+      - 'terceros/gba-pk/**'
       - '.github/workflows/consola.yml'
   workflow_dispatch:
 
@@ -38,6 +45,9 @@ jobs:
             consola/navegador/go.sum
             consola/instagram/go.sum
             consola/claude/go.sum
+            consola/duolingo/go.sum
+            consola/ajedrez/go.sum
+            consola/zarpa/go.sum
             consola/tienda/go.sum
       - name: WhatsApp
         working-directory: consola/whatsapp
@@ -75,6 +85,25 @@ jobs:
           go vet ./...
           CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/claude .
           ../../piezas/claude -prueba ../../piezas/pantallas-claude
+      - name: Duolingo
+        working-directory: consola/duolingo
+        run: |
+          go vet ./...
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/duolingo .
+          ../../piezas/duolingo -prueba ../../piezas/pantallas-duolingo
+      - name: Ajedrez
+        working-directory: consola/ajedrez
+        run: |
+          go vet ./...
+          go test ./...
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/ajedrez .
+          ../../piezas/ajedrez -prueba ../../piezas/pantallas-ajedrez
+      - name: Zarpa
+        working-directory: consola/zarpa
+        run: |
+          go vet ./...
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/zarpa .
+          ../../piezas/zarpa -prueba ../../piezas/pantallas-zarpa
       - name: Panther Store
         working-directory: consola/tienda
         run: |
@@ -103,7 +132,10 @@ jobs:
           bash lakka/nucleo/compilar.sh
           cp lakka/nucleo/pokemulador_libretro.so piezas/
       - name: Instalación
-        run: cp consola/instalar/* piezas/
+        run: |
+          cp consola/instalar/* piezas/
+          mkdir -p piezas/pokemon-lua
+          cp terceros/gba-pk/*.lua consola/trucos/caramelos-frlg.lua piezas/pokemon-lua/
       - uses: actions/upload-artifact@v4
         with:
           name: consola-arm64
@@ -173,3 +205,67 @@ jobs:
           name: consola-mgba-arm64
           path: nucleo-mgba-linux/mgba_libretro.so
           retention-days: 7
+
+  release:
+    name: Apps para la Panther Store (release «panther-apps»)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/desarrollo'
+    needs: [ programas, mgba ]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    concurrency:
+      group: release-panther-apps
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ETIQUETA: panther-apps
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: consola-arm64
+          path: piezas
+      - uses: actions/download-artifact@v4
+        with:
+          name: consola-mgba-arm64
+          path: piezas
+      - name: Piezas con el nombre que busca la tienda
+        run: |
+          set -euo pipefail
+          mkdir subir
+          # Los nombres son los de «pieza.nombre» en consola/tienda/catalogo.go.
+          for n in whatsapp claude instagram duolingo ajedrez zarpa youtube spotin pokemon navegador \
+                   enlace pokemulador_libretro.so mgba_libretro.so \
+                   WhatsApp.sh Claude.sh Instagram.sh Duolingo.sh Ajedrez.sh Zarpa.sh Youtube.sh \
+                   Spotin.sh Pokemon.sh Navegador.sh; do
+            cp "piezas/$n" subir/
+          done
+          cp piezas/pokemon-lua/*.lua subir/
+          for f in subir/*; do
+            printf '%s\t%s\t%s\n' "$(basename "$f")" "$(stat -c %s "$f")" "$(sha256sum "$f" | cut -d' ' -f1)"
+          done > lista.tsv
+          jq -Rn --arg v "${GITHUB_SHA::12}" --arg f "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{version: $v, fecha: $f, piezas: ([inputs | split("\t") | {(.[0]): {tam: (.[1] | tonumber), sha256: .[2]}}] | add)}' \
+            < lista.tsv > tienda.json
+          cat tienda.json
+      - name: Subir las que han cambiado y, al final, tienda.json
+        run: |
+          set -euo pipefail
+          if ! gh release view "$ETIQUETA" > /dev/null 2>&1; then
+            gh release create "$ETIQUETA" --prerelease --latest=false --target "$GITHUB_SHA" \
+              --title "Apps de Panther OS" \
+              --notes "Las apps de la consola portátil para la Panther Store. La pone al día la compilación de la consola (consola.yml) en cada subida a desarrollo; no hace falta bajarlas a mano."
+          fi
+          gh release view "$ETIQUETA" --json assets -q '.assets[].name' > hay.txt
+          gh release download "$ETIQUETA" -p tienda.json -O viejo.json 2> /dev/null || echo '{}' > viejo.json
+          for f in subir/*; do
+            n=$(basename "$f")
+            antes=$(jq -r --arg n "$n" '.piezas[$n].sha256 // ""' viejo.json)
+            ahora=$(jq -r --arg n "$n" '.piezas[$n].sha256' tienda.json)
+            if [ "$antes" != "$ahora" ] || ! grep -qxF "$n" hay.txt; then
+              echo "sube $n"
+              gh release upload "$ETIQUETA" "$f" --clobber
+            fi
+          done
+          gh release upload "$ETIQUETA" tienda.json --clobber

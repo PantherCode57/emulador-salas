@@ -105,7 +105,8 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
   Sonic Robo Blast 2, SRB2Kart, OpenTTD y OpenTyrian), con su icono, de qué va, lo que ocupa y si ya
   está puesto, y el avance mientras se baja. L y R cambian entre apps y juegos; X abre la ficha.
   - Apps: se bajan de la fuente de la tienda (`TIENDA_FUENTE`, con un `tienda.json` con el tamaño
-    y el sha256 de cada pieza) y, si no hay, se copian de `~/panther-instalar`. Al quitar una app se
+    y el sha256 de cada pieza; por defecto, la release `panther-apps` del repositorio, que pone al
+    día `consola.yml` en cada subida a `desarrollo`) y, si no hay, se copian de `~/panther-instalar`. Al quitar una app se
     guarda tal cual en `~/panther/.guardadas/<app>` (las de `~/panther-instalar` pueden ser más
     viejas) y al volver a ponerla sale la misma; la sesión de `~/.config/panther` no se toca. De
     WhatsApp solo se quita la tarjeta: su programa es el servicio que pinta la hora, la batería y el
