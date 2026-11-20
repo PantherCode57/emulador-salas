@@ -1,6 +1,6 @@
 name: Consola portátil (arm64)
 
-# Programas de la consola portátil (consola/): el WhatsApp, Spotin, YouTube, Instagram, Claude, el Navegador, Pokémon con su enlace, la
+# Programas de la consola portátil (consola/): el WhatsApp, Spotin, YouTube, Instagram, Claude, el Navegador, la Panther Store, Pokémon con su enlace, la
 # animación de arranque, el núcleo de la pantalla (lakka/nucleo) y el mGBA de Pokemulador (scripts
 # de Lua para GBA-PK), compilados en una máquina arm64 de GitHub. Ninguno lleva claves: el enlace de
 # la consola entra en Tailscale con la cuenta de quien la usa (un QR la primera vez).
@@ -38,6 +38,7 @@ jobs:
             consola/navegador/go.sum
             consola/instagram/go.sum
             consola/claude/go.sum
+            consola/tienda/go.sum
       - name: WhatsApp
         working-directory: consola/whatsapp
         run: |
@@ -74,6 +75,13 @@ jobs:
           go vet ./...
           CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/claude .
           ../../piezas/claude -prueba ../../piezas/pantallas-claude
+      - name: Panther Store
+        working-directory: consola/tienda
+        run: |
+          go vet ./...
+          go test ./...
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/tienda .
+          ../../piezas/tienda -prueba ../../piezas/pantallas-tienda
       - name: Pokémon (salas de Pokemulador)
         working-directory: consola/pokemon
         run: |

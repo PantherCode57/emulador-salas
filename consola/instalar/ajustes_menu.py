@@ -38,11 +38,13 @@ poner("bool", "bluetoothIcon", "false")
 poner("string", "ScreenSaverBehavior", "black")
 # Lista de juegos con tarjetas (vista «grid» del tema) solo en los apartados de juegos y en las
 # colecciones; Opciones, Herramientas, etc. se quedan con su lista.
-for sistema in ("gb", "gbc", "gba", "n64", "nds", "ppsspp", "all", "favorites", "recent"):
+# Los juegos de PortMaster (los que pone la Panther Store en /roms/ports) también: la tienda les hace
+# su tarjeta de la lista.
+for sistema in ("gb", "gbc", "gba", "n64", "nds", "ppsspp", "ports", "all", "favorites", "recent"):
     poner("string", f"{sistema}.defaultView", "grid")
 # Con el menú de Panther OS: WhatsApp y Salas se abren sin pasar por su lista (si tienen un solo
 # .sh) y la pantalla de Wi-Fi usa el fondo de las listas.
-poner("string", "PantherDirectLaunch", "whatsapp,spotin,pokemon,youtube,navegador,instagram,claude,duolingo,ajedrez,zarpa,salas")
+poner("string", "PantherDirectLaunch", "whatsapp,spotin,pokemon,youtube,navegador,instagram,claude,duolingo,ajedrez,zarpa,tienda,salas")
 poner("string", "PantherWifiBackground", "/roms/themes/es-theme-panther/_panther/fondo-lista.jpg")
 # Pantalla principal: solo Favoritos, WhatsApp y Emuladores (las consolas), en ese orden y quietas.
 # Fuera RetroArch (las opciones están en el engranaje), «Todos» y lo que trae el sistema que no son
@@ -56,7 +58,8 @@ poner("string", "HiddenSystems", ";".join(ocultos))
 # Sin colecciones automáticas en la pantalla principal (el usuario quitó «Favoritos» el 16/11/2026;
 # las marcas de favorito de los juegos se quedan).
 poner("string", "CollectionSystemsAuto", "")
-poner("string", "PantherSystemOrder", "whatsapp,claude,instagram,duolingo,ajedrez,zarpa,youtube,spotin,pokemon,navegador,Emuladores,salas")
+# Los juegos de la Panther Store («Ports») van antes de Emuladores, y la tienda, después.
+poner("string", "PantherSystemOrder", "whatsapp,claude,instagram,duolingo,ajedrez,zarpa,youtube,spotin,pokemon,navegador,ports,Emuladores,tienda,salas")
 poner("string", "Emuladores.defaultView", "grid")
 # Carpeta de piezas del tema para las pantallas propias (letra, fondo, bordes).
 poner("string", "PantherPiezas", "/roms/themes/es-theme-panther/_panther")

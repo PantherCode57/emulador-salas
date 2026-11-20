@@ -99,6 +99,29 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
   ahora». Los mensajes se guardan en `chat.jsonl` (los 300 últimos). Teclado en pantalla como en
   Instagram; START envía.
   - `-prueba <carpeta>` dibuja las pantallas con una conversación inventada.
+- `tienda/`: la Panther Store. Pone y quita con A las apps de Panther OS (WhatsApp, Claude,
+  Instagram, Duolingo, Ajedrez, Zarpa, YouTube, Spotin, Pokémon y Navegador) y juegos libres de PortMaster
+  que ya vienen con sus datos («ready to run» y sin «power»: Cave Story, Celeste Classic, SuperTux,
+  Sonic Robo Blast 2, SRB2Kart, OpenTTD y OpenTyrian), con su icono, de qué va, lo que ocupa y si ya
+  está puesto, y el avance mientras se baja. L y R cambian entre apps y juegos; X abre la ficha.
+  - Apps: se bajan de la fuente de la tienda (`TIENDA_FUENTE`, con un `tienda.json` con el tamaño
+    y el sha256 de cada pieza) y, si no hay, se copian de `~/panther-instalar`. Al quitar una app se
+    guarda tal cual en `~/panther/.guardadas/<app>` (las de `~/panther-instalar` pueden ser más
+    viejas) y al volver a ponerla sale la misma; la sesión de `~/.config/panther` no se toca. De
+    WhatsApp solo se quita la tarjeta: su programa es el servicio que pinta la hora, la batería y el
+    volumen. Si se quita Spotin, YouTube se queda con su yt-dlp.
+  - Juegos: como PortMaster, en `/roms/ports` (el .sh y su carpeta). Lee el `ports.json` de
+    PortMaster (cada 12 h) para la dirección, el md5 y el tamaño, y deja de ofrecer los que dejen
+    de ser «rtr» o pidan «power» o «2gb». Los apunta en `/roms/ports/gamelist.xml` con su nombre y
+    su descripción en español y les hace la tarjeta de la lista (`images/panther/`), como en los
+    otros apartados. Las capturas salen del repositorio de PortMaster. Al quitar un juego se borran
+    sus partidas (están en su carpeta), y lo pregunta.
+  - Las tarjetas: EmulationStation solo las cambia al reiniciarse. Al salir de la tienda, si has
+    cambiado algo, deja en marcha (`systemd-run`) `tienda -reiniciar-es <pid>`, que espera a que la
+    tienda se cierre y a que no haya ninguna app ni juego abierto, y lo reinicia.
+  - `-prueba <carpeta>` dibuja las pantallas con datos inventados; `-tarjeta <png>` dibuja su
+    tarjeta (264×152) con las letras del tema; `-lista`, `-poner <id>` y `-quitar <id>` hacen lo
+    mismo que los botones por SSH (sin reiniciar EmulationStation).
 - `arranque/`: animación de arranque que dibuja en `/dev/fb0` a 60 fps antes de EmulationStation.
   Las letras se cargan de `/usr/local/share/panther/arranque` (`titulo.png`, `subtitulo.png`,
   `posiciones.txt`); no están en el repositorio.
