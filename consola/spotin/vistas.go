@@ -65,19 +65,9 @@ func (a *app) dibujarCarga() {
 	l.centrado(image.Rect(0, alto-48, ancho, alto-20), "Panther OS", l.f.mini, colSuave)
 }
 
-// hora: arriba a la derecha (la del menú: «20:15»).
-func (a *app) hora(grande bool) {
-	t := time.Now()
-	if t.Year() < 2001 {
-		return
-	}
-	s := t.Format("15:04")
-	if grande {
-		a.l.texto(ancho-20-medir(a.l.f.horaGrande, s), 14+a.l.f.horaGrande.Metrics().Ascent.Round(), s, a.l.f.horaGrande, colTexto)
-	} else {
-		a.l.derecha(image.Rect(ancho-150, 22, ancho-24, 58), s, a.l.f.hora, colTexto)
-	}
-}
+// hora: ya no se pinta: la hora sale en el recuadro negro de arriba a la derecha (el del servicio
+// de WhatsApp, con la batería), y aquí estaba repetida.
+func (a *app) hora(grande bool) {}
 
 // translucido: rectángulo blanco transparente (las filas de las listas).
 func (a *app) translucido(r image.Rectangle, radio int, alfa uint8) {

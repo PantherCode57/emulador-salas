@@ -111,14 +111,9 @@ func (a *app) dibujarVolumen() {
 	l.derecha(image.Rect(x1+6, r.Min.Y, r.Max.X-14, r.Max.Y), fmt.Sprintf("%d %%", a.volumen), l.f.pequena, colTexto)
 }
 
-func (a *app) hora(grande bool) {
-	t := time.Now()
-	if t.Year() < 2001 {
-		return
-	}
-	s := t.Format("15:04")
-	a.l.derecha(image.Rect(ancho-150, 22, ancho-24, 58), s, a.l.f.hora, colTexto)
-}
+// hora: ya no se pinta: la hora sale en el recuadro negro de arriba a la derecha (el del servicio
+// de WhatsApp, con la batería), y aquí estaba repetida.
+func (a *app) hora(grande bool) {}
 
 func (a *app) translucido(r image.Rectangle, radio int, alfa uint8) {
 	a.l.redondeado(r, radio, color.RGBA{alfa, alfa, alfa, alfa})
@@ -599,13 +594,9 @@ func (a *app) dibujarViendo() {
 		return
 	}
 	// Arriba: título y canal (si no los tapa el volumen o un aviso).
-	l := a.l
 	tapado := a.avisoTexto != "" || (!a.volHasta.IsZero() && a.volumen >= 0)
 	if !tapado {
 		a.tituloViendo(v)
-	}
-	if t := time.Now(); t.Year() >= 2001 {
-		l.derecha(image.Rect(ancho-110, 8, ancho-24, 50), t.Format("15:04"), l.f.hora, colTexto)
 	}
 	a.barraViendo(v, area.Max.Y)
 }
@@ -721,10 +712,7 @@ func (a *app) alrededorCorto(v Video, area image.Rectangle) {
 	if n := len(a.cola); n > 1 {
 		l.izquierda(image.Rect(izq.Min.X, alto-44, izq.Max.X, alto-20), fmt.Sprintf("%d de %d", a.colaI+1, n), l.f.pequena, colApagado)
 	}
-	// Derecha: la hora, el tiempo y los botones.
-	if t := time.Now(); t.Year() >= 2001 {
-		l.derecha(image.Rect(der.Min.X, 8, der.Max.X, 50), t.Format("15:04"), l.f.hora, colTexto)
-	}
+	// Derecha: el tiempo y los botones (la hora ya sale en el recuadro de arriba).
 	pos, dur := a.tiempos(v)
 	ic := icPausa
 	if a.rep.enPausa() || a.cargando {

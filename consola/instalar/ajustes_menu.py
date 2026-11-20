@@ -31,6 +31,11 @@ poner("bool", "ShowBatteryIndicator", "true")
 t = re.sub(r'<bool name="ShowBattery" value="[^"]*" />\n?', "", t)
 poner("string", "ShowBattery", "text")
 poner("bool", "networkIcon", "true")
+# Sin el icono del Bluetooth (la consola no lo usa). Además, el menú no lo cuenta al calcular el ancho
+# de los iconos de arriba a la derecha: con él, todo se corría y el porcentaje se salía de la pantalla.
+poner("bool", "bluetoothIcon", "false")
+# El salvapantallas, negro: el de «vídeo al azar» ponía vídeos y gastaba batería sin que nadie mirase.
+poner("string", "ScreenSaverBehavior", "black")
 # Lista de juegos con tarjetas (vista «grid» del tema) solo en los apartados de juegos y en las
 # colecciones; Opciones, Herramientas, etc. se quedan con su lista.
 for sistema in ("gb", "gbc", "gba", "n64", "nds", "ppsspp", "all", "favorites", "recent"):

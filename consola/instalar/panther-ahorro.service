@@ -1,0 +1,12 @@
+[Unit]
+Description=Ahorro de batería de Panther OS (memoria y luz según lo que se esté haciendo)
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/panther-ahorro
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

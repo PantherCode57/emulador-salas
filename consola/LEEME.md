@@ -74,6 +74,14 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
   El YouTube de la consola hace lo mismo (`youtube/ytdlp_servidor.py`, con las mismas opciones que la
   línea de órdenes y la misma respuesta que `yt-dlp -J`): el primer vídeo tarda ~11 s (baja el
   reproductor de YouTube) y los siguientes ~5,5 s, en vez de ~27 s cada uno.
+- `ahorro/`: ahorro de batería (`panther-ahorro.service`, como root; se instala con
+  `instalar/instalar_ahorro.sh`). Mira cada segundo qué se hace:
+  - jugando o viendo vídeos (YouTube, Instagram) no toca nada;
+  - en el menú y en las apps ligeras deja la memoria (DMC) hasta 328 MHz;
+  - con la pantalla apagada, memoria a 194 MHz y gráfica a 200 MHz;
+  - si no tocas nada en 60 s (fuera de juegos y vídeos), baja la luz a un cuarto hasta que pulses algo.
+  Medido en el menú: normal ~630 mA; con la memoria baja y poca luz, ~330 mA. El procesador ya baja
+  solo («ondemand») y no se toca. `-una-vez` dice qué ve sin cambiar nada.
 - `claude/`: un chat con la conversación de Claude Code abierta en el PC de casa. La consola no
   lleva a Claude dentro: lo que escribes se deja en `~/.config/panther/claude/pendientes/`, el PC
   lo recoge por SSH (y lo mueve a `leidos/`) y deja la respuesta en `respuestas/`. Mientras el PC
