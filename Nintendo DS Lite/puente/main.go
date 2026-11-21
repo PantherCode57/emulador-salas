@@ -35,6 +35,10 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata" // en Android no está la base de husos horarios: va dentro (y TZ la pone la app)
+
+	// Los certificados para hablar con WhatsApp por TLS, dentro: en Android no están donde Go los busca
+	// (y en un móvil antiguo pueden estar caducados). Solo se usan si no encuentra los del sistema.
+	_ "golang.org/x/crypto/x509roots/fallback"
 )
 
 const version = "1"

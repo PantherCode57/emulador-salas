@@ -4,6 +4,7 @@ go 1.27.4
 
 require (
 	go.mau.fi/whatsmeow v0.0.0-20261113220833-ecc39170bc14
+	golang.org/x/crypto/x509roots/fallback v0.0.0-20261115193255-739070949446
 	google.golang.org/protobuf v1.36.12
 	modernc.org/sqlite v1.62.0
 )
