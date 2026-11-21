@@ -20,6 +20,7 @@ on:
       - 'nucleos/mgba/**'
       - 'lakka/nucleos/mgba-linux.sh'
       - 'terceros/gba-pk/**'
+      - 'Nintendo DS Lite/**'
       - '.github/workflows/consola.yml'
   workflow_dispatch:
 
@@ -51,6 +52,7 @@ jobs:
             consola/zarpa/go.sum
             consola/tienda/go.sum
             consola/pokedex/go.sum
+            consola/pasards/go.sum
       - name: WhatsApp
         working-directory: consola/whatsapp
         run: |
@@ -126,6 +128,13 @@ jobs:
           go test ./...
           CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/pokedex .
           ../../piezas/pokedex -prueba ../../piezas/pantallas-pokedex
+      - name: Pasar a la DS
+        working-directory: consola/pasards
+        run: |
+          go vet ./...
+          go test ./...
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/pasards .
+          ../../piezas/pasards -prueba ../../piezas/pantallas-pasards
       - name: Enlace de las salas (sin clave)
         working-directory: consola/enlace
         run: |
@@ -244,10 +253,35 @@ jobs:
           path: nucleo-mgba-linux/mgba_libretro.so
           retention-days: 7
 
+  nds:
+    name: Panther OS para la Nintendo DS Lite (panther.nds, para «Pasar a la DS»)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "Nintendo DS Lite/letras/go.mod"
+          cache-dependency-path: "Nintendo DS Lite/letras/go.sum"
+      - name: Compilar panther.nds (como nintendo-ds.yml)
+        run: |
+          set -euo pipefail
+          cp -r "Nintendo DS Lite" /tmp/ds
+          (cd /tmp/ds/letras && go run -mod=mod . -salida ../generado/letras.c)
+          docker run --rm -v /tmp/ds:/work -w /work skylyrac/blocksds:slim-v1.25.0 make -j4
+          mkdir -p piezas-nds
+          cp /tmp/ds/panther.nds piezas-nds/
+          ls -la piezas-nds
+      - uses: actions/upload-artifact@v4
+        with:
+          name: consola-nds
+          path: piezas-nds/
+          retention-days: 7
+
   release:
     name: Apps para la Panther Store (release «panther-apps»)
     if: github.event_name == 'push' && github.ref == 'refs/heads/desarrollo'
-    needs: [ programas, mgba, emulador ]
+    needs: [ programas, mgba, emulador, nds ]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -274,20 +308,25 @@ jobs:
         with:
           name: consola-emulador-arm64
           path: piezas-emulador
+      - uses: actions/download-artifact@v4
+        with:
+          name: consola-nds
+          path: piezas-nds
       - name: Piezas con el nombre que busca la tienda
         run: |
           set -euo pipefail
           mkdir subir
           # Los nombres son los de «pieza.nombre» en consola/tienda/catalogo.go.
           # «tienda» es la propia Panther Store: se la baja ella misma al abrirse si es otra.
-          for n in whatsapp claude instagram duolingo ajedrez zarpa youtube spotin pokemon pokedex navegador \
+          for n in whatsapp claude instagram duolingo ajedrez zarpa youtube spotin pokemon pokedex navegador pasards \
                    tienda enlace pokemulador_libretro.so mgba_libretro.so \
                    WhatsApp.sh Claude.sh Instagram.sh Duolingo.sh Ajedrez.sh Zarpa.sh Youtube.sh \
-                   Spotin.sh Pokemon.sh Pokedex.sh Navegador.sh; do
+                   Spotin.sh Pokemon.sh Pokedex.sh Navegador.sh PasarDS.sh; do
             cp "piezas/$n" subir/
           done
           cp piezas/pokemon-lua/*.lua subir/
           cp piezas-emulador/emulador/emulador subir/emulador
+          cp piezas-nds/panther.nds subir/panther.nds
           for f in subir/*; do
             printf '%s\t%s\t%s\n' "$(basename "$f")" "$(stat -c %s "$f")" "$(sha256sum "$f" | cut -d' ' -f1)"
           done > lista.tsv

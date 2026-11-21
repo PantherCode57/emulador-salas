@@ -112,8 +112,23 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
     Mientras la app está abierta va bajando de fondo los que faltan (unos 2 MB en total), así que
     luego salen sin internet. Sin conexión se ve un hueco. Lo demás no necesita internet.
   - `-prueba <carpeta>` dibuja las pantallas con una colección inventada.
+- `pasards/`: «Pasar a la DS». Copia Panther OS para la Nintendo DS Lite (`panther.nds`, de la
+  carpeta «Nintendo DS Lite» del repositorio) a la microSD de la flashcard. No hace falta lector:
+  se usa la ranura de la consola, que es la misma de la tarjeta de Panther OS.
+  - `PasarDS.sh` lo copia a la memoria (`/dev/shm/pasards`) y lo arranca desde allí como servicio
+    aparte (`systemd-run`). Desde ese momento no necesita nada de la tarjeta.
+  - El programa para EmulationStation, quita la memoria de intercambio y deja la tarjeta de Panther
+    OS guardada y en solo lectura (`sync` y sysrq «u»).
+  - Luego se cambia la tarjeta por la de la flashcard. La nueva se reconoce porque su CID es otro.
+    Si la consola no la nota, al pulsar un botón suelta el lector de la ranura y lo vuelve a coger
+    (`unbind`/`bind`).
+  - En la raíz de la tarjeta de la flashcard solo se añade `panther.nds`. La tarjeta tiene que ser
+    FAT32.
+  - Al volver a meter la de Panther OS, la reconoce por su CID y reinicia la consola.
+  - Si no se pulsa nada en 30 s, se cancela y vuelve el menú.
+  - `-prueba <carpeta>` dibuja todas sus pantallas.
 - `tienda/`: la Panther Store. Pone y quita con A las apps de Panther OS (WhatsApp, Claude,
-  Instagram, Duolingo, Ajedrez, Zarpa, YouTube, Spotin, Pokémon, Pokédex y Navegador) y juegos libres de PortMaster
+  Instagram, Duolingo, Ajedrez, Zarpa, YouTube, Spotin, Pokémon, Pokédex, Navegador y Pasar a la DS) y juegos libres de PortMaster
   que ya vienen con sus datos («ready to run» y sin «power»: Cave Story, Celeste Classic, SuperTux,
   Sonic Robo Blast 2, SRB2Kart, OpenTTD y OpenTyrian), con su icono, de qué va, lo que ocupa y si ya
   está puesto, y el avance mientras se baja. L y R cambian entre apps y juegos; X abre la ficha.

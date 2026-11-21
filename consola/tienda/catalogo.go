@@ -139,6 +139,11 @@ func catalogoApps() []*elemento {
 			"Un navegador sencillo para leer páginas web con los botones.",
 			"Un navegador para leer páginas web en la consola: textos, imágenes y enlaces, que se recorren con la cruceta, y el teclado en pantalla para escribir direcciones y buscar.",
 			color.RGBA{0x1e, 0x88, 0xe5, 0xff}, ""),
+		app("pasards", "Pasar a la DS", "PasarDS.sh",
+			"Copia Panther OS para la Nintendo DS Lite a la tarjeta de la flashcard.",
+			"Pasa Panther OS para la Nintendo DS Lite (panther.nds) a la tarjeta microSD de la flashcard sin lector, por la ranura de la consola: deja la tarjeta de Panther OS guardada y en solo lectura, la cambias por la de la flashcard, le copia panther.nds y, cuando vuelves a meter la de Panther OS, la consola se reinicia sola. No se borra nada de la tarjeta de la flashcard.",
+			color.RGBA{0x8c, 0x6c, 0xf0, 0xff}, "",
+			pieza{nombre: "panther.nds", locales: []string{"panther.nds"}, destino: "panther.nds", modo: 0o644}),
 	}
 	for _, e := range lista {
 		switch e.id {
