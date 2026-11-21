@@ -149,7 +149,7 @@ const char *plat_wifi_ip(void)
 	return estado == RED_CONECTADA ? ip_texto : "";
 }
 
-static void wifi_paso(void)
+static void red_paso(void)
 {
 	if (!wifi_ok)
 		return;
@@ -287,7 +287,7 @@ int main(int argc, char **argv)
 			e.tx = t.px;
 			e.ty = t.py;
 		}
-		wifi_paso();
+		red_paso();
 		puente_paso();
 		bool cambio = sistema_paso(&e, arriba, abajo);
 		cothread_yield_irq(IRQ_VBLANK);

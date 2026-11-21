@@ -73,7 +73,7 @@ void wifi_arrancar(void)
 
 const char *wifi_resumen(void)
 {
-	static char s[96];
+	static char s[128];
 	char nombre[40], ip[20];
 	switch (plat_wifi_estado()) {
 	case RED_APAGADA:
