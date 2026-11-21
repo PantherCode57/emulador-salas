@@ -1,0 +1,49 @@
+name: Nintendo DS Lite
+
+# Panther OS para la Nintendo DS Lite (la carpeta «Nintendo DS Lite»): prueba en el PC con fotos de
+# todas las pantallas y panther.nds para la tarjeta de la flashcard, con BlocksDS.
+on:
+  push:
+    branches: [desarrollo, master]
+    paths:
+      - "Nintendo DS Lite/**"
+      - ".github/workflows/nintendo-ds.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ds:
+    name: Panther OS para la DS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "Nintendo DS Lite/letras/go.mod"
+          cache-dependency-path: "Nintendo DS Lite/letras/go.sum"
+      - name: Copiar la carpeta (make no se lleva bien con los espacios del nombre)
+        run: cp -r "Nintendo DS Lite" /tmp/ds
+      - name: Dibujar las letras
+        working-directory: /tmp/ds/letras
+        run: go run -mod=mod . -salida ../generado/letras.c
+      - name: Probar en el PC (y sacar fotos de las pantallas)
+        working-directory: /tmp/ds
+        run: |
+          gcc -std=gnu11 -O1 -g -Wall -Werror -fsanitize=address,undefined -fno-sanitize-recover=all \
+            source/*.c generado/letras.c pc/prueba.c -lm -o prueba
+          ./prueba fotos tarjeta | tee prueba.txt
+          grep -q "prueba ds: todo bien" prueba.txt
+      - name: Compilar para la DS (BlocksDS)
+        working-directory: /tmp/ds
+        run: |
+          docker run --rm -v /tmp/ds:/work -w /work skylyrac/blocksds:slim-v1.25.0 make -j4
+          ls -la panther.nds
+      - uses: actions/upload-artifact@v4
+        with:
+          name: panther-ds
+          path: |
+            /tmp/ds/panther.nds
+            /tmp/ds/fotos/

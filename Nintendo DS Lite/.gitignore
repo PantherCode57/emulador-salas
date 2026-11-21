@@ -1,0 +1,9 @@
+# Lo que se genera al compilar (no va a git)
+generado/
+build/
+*.nds
+*.elf
+prueba
+fotos/
+tarjeta/
+para-la-tarjeta/

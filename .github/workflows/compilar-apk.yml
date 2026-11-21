@@ -20,6 +20,8 @@ on:
       - 'panther-android/**'
       - '.github/workflows/panther-android.yml'
       - '.github/workflows/emulationstation.yml'
+      - 'Nintendo DS Lite/**'
+      - '.github/workflows/nintendo-ds.yml'
   workflow_dispatch:
 
 env:

@@ -1,0 +1,7 @@
+module pokemulador/nds/letras
+
+go 1.27.4
+
+require golang.org/x/image v0.48.0
+
+require golang.org/x/text v0.44.0 // indirect
