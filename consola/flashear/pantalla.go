@@ -98,10 +98,7 @@ func (l lienzo) parrafo(f font.Face, x, y, w int, s string, c color.Color) int {
 	return y
 }
 
-func dibujar(v vista) *image.RGBA {
-	letras()
-	img := image.NewRGBA(image.Rect(0, 0, ancho, alto))
-	l := lienzo{img}
+func fondo(l lienzo, titulo string) {
 	for y := 0; y < alto; y++ {
 		k := float64(y) / alto
 		c := color.RGBA{
@@ -111,32 +108,109 @@ func dibujar(v vista) *image.RGBA {
 		l.rect(0, y, ancho, 1, c)
 	}
 	l.rect(0, 0, ancho, 44, color.RGBA{0, 0, 0, 150})
-	l.texto(lTitulo, 24, 10, "Pasar a la DS", colBlanco)
+	l.texto(lTitulo, 24, 10, titulo, colBlanco)
 	w := medir(lPeq, "Panther OS")
 	l.texto(lPeq, ancho-24-w, 14, "Panther OS", colGris)
-	// la línea violeta del arranque
-	for x := 0; x < ancho; x++ {
+	for x := 0; x < ancho; x++ { // la línea violeta del arranque
 		d := float64(x-ancho/2) / (ancho / 2)
-		a := 1 - d*d
-		if a > 0 {
+		if a := 1 - d*d; a > 0 {
 			l.rect(x, 44, 1, 2, color.NRGBA{196, 170, 255, uint8(200 * a)})
 		}
 	}
+}
 
+// dibujarMenu: una lista para elegir (o marcar) con la cruceta.
+func dibujarMenu(m *menu) *image.RGBA {
+	letras()
+	img := image.NewRGBA(image.Rect(0, 0, ancho, alto))
+	l := lienzo{img}
+	fondo(l, "Flashear tarjeta")
+	x, an := 32, ancho-64
+	y := l.parrafo(lGrande, x, 58, an, m.titulo, colBlanco) + 2
+	if m.explica != "" {
+		y = l.parrafo(lPeq, x, y, an, m.explica, colSuave) + 4
+	}
+	// Las filas que caben, con la elegida a la vista.
+	altoFila := 34
+	if m.conDetalle() {
+		altoFila = 54
+	}
+	caben := (408 - y) / altoFila
+	if caben < 1 {
+		caben = 1
+	}
+	primera := 0
+	if m.sel >= caben {
+		primera = m.sel - caben + 1
+	}
+	for i := primera; i < len(m.ops) && i < primera+caben; i++ {
+		o := m.ops[i]
+		fy := y + (i-primera)*altoFila
+		if i == m.sel {
+			l.rect(x-8, fy, an+16, altoFila-4, colPanel)
+			l.rect(x-8, fy, 4, altoFila-4, colVioleta)
+		}
+		tx := x + 4
+		if m.multiple { // la casilla: verde si está marcada
+			bx, by := tx, fy+7
+			if o.marcada {
+				l.rect(bx, by, 18, 18, colVerde)
+				l.rect(bx+5, by+5, 8, 8, colBlanco)
+			} else {
+				l.rect(bx, by, 18, 18, colGris)
+				l.rect(bx+2, by+2, 14, 14, colPanel)
+			}
+			tx += 30
+		}
+		col := colBlanco
+		if o.apagada {
+			col = colGris
+		}
+		l.texto(lNormal, tx, fy+5, o.titulo, col)
+		if o.detalle != "" {
+			l.textoCorto(lPeq, tx, fy+29, ancho-tx-32, o.detalle, colGris)
+		}
+	}
+	if len(m.ops) > caben { // hay más abajo o arriba
+		s := fmt.Sprintf("%d de %d", m.sel+1, len(m.ops))
+		l.texto(lPeq, ancho-32-medir(lPeq, s), 412, s, colGris)
+	}
+	ayuda := m.ayuda
+	if ayuda == "" {
+		ayuda = "A elegir     B volver"
+		if m.multiple {
+			ayuda = "A marcar     X todo     Y nada     START seguir     B volver"
+		}
+	}
+	l.rect(0, 440, ancho, 40, color.RGBA{0, 0, 0, 150})
+	l.texto(lPeq, (ancho-medir(lPeq, ayuda))/2, 451, ayuda, colGris)
+	return img
+}
+
+func (l lienzo) textoCorto(f font.Face, x, y, max int, s string, c color.Color) {
+	if medir(f, s) > max {
+		r := []rune(s)
+		for len(r) > 0 && medir(f, string(r)+"…") > max {
+			r = r[:len(r)-1]
+		}
+		s = string(r) + "…"
+	}
+	l.texto(f, x, y, s, c)
+}
+
+// dibujar: las pantallas de cambiar la tarjeta.
+func dibujar(v vista) *image.RGBA {
+	letras()
+	img := image.NewRGBA(image.Rect(0, 0, ancho, alto))
+	l := lienzo{img}
+	fondo(l, "Flashear tarjeta")
+	otra := v.otra
+	if otra == "" {
+		otra = "la otra tarjeta"
+	}
 	x, y, an := 40, 72, ancho-80
 	pie := ""
 	switch v.estado {
-	case eInicio:
-		y = l.parrafo(lGrande, x, y, an, "Copiar Panther OS a la tarjeta de la flashcard", colBlanco) + 10
-		y = l.parrafo(lNormal, x, y, an, "1. Pulsa un botón. La consola cierra el menú y deja su tarjeta guardada y en solo lectura.", colSuave) + 4
-		y = l.parrafo(lNormal, x, y, an, "2. Saca la tarjeta de Panther OS y mete la de la flashcard: se le copia panther.nds.", colSuave) + 4
-		y = l.parrafo(lNormal, x, y, an, "3. Saca la de la flashcard y vuelve a meter la de Panther OS: la consola se reinicia sola.", colSuave) + 6
-		l.parrafo(lPeq, x, y, an, "Solo se añade panther.nds: no se borra nada de la tarjeta de la flashcard.", colGris)
-		l.rect(40, 376, ancho-80, 56, colPanel)
-		s := "Pulsa cualquier botón para empezar"
-		l.texto(lTitulo, (ancho-medir(lTitulo, s))/2, 384, s, colVioleta)
-		s = fmt.Sprintf("Si no pulsas nada, se cancela en %d s", v.cuenta)
-		l.texto(lPeq, (ancho-medir(lPeq, s))/2, 410, s, colGris)
 	case ePreparando:
 		y = l.parrafo(lGrande, x, 170, an, "Preparando la tarjeta…", colBlanco) + 8
 		l.parrafo(lNormal, x, y, an, "No la saques todavía.", colAmarillo)
@@ -144,17 +218,22 @@ func dibujar(v vista) *image.RGBA {
 		y = l.parrafo(lGrande, x, 150, an, "No se puede hacer ahora", colRojo) + 8
 		l.parrafo(lNormal, x, y, an, v.mensaje, colSuave)
 	case eSacar:
-		y = l.parrafo(lGrande, x, y, an, "Saca la tarjeta de Panther OS y mete la de la flashcard", colBlanco) + 10
+		y = l.parrafo(lGrande, x, y, an, "Saca la tarjeta de Panther OS y mete "+otra, colBlanco) + 10
 		y = l.parrafo(lNormal, x, y, an, "Ya puedes sacarla: está guardada y en solo lectura, no se estropea.", colVerde) + 4
-		l.parrafo(lNormal, x, y, an, "Si después de meter la de la flashcard no pasa nada, pulsa un botón para que la consola mire la ranura otra vez.", colSuave)
+		l.parrafo(lNormal, x, y, an, "Si después de meter la otra no pasa nada, pulsa un botón para que la consola mire la ranura otra vez.", colSuave)
 		pie = "ranura"
 	case eCopiando:
-		y = l.parrafo(lGrande, x, 170, an, "Copiando panther.nds…", colBlanco) + 8
+		y = l.parrafo(lGrande, x, 170, an, "Copiando…", colBlanco) + 8
 		l.parrafo(lNormal, x, y, an, "No saques la tarjeta.", colAmarillo)
 	case eListo:
-		y = l.parrafo(lGrande, x, y, an, "¡Listo! Panther OS ya está en la tarjeta de la flashcard", colVerde) + 10
-		y = l.parrafo(lNormal, x, y, an, "Sácala y vuelve a meter la de Panther OS. La consola se reiniciará sola.", colBlanco) + 4
-		l.parrafo(lNormal, x, y, an, "En la DS: mete la tarjeta en la flashcard y abre «Panther OS» (panther.nds) en su menú.", colSuave)
+		y = l.parrafo(lGrande, x, y, an, "¡Listo! Ya está en "+otra, colVerde) + 10
+		for _, r := range v.hecho {
+			y = l.parrafo(lPeq, x, y, an, "· "+r, colSuave)
+		}
+		y = l.parrafo(lNormal, x, y+6, an, "Sácala y vuelve a meter la de Panther OS. La consola se reiniciará sola.", colBlanco) + 2
+		if v.luego != "" {
+			l.parrafo(lPeq, x, y, an, v.luego, colGris)
+		}
 		pie = "ranura"
 	case eError:
 		y = l.parrafo(lGrande, x, y, an, "No se ha podido copiar", colRojo) + 8
@@ -166,8 +245,7 @@ func dibujar(v vista) *image.RGBA {
 	}
 	if pie != "" {
 		l.rect(40, 360, ancho-80, 40, colPanel)
-		s := "En la ranura: " + v.ranura
-		l.texto(lNormal, 56, 368, s, colVioleta)
+		l.texto(lNormal, 56, 368, "En la ranura: "+v.ranura, colVioleta)
 		l.parrafo(lPeq, x, 414, an, "Si se queda parada: apaga la consola con el botón, mete la tarjeta de Panther OS y enciéndela.", colGris)
 	}
 	return img
@@ -175,12 +253,14 @@ func dibujar(v vista) *image.RGBA {
 
 var hayFB = true
 
-// pintar: en la pantalla (/dev/fb0, como la animación de arranque), si se puede.
-func pintar(v vista) {
+func pintar(v vista)     { mostrar(dibujar(v)) }
+func pintarMenu(m *menu) { mostrar(dibujarMenu(m)) }
+
+// mostrar: en la pantalla (/dev/fb0, como la animación de arranque), si se puede.
+func mostrar(img *image.RGBA) {
 	if !hayFB {
 		return
 	}
-	img := dibujar(v)
 	leer := func(f string) string {
 		b, _ := os.ReadFile("/sys/class/graphics/fb0/" + f)
 		return strings.TrimSpace(string(b))
@@ -228,23 +308,40 @@ func pruebas(dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	imgs := map[string]*image.RGBA{}
+	imgs["1-consolas"] = dibujarMenu(menuConsolas())
+	imgs["2-darkos"] = dibujarMenu(menuTieneDarkOS())
+	imgs["3-para-quien"] = dibujarMenu(menuParaQuien())
+	apps := []appTienda{{"whatsapp", "WhatsApp", "app", true}, {"youtube", "YouTube", "app", true},
+		{"spotin", "Spotin", "app", true}, {"instagram", "Instagram", "app", false}, {"pokemon", "Pokémon", "app", true},
+		{"zarpa", "Zarpa", "app", false}, {"cceleste.zip", "Celeste Classic", "juego", false},
+		{"cave.story-evo.zip", "Cave Story", "juego", true}, {"opentyrian.zip", "OpenTyrian", "juego", false}}
+	imgs["4-que-pasar"] = dibujarMenu(menuApps(apps))
+	ps := []partida{{"Pokemon - Edicion Esmeralda", "", 131072}, {"Pokemon - Rojo Fuego", "", 131072}, {"Mario Kart", "", 512}}
+	imgs["5-partidas-gba"] = dibujarMenu(menuPartidas(ps))
+	c := carga{resumen: []string{"La Panther Store y 5 apps y juegos (se ponen solas cuando esa consola tenga internet): WhatsApp, YouTube, Spotin, Pokémon, Cave Story",
+		"Tus cuentas de 4 apps (WhatsApp no: se vincula otra vez)", "1 wifi guardado", "12 partidas (sin los juegos: esos los pones tú)"}}
+	imgs["6-confirmar"] = dibujarMenu(menuConfirmar(destinos[2], c))
+	imgs["7-sin-darkos"] = dibujarMenu(menuSinDarkOS())
 	vistas := map[string]vista{
-		"1-inicio":      {estado: eInicio, cuenta: 27},
-		"2-preparando":  {estado: ePreparando},
-		"3-sacar":       {estado: eSacar, ranura: "la tarjeta de Panther OS"},
-		"4-sacar-vacia": {estado: eSacar, ranura: "vacía"},
-		"5-copiando":    {estado: eCopiando, ranura: "otra tarjeta (8 GB)"},
-		"6-listo":       {estado: eListo, ranura: "otra tarjeta (8 GB)"},
-		"7-error":       {estado: eError, ranura: "otra tarjeta (8 GB)", mensaje: "no se puede abrir esa tarjeta: tiene que ser FAT32, como la piden las flashcards"},
-		"8-no-se-puede": {estado: eNoSePuede, mensaje: "no se puede quitar la memoria de intercambio: exit status 255"},
-		"9-reiniciando": {estado: eReiniciando},
+		"8-preparando":   {estado: ePreparando},
+		"9-sacar":        {estado: eSacar, otra: "la de la otra consola", ranura: "la tarjeta de Panther OS"},
+		"10-copiando":    {estado: eCopiando, ranura: "otra tarjeta (32 GB)"},
+		"11-listo":       {estado: eListo, otra: "la de la otra consola", ranura: "otra tarjeta (32 GB)", hecho: c.resumen, luego: textoLuego("darkos")},
+		"12-listo-ds":    {estado: eListo, otra: "la de la flashcard", ranura: "otra tarjeta (2 GB)", hecho: []string{"Panther OS para la DS (panther.nds, 349 KB)"}, luego: textoLuego("ds")},
+		"13-error":       {estado: eError, ranura: "otra tarjeta (8 GB)", mensaje: "esa tarjeta no tiene dArkOS (no hay una partición del sistema)"},
+		"14-no-se-puede": {estado: eNoSePuede, mensaje: "La tarjeta de Panther OS no se deja proteger (/roms, la tiene abierta «retroarch»). No has sacado nada: vuelves al menú."},
+		"15-reiniciando": {estado: eReiniciando},
 	}
 	for n, v := range vistas {
+		imgs[n] = dibujar(v)
+	}
+	for n, img := range imgs {
 		f, err := os.Create(filepath.Join(dir, n+".png"))
 		if err != nil {
 			return err
 		}
-		err = png.Encode(f, dibujar(v))
+		err = png.Encode(f, img)
 		f.Close()
 		if err != nil {
 			return err

@@ -70,7 +70,25 @@ func main() {
 	poner := flag.String("poner", "", "pone una app o un juego (claude, cceleste.zip…) sin pantalla y sale")
 	quitar := flag.String("quitar", "", "quita una app o un juego sin pantalla y sale")
 	lista := flag.Bool("lista", false, "dice lo que hay en la tienda y lo que está puesto, y sale")
+	listaJ := flag.Bool("lista-json", false, "lo mismo que -lista, en JSON (para «Flashear tarjeta»)")
+	alta := flag.Bool("alta-tienda", false, "pone la Panther Store en el menú (en una consola nueva) y sale")
 	flag.Parse()
+	if *listaJ {
+		if err := listaJSON(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *alta {
+		_ = os.MkdirAll(carpetaDatos, 0o700)
+		abrirRegistro()
+		if err := altaTienda(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if v, err := strconv.Atoi(os.Getenv("POKEMULADOR_ANCHO")); err == nil && v >= 640 {
 		ancho = v
 	}

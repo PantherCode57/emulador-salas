@@ -112,23 +112,35 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
     Mientras la app está abierta va bajando de fondo los que faltan (unos 2 MB en total), así que
     luego salen sin internet. Sin conexión se ve un hueco. Lo demás no necesita internet.
   - `-prueba <carpeta>` dibuja las pantallas con una colección inventada.
-- `pasards/`: «Pasar a la DS». Copia Panther OS para la Nintendo DS Lite (`panther.nds`, de la
-  carpeta «Nintendo DS Lite» del repositorio) a la microSD de la flashcard. No hace falta lector:
-  se usa la ranura de la consola, que es la misma de la tarjeta de Panther OS.
-  - `PasarDS.sh` lo copia a la memoria (`/dev/shm/pasards`) y lo arranca desde allí como servicio
-    aparte (`systemd-run`). Desde ese momento no necesita nada de la tarjeta.
-  - El programa para EmulationStation, quita la memoria de intercambio y deja la tarjeta de Panther
-    OS guardada y en solo lectura (`sync` y sysrq «u»).
-  - Luego se cambia la tarjeta por la de la flashcard. La nueva se reconoce porque su CID es otro.
-    Si la consola no la nota, al pulsar un botón suelta el lector de la ranura y lo vuelve a coger
-    (`unbind`/`bind`).
-  - En la raíz de la tarjeta de la flashcard solo se añade `panther.nds`. La tarjeta tiene que ser
-    FAT32.
-  - Al volver a meter la de Panther OS, la reconoce por su CID y reinicia la consola.
-  - Si no se pulsa nada en 30 s, se cancela y vuelve el menú.
-  - `-prueba <carpeta>` dibuja todas sus pantallas.
+- `flashear/`: «Flashear tarjeta». Pasa Panther OS a la tarjeta de otra consola, sin lector y por
+  la ranura de esta, que es la misma de la tarjeta de Panther OS. Al abrirla se elige la consola:
+  - **Nintendo DS con flashcard:** Panther OS para la DS (`panther.nds`, de «Nintendo DS Lite/»).
+  - **Game Boy Advance con flashcard:** tus partidas de GBA (solo si es para ti). Van a `SAVER/`
+    (EZ-Flash Omega), a `GBASYS/save/` (EverDrive) o al lado del juego. La que hubiera se guarda como
+    `.sav.antes`.
+  - **Consola china con dArkOS:** antes pregunta si la tarjeta ya tiene dArkOS; si está vacía, de
+    momento hay que ponérselo con un PC.
+    - Se elige qué apps y juegos libres pasar, con `tienda -lista-json`.
+    - Se dejan en la tarjeta la Panther Store, la lista y un servicio (`panther-flasheo`). En cuanto
+      esa consola tiene internet, el servicio baja el emulador de Panther y su núcleo, pone la
+      Store en el menú (`tienda -alta-tienda`) y las apps (`tienda -poner`), y se quita.
+    - Si es para ti, también van tus cuentas de `~/.config/panther` (menos la sesión de WhatsApp,
+      que se vincula otra vez), tus wifis y tus partidas.
+    - Para otra persona no va nada tuyo, ni la app Claude.
+  - Nunca se pasan juegos comerciales.
+  - El cambio de tarjeta es como antes:
+    - `Flashear.sh` copia el programa a la memoria (`/dev/shm/flashear`) y lo arranca como
+      servicio aparte.
+    - Lo que se va a pasar se lee antes, a la memoria.
+    - Se paran EmulationStation y los servicios de Panther, y la tarjeta de Panther OS queda en
+      solo lectura o congelada.
+    - Se cambia la tarjeta (un botón hace mirar la ranura otra vez) y se escribe solo lo elegido.
+    - Al volver la de Panther OS (por su CID), la consola se reinicia.
+  - Se maneja con la cruceta, A, B, X, Y y START (los botones se leen como en el WhatsApp).
+  - `-prueba <carpeta>` dibuja todas sus pantallas; `-instalador` escribe el script que se deja en
+    las consolas con dArkOS.
 - `tienda/`: la Panther Store. Pone y quita con A las apps de Panther OS (WhatsApp, Claude,
-  Instagram, Duolingo, Ajedrez, Zarpa, YouTube, Spotin, Pokémon, Pokédex, Navegador y Pasar a la DS) y juegos libres de PortMaster
+  Instagram, Duolingo, Ajedrez, Zarpa, YouTube, Spotin, Pokémon, Pokédex, Navegador y Flashear tarjeta) y juegos libres de PortMaster
   que ya vienen con sus datos («ready to run» y sin «power»: Cave Story, Celeste Classic, SuperTux,
   Sonic Robo Blast 2, SRB2Kart, OpenTTD y OpenTyrian), con su icono, de qué va, lo que ocupa y si ya
   está puesto, y el avance mientras se baja. L y R cambian entre apps y juegos; X abre la ficha.

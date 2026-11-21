@@ -139,9 +139,9 @@ func catalogoApps() []*elemento {
 			"Un navegador sencillo para leer páginas web con los botones.",
 			"Un navegador para leer páginas web en la consola: textos, imágenes y enlaces, que se recorren con la cruceta, y el teclado en pantalla para escribir direcciones y buscar.",
 			color.RGBA{0x1e, 0x88, 0xe5, 0xff}, ""),
-		app("pasards", "Pasar a la DS", "PasarDS.sh",
-			"Copia Panther OS para la Nintendo DS Lite a la tarjeta de la flashcard.",
-			"Pasa Panther OS para la Nintendo DS Lite (panther.nds) a la tarjeta microSD de la flashcard sin lector, por la ranura de la consola: deja la tarjeta de Panther OS guardada y en solo lectura, la cambias por la de la flashcard, le copia panther.nds y, cuando vuelves a meter la de Panther OS, la consola se reinicia sola. No se borra nada de la tarjeta de la flashcard.",
+		app("flashear", "Flashear tarjeta", "Flashear.sh",
+			"Pasa Panther OS a la tarjeta de otra consola (DS, GBA o una china con dArkOS).",
+			"Pasa Panther OS a la tarjeta de otra consola sin lector, por la ranura de esta: Panther OS para la Nintendo DS con flashcard, tus partidas a una Game Boy Advance con flashcard, o las apps de Panther OS a una consola china con dArkOS (se ponen solas cuando tenga internet). Si es para ti, también tus cuentas, tus wifis y tus partidas; si es para otra persona, nada tuyo. Deja la tarjeta de Panther OS guardada y en solo lectura mientras la cambias, y al volver a meterla la consola se reinicia sola. Nunca pasa juegos comerciales.",
 			color.RGBA{0x8c, 0x6c, 0xf0, 0xff}, "",
 			pieza{nombre: "panther.nds", locales: []string{"panther.nds"}, destino: "panther.nds", modo: 0o644}),
 	}

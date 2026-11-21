@@ -7,9 +7,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,13 +19,13 @@ import (
 	"time"
 )
 
-const memoria = "/dev/shm/pasards"
+const memoria = "/dev/shm/flashear"
 
 // rutaRegistro: el registro en la memoria; en registroGuardado se deja una copia mientras la
 // tarjeta se puede escribir, para poder mirarlo después.
 var rutaRegistro string
 
-const registroGuardado = "/home/ark/panther/pasards/registro.txt"
+const registroGuardado = "/home/ark/panther/flashear/registro.txt"
 
 func guardarRegistro() {
 	if b, err := os.ReadFile(rutaRegistro); err == nil {
@@ -96,7 +98,7 @@ func serviciosPanther() []string {
 	var r []string
 	for _, l := range strings.Split(string(out), "\n") {
 		c := strings.Fields(l)
-		if len(c) > 0 && strings.HasPrefix(c[0], "panther-") && !strings.HasPrefix(c[0], "panther-pasards") {
+		if len(c) > 0 && strings.HasPrefix(c[0], "panther-") && !strings.HasPrefix(c[0], "panther-flashear") {
 			r = append(r, c[0])
 		}
 	}
@@ -270,69 +272,207 @@ func deshacer(disco string, antes map[string]bool) {
 	guardarRegistro()
 }
 
-// copiarA: panther.nds a la raíz de la tarjeta de la flashcard. No toca nada más.
-func copiarA(t tarjeta, datos []byte) error {
-	nombre, dev, err := particion(t.disco)
+// --- Escribir en la otra tarjeta ---
+
+// particionMontada: una partición de la otra tarjeta, montada en la memoria.
+type particionMontada struct {
+	nombre, tipo, punto string
+}
+
+// montarParticiones: todas las particiones de la tarjeta, montadas (con lectura y escritura) en
+// /dev/shm/flashear/p1, p2… con el tipo que se deje (ext4, vfat o exfat).
+func montarParticiones(t tarjeta) ([]particionMontada, func(), error) {
+	d := filepath.Join(raizSys, "block", t.disco)
+	m, _ := filepath.Glob(filepath.Join(d, t.disco+"p*"))
+	sort.Strings(m)
+	if len(m) == 0 {
+		m = []string{d} // sin tabla de particiones: la tarjeta entera
+	}
+	var ps []particionMontada
+	soltar := func() {
+		syscall.Sync()
+		for i := len(ps) - 1; i >= 0; i-- {
+			if err := syscall.Unmount(ps[i].punto, 0); err != nil {
+				log.Printf("umount %s: %v", ps[i].punto, err)
+				_ = syscall.Unmount(ps[i].punto, syscall.MNT_DETACH)
+			}
+		}
+	}
+	for i, x := range m {
+		nombre := filepath.Base(x)
+		dev := leerSys(filepath.Join(x, "dev"))
+		var maj, min uint32
+		if _, err := fmt.Sscanf(dev, "%d:%d", &maj, &min); err != nil {
+			continue
+		}
+		nodo := "/dev/" + nombre
+		if st, err := os.Stat(nodo); err != nil || st.Mode()&os.ModeDevice == 0 {
+			nodo = fmt.Sprintf("/dev/flashear-%d", i)
+			_ = os.Remove(nodo)
+			if err := syscall.Mknod(nodo, syscall.S_IFBLK|0o600, int(mkdev(maj, min))); err != nil {
+				continue
+			}
+		}
+		punto := fmt.Sprintf("%s/p%d", memoria, i+1)
+		_ = os.MkdirAll(punto, 0o755)
+		for _, tipo := range []struct{ fs, op string }{{"ext4", ""}, {"vfat", "utf8,shortname=mixed"}, {"vfat", ""}, {"exfat", ""}} {
+			if err := syscall.Mount(nodo, punto, tipo.fs, syscall.MS_NOATIME, tipo.op); err == nil {
+				ps = append(ps, particionMontada{nombre: nombre, tipo: tipo.fs, punto: punto})
+				log.Printf("montada %s (%s)", nombre, tipo.fs)
+				break
+			}
+		}
+	}
+	if len(ps) == 0 {
+		return nil, soltar, errors.New("no se puede abrir ninguna partición de esa tarjeta (¿es de esa consola?)")
+	}
+	return ps, soltar, nil
+}
+
+// escribir: los archivos en una partición montada.
+func escribir(raiz string, as []archivo) error {
+	for _, a := range as {
+		ruta := filepath.Join(raiz, filepath.FromSlash(a.ruta))
+		if err := os.MkdirAll(filepath.Dir(ruta), 0o755); err != nil {
+			return fmt.Errorf("%s: %v", a.ruta, err)
+		}
+		if a.enlace != "" {
+			_ = os.Remove(ruta)
+			if err := os.Symlink(a.enlace, ruta); err != nil {
+				return fmt.Errorf("%s: %v", a.ruta, err)
+			}
+			continue
+		}
+		f, err := os.OpenFile(ruta, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, a.modo)
+		if err != nil {
+			return fmt.Errorf("%s: %v", a.ruta, err)
+		}
+		_, errw := f.Write(a.datos)
+		errs := f.Sync()
+		errc := f.Close()
+		if err := errors.Join(errw, errs, errc); err != nil {
+			return fmt.Errorf("%s: %v", a.ruta, err)
+		}
+		_ = os.Chmod(ruta, a.modo)
+		if a.ark {
+			_ = os.Chown(ruta, 1000, 1000)
+			for dir := filepath.Dir(ruta); strings.HasPrefix(dir, filepath.Join(raiz, "home", "ark")+"/"); dir = filepath.Dir(dir) {
+				_ = os.Chown(dir, 1000, 1000)
+			}
+		}
+	}
+	return nil
+}
+
+// rutasDe: los archivos y carpetas de una partición (3 niveles), para ver qué flashcard es.
+func rutasDe(raiz string) []string {
+	var r []string
+	_ = filepath.WalkDir(raiz, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || p == raiz {
+			return nil
+		}
+		rel, _ := filepath.Rel(raiz, p)
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() && strings.Count(rel, "/") >= 2 {
+			return filepath.SkipDir
+		}
+		r = append(r, rel)
+		return nil
+	})
+	return r
+}
+
+// escribirCarga: lo elegido, en la otra tarjeta. No toca nada más de ella.
+func escribirCarga(t tarjeta, c carga) error {
+	ps, soltar, err := montarParticiones(t)
+	defer soltar()
 	if err != nil {
 		return err
 	}
-	var maj, min uint32
-	if _, err := fmt.Sscanf(dev, "%d:%d", &maj, &min); err != nil {
-		return fmt.Errorf("%s: %v", nombre, err)
-	}
-	_ = os.MkdirAll(memoria, 0o755)
-	// El disco lo pone el núcleo en /dev (devtmpfs, en la memoria). Si no está, se hace en /dev, que
-	// sí deja abrir discos (/dev/shm no: es «nodev»).
-	nodo := "/dev/" + nombre
-	if st, err := os.Stat(nodo); err != nil || st.Mode()&os.ModeDevice == 0 {
-		nodo = "/dev/pasards-flashcard"
-		_ = os.Remove(nodo)
-		if err := syscall.Mknod(nodo, syscall.S_IFBLK|0o600, int(mkdev(maj, min))); err != nil {
-			return fmt.Errorf("no se puede abrir la tarjeta: %v", err)
+	switch c.destino {
+	case "ds", "gba":
+		var fat *particionMontada
+		for i := range ps {
+			if ps[i].tipo == "vfat" {
+				fat = &ps[i]
+				break
+			}
 		}
-	}
-	log.Printf("tarjeta de la flashcard: %s (%s)", nodo, dev)
-	punto := memoria + "/flashcard"
-	_ = os.MkdirAll(punto, 0o755)
-	var errm error
-	for _, opciones := range []string{"utf8,shortname=mixed", "utf8", ""} {
-		if errm = syscall.Mount(nodo, punto, "vfat", syscall.MS_NOATIME, opciones); errm == nil {
-			break
+		if fat == nil {
+			return errors.New("esa tarjeta no es FAT32, como la piden las flashcards")
 		}
-	}
-	if errm != nil {
-		log.Printf("mount %s: %v", nombre, errm)
-		return errors.New("no se puede abrir esa tarjeta: tiene que ser FAT32, como la piden las flashcards")
-	}
-	defer func() {
-		syscall.Sync()
-		if err := syscall.Unmount(punto, 0); err != nil {
-			log.Printf("umount: %v", err)
-			_ = syscall.Unmount(punto, syscall.MNT_DETACH)
+		if err := escribir(fat.punto, c.raiz); err != nil {
+			return fmt.Errorf("no se ha podido escribir: %v", err)
 		}
-	}()
-	if ls, err := os.ReadDir(punto); err == nil {
-		var n []string
-		for _, e := range ls {
-			n = append(n, e.Name())
+		if len(c.partidas) > 0 {
+			hay := rutasDe(fat.punto)
+			for _, p := range c.partidas {
+				juego := strings.TrimSuffix(p.ruta, ".sav")
+				sitio := sitioPartida(hay, juego)
+				ruta := filepath.Join(fat.punto, filepath.FromSlash(sitio))
+				if _, err := os.Stat(ruta); err == nil { // la que hubiera, guardada
+					_ = os.Rename(ruta, ruta+".antes")
+				}
+				p.ruta = sitio
+				if err := escribir(fat.punto, []archivo{p}); err != nil {
+					return fmt.Errorf("no se ha podido escribir la partida de %s: %v", juego, err)
+				}
+				log.Printf("partida de %s en %s", juego, sitio)
+			}
 		}
-		log.Printf("en la tarjeta (%s): %s", nombre, strings.Join(n, ", "))
-	}
-	destino := punto + "/panther.nds"
-	f, err := os.OpenFile(destino, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		return fmt.Errorf("no se puede escribir en la tarjeta: %v", err)
-	}
-	_, errw := f.Write(datos)
-	errs := f.Sync()
-	errc := f.Close()
-	if err := errors.Join(errw, errs, errc); err != nil {
-		return fmt.Errorf("no se ha podido escribir panther.nds: %v", err)
-	}
-	if got, err := os.ReadFile(destino); err != nil || !bytes.Equal(got, datos) {
-		return errors.New("panther.nds no ha quedado bien en la tarjeta")
+		for _, a := range c.raiz {
+			got, err := os.ReadFile(filepath.Join(fat.punto, filepath.FromSlash(a.ruta)))
+			if err != nil || !bytes.Equal(got, a.datos) {
+				return fmt.Errorf("%s no ha quedado bien en la tarjeta", a.ruta)
+			}
+		}
+	case "darkos":
+		var sistema, roms *particionMontada
+		for i := range ps {
+			p := &ps[i]
+			switch {
+			case p.tipo == "ext4" && existeRuta(filepath.Join(p.punto, "etc", "os-release")):
+				sistema = p
+			case p.tipo != "ext4" && esDeJuegos(p.punto):
+				roms = p
+			}
+		}
+		if sistema == nil {
+			return errors.New("esa tarjeta no tiene dArkOS (no hay una partición del sistema): primero hay que ponérselo con un PC")
+		}
+		if !existeRuta(filepath.Join(sistema.punto, "home", "ark")) {
+			return errors.New("esa tarjeta tiene un sistema, pero no es dArkOS (no está el usuario ark)")
+		}
+		if err := escribir(sistema.punto, c.sistema); err != nil {
+			return fmt.Errorf("no se ha podido escribir en el sistema: %v", err)
+		}
+		if len(c.roms) > 0 {
+			if roms == nil {
+				log.Printf("no encuentro la partición de los juegos: las partidas no van")
+			} else if err := escribir(roms.punto, c.roms); err != nil {
+				return fmt.Errorf("no se han podido escribir las partidas: %v", err)
+			}
+		}
+	default:
+		return fmt.Errorf("no sé escribir para %q", c.destino)
 	}
 	return nil
+}
+
+func existeRuta(p string) bool {
+	_, err := os.Lstat(p)
+	return err == nil
+}
+
+// esDeJuegos: la partición de los juegos de dArkOS (con carpetas como gba, nes, psx o ports).
+func esDeJuegos(punto string) bool {
+	n := 0
+	for _, s := range []string{"gba", "gb", "gbc", "nes", "snes", "psx", "ports", "n64", "nds", "psp"} {
+		if existeRuta(filepath.Join(punto, s)) {
+			n++
+		}
+	}
+	return n >= 2
 }
 
 func reiniciar() {

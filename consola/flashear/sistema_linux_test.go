@@ -13,7 +13,7 @@ func TestQuienEscribe(t *testing.T) {
 		{"/roms", "/roms", true},
 		{"/romsviejo/x", "/roms", false},
 		{"/home/ark/x", "/", true},
-		{"/dev/shm/pasards/registro.txt", "/", false},
+		{"/dev/shm/flashear/registro.txt", "/", false},
 		{"/run/user/1000/x", "/", false},
 		{"/boot/Image", "/boot/", true},
 	}

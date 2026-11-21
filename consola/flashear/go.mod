@@ -1,4 +1,4 @@
-module pokemulador/consola/pasards
+module pokemulador/consola/flashear
 
 go 1.27.4
 

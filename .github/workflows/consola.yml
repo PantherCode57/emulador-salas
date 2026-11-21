@@ -52,7 +52,7 @@ jobs:
             consola/zarpa/go.sum
             consola/tienda/go.sum
             consola/pokedex/go.sum
-            consola/pasards/go.sum
+            consola/flashear/go.sum
       - name: WhatsApp
         working-directory: consola/whatsapp
         run: |
@@ -128,13 +128,15 @@ jobs:
           go test ./...
           CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/pokedex .
           ../../piezas/pokedex -prueba ../../piezas/pantallas-pokedex
-      - name: Pasar a la DS
-        working-directory: consola/pasards
+      - name: Flashear tarjeta
+        working-directory: consola/flashear
         run: |
           go vet ./...
           go test ./...
-          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/pasards .
-          ../../piezas/pasards -prueba ../../piezas/pantallas-pasards
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/flashear .
+          ../../piezas/flashear -prueba ../../piezas/pantallas-flashear
+          ../../piezas/flashear -instalador > /tmp/instalador.sh
+          bash -n /tmp/instalador.sh
       - name: Enlace de las salas (sin clave)
         working-directory: consola/enlace
         run: |
@@ -254,7 +256,7 @@ jobs:
           retention-days: 7
 
   nds:
-    name: Panther OS para la Nintendo DS Lite (panther.nds, para «Pasar a la DS»)
+    name: Panther OS para la Nintendo DS Lite (panther.nds, para «Flashear tarjeta»)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -318,10 +320,10 @@ jobs:
           mkdir subir
           # Los nombres son los de «pieza.nombre» en consola/tienda/catalogo.go.
           # «tienda» es la propia Panther Store: se la baja ella misma al abrirse si es otra.
-          for n in whatsapp claude instagram duolingo ajedrez zarpa youtube spotin pokemon pokedex navegador pasards \
+          for n in whatsapp claude instagram duolingo ajedrez zarpa youtube spotin pokemon pokedex navegador flashear \
                    tienda enlace pokemulador_libretro.so mgba_libretro.so \
                    WhatsApp.sh Claude.sh Instagram.sh Duolingo.sh Ajedrez.sh Zarpa.sh Youtube.sh \
-                   Spotin.sh Pokemon.sh Pokedex.sh Navegador.sh PasarDS.sh; do
+                   Spotin.sh Pokemon.sh Pokedex.sh Navegador.sh Flashear.sh; do
             cp "piezas/$n" subir/
           done
           cp piezas/pokemon-lua/*.lua subir/
