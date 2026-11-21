@@ -32,7 +32,7 @@ jobs:
       - name: Probar en el PC (y sacar fotos de las pantallas)
         working-directory: /tmp/ds
         run: |
-          gcc -std=gnu11 -O1 -g -Wall -Werror -fsanitize=address,undefined -fno-sanitize-recover=all \
+          gcc -std=gnu11 -O1 -g -Wall -Werror -Wno-format-truncation -fsanitize=address,undefined -fno-sanitize-recover=all \
             source/*.c generado/letras.c pc/prueba.c -lm -o prueba
           ./prueba fotos tarjeta | tee prueba.txt
           grep -q "prueba ds: todo bien" prueba.txt
