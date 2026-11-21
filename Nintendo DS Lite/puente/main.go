@@ -10,21 +10,31 @@
 //   - Se habla con líneas de texto: cada respuesta es «R <n>» y n líneas (protocolo.go).
 //   - WhatsApp (wa_real.go): su propia sesión, vinculada desde la DS con el número de teléfono.
 //
-// Uso: puente-ds [-datos carpeta] [-puerto 8790] [-codigo 123456] [-nombre texto] [-falso [-sin-vincular]]
+// Uso: puente-ds [-datos carpeta] [-puerto 8790] [-codigo 123456] [-nombre texto] [-dns ip:53,…]
 //
+//	[-probar-red] [-falso [-sin-vincular]]
 //	-falso         WhatsApp de mentira (para las pruebas de la DS en el PC)
 //	-sin-vincular  con -falso, empieza sin vincular (para probar la vinculación)
+//	-dns           los servidores DNS (en Android no hay /etc/resolv.conf: los pasa la app)
+//	-probar-red    al arrancar, mira si se llega a WhatsApp (DNS y TLS) y lo dice en el registro
+//
+// En Android lo arranca la app «Puente DS» (android/), que lo lleva como libpuente.so.
 package main
 
 import (
+	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"log"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+	_ "time/tzdata" // en Android no está la base de husos horarios: va dentro (y TZ la pone la app)
 )
 
 const version = "1"
@@ -36,7 +46,16 @@ func main() {
 	nombre := flag.String("nombre", "Puente de Panther", "cómo sale en la DS")
 	falso := flag.Bool("falso", false, "WhatsApp de mentira")
 	sinVincular := flag.Bool("sin-vincular", false, "con -falso, empieza sin vincular")
+	dns := flag.String("dns", "", "servidores DNS (ip:puerto separados por comas)")
+	probarRed := flag.Bool("probar-red", false, "mirar al arrancar si se llega a WhatsApp")
 	flag.Parse()
+	log.SetFlags(log.Ldate | log.Ltime)
+	if *dns != "" {
+		usarDNS(strings.Split(*dns, ","))
+	}
+	if *probarRed {
+		go comprobarRed()
+	}
 
 	c := *codigo
 	if c == "" {
@@ -92,4 +111,44 @@ func codigoGuardado(dir string) (string, error) {
 		return "", err
 	}
 	return c, os.WriteFile(ruta, []byte(c+"\n"), 0o600)
+}
+
+// usarDNS: los servidores DNS que se le dicen (en Android no hay /etc/resolv.conf).
+func usarDNS(servidores []string) {
+	net.DefaultResolver = &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			var d net.Dialer
+			var ultimo error
+			for _, s := range servidores {
+				s = strings.TrimSpace(s)
+				if s == "" {
+					continue
+				}
+				if !strings.Contains(s, ":") || strings.Count(s, ":") > 1 && !strings.HasPrefix(s, "[") {
+					s = net.JoinHostPort(s, "53")
+				}
+				c, err := d.DialContext(ctx, network, s)
+				if err == nil {
+					return c, nil
+				}
+				ultimo = err
+			}
+			return nil, ultimo
+		},
+	}
+}
+
+// comprobarRed: si se llega a WhatsApp (el DNS y los certificados del sistema), en el registro.
+func comprobarRed() {
+	for intento := 0; intento < 5; intento++ {
+		c, err := tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", "web.whatsapp.com:443", nil)
+		if err == nil {
+			c.Close()
+			log.Printf("RED OK: se llega a WhatsApp")
+			return
+		}
+		log.Printf("RED MAL: %v", err)
+		time.Sleep(10 * time.Second)
+	}
 }

@@ -22,6 +22,7 @@ on:
       - '.github/workflows/emulationstation.yml'
       - 'Nintendo DS Lite/**'
       - '.github/workflows/nintendo-ds.yml'
+      - '.github/workflows/nintendo-ds-android.yml'
   workflow_dispatch:
 
 env:

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"io"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -220,5 +221,31 @@ func TestVincularFalso(t *testing.T) {
 	time.Sleep(2100 * time.Millisecond)
 	if l := p.orden("WA ESTADO"); l[0] != "ESTADO conectado 2" {
 		t.Fatalf("tendría que haberse vinculado: %q", l)
+	}
+}
+
+// TestRemoto: lo de la DS contra un puente que ya está en marcha (el del emulador de Android, con
+// adb forward): PUENTE_REMOTO=127.0.0.1:8790 PUENTE_CODIGO=123456 go test -run TestRemoto
+func TestRemoto(t *testing.T) {
+	dir := os.Getenv("PUENTE_REMOTO")
+	if dir == "" {
+		t.Skip("sin PUENTE_REMOTO")
+	}
+	d, err := conectar(t, dir, os.Getenv("PUENTE_CODIGO"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, orden := range []string{"PING", "WA ESTADO", "WA CHATS"} {
+		if err := d.mandar(orden); err != nil {
+			t.Fatal(err)
+		}
+		l, err := d.respuesta()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("%s → %q", orden, l)
+		if len(l) == 0 || strings.HasPrefix(l[0], "ERROR") {
+			t.Fatalf("%s: %q", orden, l)
+		}
 	}
 }

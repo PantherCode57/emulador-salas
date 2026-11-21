@@ -176,9 +176,9 @@ static void red_paso(void)
 static int sock = -1;
 static uint32_t ultimo_envio;
 static bool puente_visto;
-static char puente_nombre[40], puente_ip[20];
+static char visto_nombre[40], visto_ip[20];
 
-static void puente_paso(void)
+static void buscar_puente(void)
 {
 	if (estado != RED_CONECTADA) {
 		if (sock >= 0) {
@@ -225,11 +225,11 @@ static void puente_paso(void)
 		// «PANTHER-PUENTE 1 Consola XF35H»
 		if (!strncmp(buf, "PANTHER-PUENTE ", 15)) {
 			const char *nombre = strchr(buf + 15, ' ');
-			snprintf(puente_nombre, sizeof puente_nombre, "%s", nombre ? nombre + 1 : "Puente");
-			char *fin = strchr(puente_nombre, '\n');
+			snprintf(visto_nombre, sizeof visto_nombre, "%s", nombre ? nombre + 1 : "Puente");
+			char *fin = strchr(visto_nombre, '\n');
 			if (fin)
 				*fin = 0;
-			snprintf(puente_ip, sizeof puente_ip, "%s", inet_ntoa(de.sin_addr));
+			snprintf(visto_ip, sizeof visto_ip, "%s", inet_ntoa(de.sin_addr));
 			puente_visto = true;
 		}
 	}
@@ -239,8 +239,8 @@ bool plat_puente(char *nombre, int n, char *ip, int nip)
 {
 	if (!puente_visto)
 		return false;
-	snprintf(nombre, n, "%s", puente_nombre);
-	snprintf(ip, nip, "%s", puente_ip);
+	snprintf(nombre, n, "%s", visto_nombre);
+	snprintf(ip, nip, "%s", visto_ip);
 	return true;
 }
 
@@ -355,7 +355,7 @@ int main(int argc, char **argv)
 			e.ty = t.py;
 		}
 		red_paso();
-		puente_paso();
+		buscar_puente();
 		bool cambio = sistema_paso(&e, arriba, abajo);
 		cothread_yield_irq(IRQ_VBLANK);
 		if (cambio) {

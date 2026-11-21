@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- El icono: una P blanca sobre fondo oscuro, con la línea violeta del arranque de Panther OS. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#0B1220"
+        android:pathData="M10,2 L38,2 Q46,2 46,10 L46,38 Q46,46 38,46 L10,46 Q2,46 2,38 L2,10 Q2,2 10,2 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M15,10 L27,10 Q35,10 35,18 Q35,26 27,26 L20,26 L20,36 L15,36 Z M20,15 L20,21 L27,21 Q30,21 30,18 Q30,15 27,15 Z" />
+    <path
+        android:fillColor="#C4AAFF"
+        android:pathData="M10,40 L38,40 L38,42 L10,42 Z" />
+</vector>

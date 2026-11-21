@@ -1,0 +1,7 @@
+# Lo que se genera al compilar
+build/
+.gradle/
+app/build/
+# El puente compilado (lo pone nintendo-ds-android.yml)
+app/src/main/jniLibs/
+local.properties
