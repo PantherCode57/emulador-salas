@@ -6,7 +6,9 @@ import "errors"
 
 // Fuera de la consola no hay nada que hacer (sirve para las pruebas en el PC).
 
-var errSoloLectura = errors.New("solo lectura")
+var rutaRegistro string
+
+func guardarRegistro() {}
 
 func tarjetaDeRaiz() (tarjeta, error)       { return tarjeta{}, errors.New("solo en la consola") }
 func pararMenu()                            {}

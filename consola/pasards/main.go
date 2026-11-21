@@ -21,7 +21,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -68,6 +67,7 @@ func main() {
 		return
 	}
 
+	rutaRegistro = *registro
 	if f, err := os.OpenFile(*registro, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
 		log.SetOutput(f)
 	}
@@ -92,6 +92,7 @@ func main() {
 	if err != nil {
 		log.Printf("tarjeta de Panther OS: %v", err)
 		pintar(vista{estado: eNoSePuede, mensaje: "No encuentro la tarjeta de Panther OS: " + err.Error()})
+		guardarRegistro()
 		time.Sleep(6 * time.Second)
 		volverAlMenu()
 		return
@@ -110,11 +111,7 @@ func main() {
 		log.Printf("preparar: %v", err)
 		v := vista{estado: eNoSePuede, mensaje: err.Error()}
 		pintar(v)
-		time.Sleep(8 * time.Second)
-		if errors.Is(err, errSoloLectura) {
-			// Ya está en solo lectura: el menú no puede volver; hay que reiniciar.
-			reiniciar()
-		}
+		time.Sleep(10 * time.Second)
 		volverAlMenu()
 		return
 	}
