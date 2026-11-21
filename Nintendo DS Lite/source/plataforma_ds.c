@@ -3,6 +3,7 @@
 #ifdef __NDS__
 
 #include <arpa/inet.h>
+#include <errno.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <string.h>
@@ -241,6 +242,72 @@ bool plat_puente(char *nombre, int n, char *ip, int nip)
 	snprintf(nombre, n, "%s", puente_nombre);
 	snprintf(ip, nip, "%s", puente_ip);
 	return true;
+}
+
+// --- TCP con el puente (sin esperar: todo se mira en cada imagen) ---
+
+int plat_tcp_abrir(const char *dir, int puerto)
+{
+	int s = socket(AF_INET, SOCK_STREAM, 0);
+	if (s < 0)
+		return -1;
+	int si = 1;
+	ioctl(s, FIONBIO, (char *)&si);
+	struct sockaddr_in a = {0};
+	a.sin_family = AF_INET;
+	a.sin_port = htons(puerto);
+	a.sin_addr.s_addr = inet_addr(dir);
+	if (connect(s, (struct sockaddr *)&a, sizeof a) < 0 && errno != EINPROGRESS && errno != EWOULDBLOCK) {
+		closesocket(s);
+		return -1;
+	}
+	return s;
+}
+
+int plat_tcp_listo(int s)
+{
+	struct pollfd p = {.fd = s, .events = POLLOUT};
+	int r = poll(&p, 1, 0);
+	if (r < 0)
+		return -1;
+	if (r == 0)
+		return 0;
+	if (p.revents & (POLLERR | POLLHUP))
+		return -1;
+	int err = 0;
+	socklen_t l = sizeof err;
+	getsockopt(s, SOL_SOCKET, SO_ERROR, &err, &l);
+	return err ? -1 : 1;
+}
+
+int plat_tcp_enviar(int s, const void *b, int n)
+{
+	int k = send(s, b, n, 0);
+	if (k >= 0)
+		return k;
+	return (errno == EWOULDBLOCK || errno == EAGAIN) ? 0 : -1;
+}
+
+int plat_tcp_recibir(int s, void *b, int n)
+{
+	int k = recv(s, b, n, 0);
+	if (k > 0)
+		return k;
+	if (k == 0)
+		return -1; // el puente ha cerrado
+	return (errno == EWOULDBLOCK || errno == EAGAIN) ? 0 : -1;
+}
+
+void plat_tcp_cerrar(int s)
+{
+	closesocket(s);
+}
+
+uint32_t plat_azar(void)
+{
+	static uint32_t mezcla = 0x9e3779b9;
+	mezcla = mezcla * 1664525u + 1013904223u;
+	return mezcla ^ (vblanks * 2654435761u) ^ ((uint32_t)REG_VCOUNT << 16) ^ (uint32_t)time(NULL) ^ keysHeld();
 }
 
 // --- El programa ---

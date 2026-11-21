@@ -61,8 +61,8 @@ static void icono_bolsa(Color *p, int cx, int cy)
 
 const App apps[N_APPS] = {
 	{"WhatsApp", "Tus chats y mensajes",
-		"Verás tus chats, leerás los mensajes y contestarás con el teclado de la pantalla de abajo. "
-		"El puente lleva tu sesión de WhatsApp (se vincula con un QR, como en la consola).",
+		"Tus chats y tus mensajes, y contestas con el teclado de abajo. Va con tu cuenta: se vincula "
+		"desde aquí con tu número, como un dispositivo más.",
 		RGB(0, 175, 135), RGB(7, 94, 84), icono_chat},
 	{"Spotin", "Tu música",
 		"Buscarás canciones y las oirás por los altavoces de la DS. El puente baja la canción y se la "
@@ -91,10 +91,12 @@ static int actual;
 void app_entrar(int i)
 {
 	actual = i;
+	if (i == 0)
+		wa_entrar();
 }
 
 // Las tres filas de la pantalla de abajo: wifi, puente y la app.
-static void fila_estado(Color *p, int y, int estado, const char *titulo, const char *detalle)
+void fila_estado(Color *p, int y, int estado, const char *titulo, const char *detalle)
 {
 	// estado: 0 = hecho, 1 = esperando, 2 = falta
 	redondeado(p, 8, y, 240, 46, 10, C_PANEL, 256);
@@ -117,7 +119,7 @@ static void fila_estado(Color *p, int y, int estado, const char *titulo, const c
 	texto_corto(p, &letra_peq, 46, y + 25, 196, detalle, estado == 0 ? C_SUAVE : C_GRIS);
 }
 
-static int estado_wifi(char *detalle, int n)
+int estado_wifi(char *detalle, int n)
 {
 	int e = plat_wifi_estado();
 	if (e == RED_CONECTADA) {
@@ -132,23 +134,37 @@ static int estado_wifi(char *detalle, int n)
 	return 2;
 }
 
-static int estado_puente(char *detalle, int n)
+int estado_puente(char *detalle, int n)
 {
-	char nombre[40], ip[20];
-	if (plat_wifi_estado() != RED_CONECTADA) {
+	switch (puente_estado()) {
+	case PU_SIN_RED:
 		snprintf(detalle, n, "Primero hace falta el wifi");
 		return 2;
-	}
-	if (plat_puente(nombre, sizeof nombre, ip, sizeof ip)) {
-		snprintf(detalle, n, "%s (%s)", nombre, ip);
+	case PU_BUSCANDO:
+		snprintf(detalle, n, "Buscándolo en el wifi…");
+		return 1;
+	case PU_CONECTANDO:
+	case PU_SALUDO:
+		snprintf(detalle, n, "Conectando con %s…", puente_nombre());
+		return 1;
+	case PU_SIN_CODIGO:
+		snprintf(detalle, n, "Falta su código: pulsa A para escribirlo");
+		return 2;
+	case PU_CODIGO_MAL:
+		snprintf(detalle, n, "Ese código no es: pulsa A para escribirlo");
+		return 2;
+	case PU_LISTO:
+		snprintf(detalle, n, "%s (%s)", puente_nombre(), puente_ip());
 		return 0;
 	}
-	snprintf(detalle, n, "Buscándolo… (aún no está hecho)");
+	snprintf(detalle, n, "No contesta: vuelvo a probar…");
 	return 1;
 }
 
 int app_paso(const Entrada *e)
 {
+	if (actual == 0)
+		return wa_paso(e);
 	if (toca_atras(e))
 		return SALIR;
 	if ((e->toque_ini && en(e->tx, e->ty, 8, 36, 240, 46)) || (e->pulsado & B_A)) {
@@ -161,6 +177,10 @@ int app_paso(const Entrada *e)
 
 void app_dibujar(Color *arriba, Color *abajo)
 {
+	if (actual == 0) {
+		wa_dibujar(arriba, abajo);
+		return;
+	}
 	const App *a = &apps[actual];
 
 	// Arriba: qué es la app y qué hará.
@@ -183,5 +203,5 @@ void app_dibujar(Color *arriba, Color *abajo)
 	fila_estado(abajo, 36, w, "Wifi", detalle);
 	int pu = estado_puente(detalle, sizeof detalle);
 	fila_estado(abajo, 88, pu, "Puente", detalle);
-	fila_estado(abajo, 140, 2, a->nombre, "Llegará cuando esté el puente");
+	fila_estado(abajo, 140, 2, a->nombre, "Llegará pronto: primero va WhatsApp");
 }

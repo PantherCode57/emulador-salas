@@ -55,3 +55,34 @@ bool wifi_guardar(const char *ssid, const char *clave, bool guardada)
 	fprintf(f, "red=%s\nclave=%s\nguardada=%d\n", ssid, clave, guardada ? 1 : 0);
 	return fclose(f) == 0;
 }
+
+// puente.txt: el código de 6 cifras del puente («codigo=123456»).
+bool puente_codigo_leer(char *c, int n)
+{
+	char r[160], l[64];
+	c[0] = 0;
+	if (!ruta(r, sizeof r, "puente.txt"))
+		return false;
+	FILE *f = fopen(r, "r");
+	if (!f)
+		return false;
+	while (fgets(l, sizeof l, f)) {
+		quitar_fin(l);
+		if (!strncmp(l, "codigo=", 7))
+			snprintf(c, n, "%s", l + 7);
+	}
+	fclose(f);
+	return c[0] != 0;
+}
+
+bool puente_codigo_guardar(const char *c)
+{
+	char r[160];
+	if (!ruta(r, sizeof r, "puente.txt"))
+		return false;
+	FILE *f = fopen(r, "w");
+	if (!f)
+		return false;
+	fprintf(f, "codigo=%s\n", c);
+	return fclose(f) == 0;
+}

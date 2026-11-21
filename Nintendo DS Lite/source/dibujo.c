@@ -302,6 +302,8 @@ static const Glifo *glifo(const Letra *l, uint32_t cp)
 
 int texto_alfa(Color *p, const Letra *l, int x, int y, const char *s, Color c, int alfa)
 {
+	if (!p) // solo medir (texto_parrafo con NULL dice cuánto ocupa)
+		return ancho_texto(l, s);
 	int x0 = x;
 	while (*s) {
 		uint32_t cp;

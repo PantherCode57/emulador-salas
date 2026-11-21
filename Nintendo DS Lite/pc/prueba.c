@@ -1,12 +1,21 @@
-// Prueba de Panther OS para la DS en el PC: hace de DS (botones, toques, wifi y puente de mentira),
-// pasa por todas las pantallas y guarda una foto de cada una (las dos pantallas, una encima de otra,
-// al doble de tamaño). La pasa nintendo-ds.yml:
+// Prueba de Panther OS para la DS en el PC: hace de DS (botones, toques y un wifi de mentira), pasa
+// por todas las pantallas y guarda una foto de cada una (las dos pantallas, una encima de otra, al
+// doble de tamaño). Para WhatsApp habla de verdad, por TCP, con el puente (puente/) en 127.0.0.1,
+// arrancado con su WhatsApp de mentira:
+//   puente-ds -falso -sin-vincular -codigo 123456 &
 //   ./prueba <carpeta de fotos> <carpeta que hace de tarjeta>
-// Al final escribe «prueba ds: todo bien» o «prueba ds: MAL: …».
+// Al final escribe «prueba ds: todo bien» o «prueba ds: MAL: …». La pasa nintendo-ds.yml.
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "../source/sistema.h"
 
@@ -97,14 +106,67 @@ int plat_wifi_estado(void)
 
 const char *plat_wifi_ip(void) { return estado == RED_CONECTADA ? "192.168.43.27" : ""; }
 
+// El puente de verdad, en este mismo PC (la búsqueda por UDP se hace en la DS; aquí no hace falta).
 bool plat_puente(char *nombre, int n, char *ip, int nip)
 {
 	if (!hay_puente || estado != RED_CONECTADA)
 		return false;
-	snprintf(nombre, n, "Consola XF35H");
-	snprintf(ip, nip, "192.168.43.10");
+	snprintf(nombre, n, "Puente de prueba");
+	snprintf(ip, nip, "127.0.0.1");
 	return true;
 }
+
+int plat_tcp_abrir(const char *dir, int puerto)
+{
+	int s = socket(AF_INET, SOCK_STREAM, 0);
+	if (s < 0)
+		return -1;
+	fcntl(s, F_SETFL, fcntl(s, F_GETFL) | O_NONBLOCK);
+	struct sockaddr_in a = {0};
+	a.sin_family = AF_INET;
+	a.sin_port = htons(puerto);
+	a.sin_addr.s_addr = inet_addr(dir);
+	if (connect(s, (struct sockaddr *)&a, sizeof a) < 0 && errno != EINPROGRESS) {
+		close(s);
+		return -1;
+	}
+	return s;
+}
+
+int plat_tcp_listo(int s)
+{
+	struct pollfd p = {.fd = s, .events = POLLOUT};
+	int r = poll(&p, 1, 0);
+	if (r < 0)
+		return -1;
+	if (r == 0)
+		return 0;
+	int err = 0;
+	socklen_t l = sizeof err;
+	getsockopt(s, SOL_SOCKET, SO_ERROR, &err, &l);
+	return err ? -1 : 1;
+}
+
+int plat_tcp_enviar(int s, const void *b, int n)
+{
+	int k = (int)send(s, b, n, MSG_NOSIGNAL);
+	if (k >= 0)
+		return k;
+	return (errno == EWOULDBLOCK || errno == EAGAIN) ? 0 : -1;
+}
+
+int plat_tcp_recibir(int s, void *b, int n)
+{
+	int k = (int)recv(s, b, n, 0);
+	if (k > 0)
+		return k;
+	if (k == 0)
+		return -1;
+	return (errno == EWOULDBLOCK || errno == EAGAIN) ? 0 : -1;
+}
+
+void plat_tcp_cerrar(int s) { close(s); }
+uint32_t plat_azar(void) { return (uint32_t)rand() ^ (imagen << 16); }
 
 // --- Las fotos (PNG sin comprimir, para no necesitar nada más) ---
 
@@ -231,6 +293,7 @@ typedef struct {
 // Dónde está cada tecla del teclado (lo mismo que en teclado.c).
 #define TECLA_X(u, ancho) (3 + (u) * 25 / 2 + ((ancho) * 25 / 2 - 2) / 2)
 #define TECLA_Y(fila) (31 + (fila) * 32 + 14)
+#define FILA_WA(i) (28 + (i) * 32 + 16)
 
 static const Paso guion[] = {
 	{80, 0, 0, 0, "01_arranque"},
@@ -285,6 +348,56 @@ static const Paso guion[] = {
 	{664, B_B, 0, 0, NULL},
 	{666, B_TOQUE, 46 + 82, 43 + 78, NULL}, // Navegador
 	{670, 0, 0, 0, "21_navegador"},
+	// WhatsApp, con el puente de verdad (desde aquí cada imagen dura 1/60 s de verdad).
+	{700, B_B, 0, 0, NULL},
+	{705, B_TOQUE, 46, 43, NULL},
+	{720, 0, 0, 0, "22_wa_sin_codigo"},
+	{725, B_A, 0, 0, NULL}, // a escribir el código
+	{730, B_TOQUE, TECLA_X(0, 2), TECLA_Y(0), NULL}, // 1 1 1 1 1 1 (malo)
+	{736, B_TOQUE, TECLA_X(0, 2), TECLA_Y(0), NULL},
+	{742, B_TOQUE, TECLA_X(0, 2), TECLA_Y(0), NULL},
+	{748, B_TOQUE, TECLA_X(0, 2), TECLA_Y(0), NULL},
+	{754, B_TOQUE, TECLA_X(0, 2), TECLA_Y(0), NULL},
+	{760, B_TOQUE, TECLA_X(0, 2), TECLA_Y(0), NULL},
+	{766, B_START, 0, 0, NULL},
+	{820, 0, 0, 0, "23_wa_codigo_malo"},
+	{825, B_A, 0, 0, NULL},
+	{830, B_TOQUE, TECLA_X(0, 2), TECLA_Y(0), NULL}, // 1 2 3 4 5 6 (bueno)
+	{836, B_TOQUE, TECLA_X(2, 2), TECLA_Y(0), NULL},
+	{842, B_TOQUE, TECLA_X(4, 2), TECLA_Y(0), NULL},
+	{848, B_TOQUE, TECLA_X(6, 2), TECLA_Y(0), NULL},
+	{854, B_TOQUE, TECLA_X(8, 2), TECLA_Y(0), NULL},
+	{860, B_TOQUE, TECLA_X(10, 2), TECLA_Y(0), NULL},
+	{866, B_START, 0, 0, NULL},
+	{940, 0, 0, 0, "24_wa_vincular"},
+	{945, B_A, 0, 0, NULL}, // el teléfono (ya viene el 34)
+	{950, B_TOQUE, TECLA_X(10, 2), TECLA_Y(0), NULL}, // 6 1 2 3 4 5 6 7 8
+	{956, B_TOQUE, TECLA_X(0, 2), TECLA_Y(0), NULL},
+	{962, B_TOQUE, TECLA_X(2, 2), TECLA_Y(0), NULL},
+	{968, B_TOQUE, TECLA_X(4, 2), TECLA_Y(0), NULL},
+	{974, B_TOQUE, TECLA_X(6, 2), TECLA_Y(0), NULL},
+	{980, B_TOQUE, TECLA_X(8, 2), TECLA_Y(0), NULL},
+	{986, B_TOQUE, TECLA_X(10, 2), TECLA_Y(0), NULL},
+	{992, B_TOQUE, TECLA_X(12, 2), TECLA_Y(0), NULL},
+	{998, B_TOQUE, TECLA_X(14, 2), TECLA_Y(0), NULL},
+	{1004, 0, 0, 0, "25_wa_telefono"},
+	{1010, B_START, 0, 0, NULL},
+	{1040, 0, 0, 0, "26_wa_codigo_whatsapp"},
+	{1330, 0, 0, 0, "27_wa_chats"},
+	{1335, B_TOQUE, 100, FILA_WA(0), NULL}, // Lucía
+	{1370, 0, 0, 0, "28_wa_chat"},
+	{1375, B_TOQUE, 128, 52, NULL}, // Escribir
+	{1380, B_TOQUE, TECLA_X(10, 2), TECLA_Y(2), NULL}, // h o l a
+	{1386, B_TOQUE, TECLA_X(16, 2), TECLA_Y(1), NULL},
+	{1392, B_TOQUE, TECLA_X(16, 2), TECLA_Y(2), NULL},
+	{1398, B_TOQUE, TECLA_X(0, 2), TECLA_Y(2), NULL},
+	{1405, 0, 0, 0, "29_wa_escribir"},
+	{1410, B_START, 0, 0, NULL},
+	{1470, 0, 0, 0, "30_wa_enviado"},
+	{1475, B_TOQUE, 8 + 58, 80 + 17, NULL}, // «Vale»
+	{1530, 0, 0, 0, "31_wa_respuesta_rapida"},
+	{1535, B_B, 0, 0, NULL},
+	{1545, 0, 0, 0, "32_wa_lista_otra_vez"},
 };
 #define N_GUION ((int)(sizeof guion / sizeof guion[0]))
 
@@ -312,11 +425,24 @@ int main(int argc, char **argv)
 	char ruta[512];
 	snprintf(ruta, sizeof ruta, "%s/wifi.txt", tarjeta);
 	remove(ruta);
+	char ruta_puente[512];
+	snprintf(ruta_puente, sizeof ruta_puente, "%s/puente.txt", tarjeta);
+	remove(ruta_puente);
+
+	// ChaCha20 como en el RFC 8439 (2.3.2), igual que en el puente.
+	uint8_t k[32], n[12] = {0, 0, 0, 9, 0, 0, 0, 0x4a, 0, 0, 0, 0}, b[64];
+	for (int i = 0; i < 32; i++)
+		k[i] = (uint8_t)i;
+	chacha_bloque(k, 1, n, b);
+	static const uint8_t esperado[16] = {0x10, 0xf1, 0xe7, 0xe4, 0xd1, 0x3b, 0x59, 0x15, 0x50, 0x0f, 0xdd, 0x1f, 0xa3, 0x20, 0x71, 0xc4};
+	if (memcmp(b, esperado, 16) != 0)
+		mal("ChaCha20 no da lo del RFC 8439");
 
 	sistema_iniciar();
 	int toque_hasta = -1, tx = 0, ty = 0;
 	uint32_t antes = 0;
-	for (imagen = 1; imagen <= 700; imagen++) {
+	srand(12345);
+	for (imagen = 1; imagen <= 1560; imagen++) {
 		Entrada e;
 		memset(&e, 0, sizeof e);
 		for (int i = 0; i < N_GUION; i++) {
@@ -352,6 +478,21 @@ int main(int argc, char **argv)
 			mal("a una red abierta le manda clave");
 
 		sistema_paso(&e, arriba, abajo);
+		if (imagen > 700)
+			usleep(16667); // el puente va a su ritmo: aquí cada imagen dura lo que en la DS
+
+		if (imagen == 715 && puente_estado() != PU_SIN_CODIGO)
+			mal("sin código guardado tendría que pedirlo");
+		if (imagen == 815 && puente_estado() != PU_CODIGO_MAL)
+			mal("con el código malo no dice que es malo");
+		if (imagen == 935 && puente_estado() != PU_LISTO)
+			mal("con el código bueno no se conecta con el puente");
+		if (imagen == 1325 && wa_n_chats() != 4)
+			mal("después de vincular no salen los 4 chats");
+		if (imagen == 1468 && strcmp(wa_ultimo_texto(), "hola") != 0)
+			mal("el mensaje escrito no sale en el chat");
+		if (imagen == 1528 && strcmp(wa_ultimo_texto(), "Vale") != 0)
+			mal("la respuesta rápida no sale en el chat");
 
 		for (int i = 0; i < N_GUION; i++)
 			if (guion[i].imagen == imagen && guion[i].foto)
@@ -370,6 +511,10 @@ int main(int argc, char **argv)
 	wifi_arrancar();
 	if (strcmp(ultima_red, "RouterViejo") != 0)
 		mal("al encender no se conecta con la red de la última vez");
+
+	char cod[16];
+	if (!puente_codigo_leer(cod, sizeof cod) || strcmp(cod, "123456") != 0)
+		mal("el código del puente no se guarda en la tarjeta");
 
 	if (fallos[0]) {
 		printf("prueba ds: MAL: %s\n", fallos);

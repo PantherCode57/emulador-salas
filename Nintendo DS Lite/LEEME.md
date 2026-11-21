@@ -19,13 +19,34 @@ desde el menú de la flashcard. Por ahora tiene:
   DS.
 - **WhatsApp, Spotin, Instagram, YouTube y el navegador necesitan un «puente».** La DS tiene 4 MB de
   memoria y un procesador de 67 MHz, y su wifi da como mucho 1-2 Mbit/s. No le da para abrir esas apps
-  como en la consola. El puente es un programa en otro aparato de la misma red (la consola, el PC o el
-  móvil) que hace el trabajo y le pasa a la DS lo justo para enseñarlo: los mensajes, las fotos en
-  pequeño, la música en poca calidad, el vídeo muy pequeño y la página web ya dibujada.
-  - El puente **todavía no está hecho**.
-  - La DS ya lo busca: cuando está conectada, cada 2 segundos manda `PANTHER-DS 1` por UDP a toda la
-    red en el puerto 8790. El puente tiene que contestar `PANTHER-PUENTE 1 <nombre>`.
-  - Mientras no haya puente, cada app dice lo que le falta: wifi, puente o la propia app.
+  como en la consola. El puente es un programa en otro aparato de la misma red que hace el trabajo y
+  le pasa a la DS lo justo para enseñarlo. Tiene que ir en un aparato **de la dueña de la DS y con sus
+  cuentas**, nunca con las de otra persona.
+
+## El puente (`puente/`, en Go)
+
+- **Buscarlo:** la DS, cuando tiene wifi, manda `PANTHER-DS 1` por UDP a toda la red (puerto 8790) y
+  el puente contesta `PANTHER-PUENTE 1 <nombre>`.
+- **Código y cifrado:** luego se conectan por TCP en el mismo puerto. El puente tiene un código de 6
+  cifras (`<datos>/codigo`, sale en su registro al arrancar) que se escribe en la DS una vez y se
+  guarda en `panther/puente.txt`. Todo va cifrado con ChaCha20; la clave de cada conexión sale del
+  código y de 16 bytes al azar de cada lado (`puente/cifrado.go` y `source/cifrado.c`). Sin el código
+  no se entra, y con 5 códigos malos seguidos esa IP queda fuera 5 minutos. Así nadie más de un wifi
+  abierto puede leer los chats.
+- **Peticiones:** son líneas de texto y cada respuesta es `R <n>` y n líneas (`puente/protocolo.go`).
+- **WhatsApp** (`puente/wa_real.go`): una sesión propia con whatsmeow, como el WhatsApp de la consola.
+  - Se vincula desde la DS sin QR: se escribe el número con el prefijo (34…) y el puente pide a
+    WhatsApp un código de 8 letras.
+  - El código se mete en el móvil: WhatsApp → Dispositivos vinculados → Vincular con el número de
+    teléfono.
+  - En la DS: lista de chats con los no leídos, conversación con burbujas, escribir con el teclado y
+    cuatro respuestas rápidas. Al abrir un chat, los mensajes quedan leídos también en el móvil.
+  - Los emojis que la DS no sabe dibujar salen como se escribían antes (`:)`, `xD`, `<3`…).
+- `puente-ds -falso` usa un WhatsApp de mentira; con él, la prueba del PC hace todo el camino de
+  verdad por TCP: código malo, código bueno, vincular, chats, escribir y respuesta rápida.
+- Las demás apps (Spotin, Instagram, YouTube, Navegador y Tienda) aún dicen «llegará pronto».
+- **Falta** dónde va el puente: tiene que ser un aparato de ella (lo más práctico, su móvil, que
+  además puede hacer la zona wifi para la DS).
 
 ## Ponerlo en la flashcard
 

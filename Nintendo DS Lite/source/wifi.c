@@ -74,7 +74,6 @@ void wifi_arrancar(void)
 const char *wifi_resumen(void)
 {
 	static char s[128];
-	char nombre[40], ip[20];
 	switch (plat_wifi_estado()) {
 	case RED_APAGADA:
 		return "Wifi: no arranca";
@@ -84,8 +83,8 @@ const char *wifi_resumen(void)
 		snprintf(s, sizeof s, "Wifi: conectando con %s…", red_actual);
 		return s;
 	case RED_CONECTADA:
-		if (plat_puente(nombre, sizeof nombre, ip, sizeof ip))
-			snprintf(s, sizeof s, "Wifi: %s · puente: %s", red_actual, nombre);
+		if (puente_estado() == PU_LISTO)
+			snprintf(s, sizeof s, "Wifi: %s · puente: %s", red_actual, puente_nombre());
 		else
 			snprintf(s, sizeof s, "Wifi: %s · sin puente", red_actual);
 		return s;
@@ -284,11 +283,9 @@ static void dibujar_arriba(Color *p)
 	texto(p, &letra_titulo, 56, 28, titulo, C_BLANCO);
 	texto_corto(p, &letra_peq, 57, 48, 190, sub, C_SUAVE);
 	if (e == RED_CONECTADA) {
-		char nombre[40], ip[20], s[96];
-		if (plat_puente(nombre, sizeof nombre, ip, sizeof ip))
-			snprintf(s, sizeof s, "Puente: %s (%s)", nombre, ip);
-		else
-			snprintf(s, sizeof s, "Puente: todavía no hay ninguno en esta red");
+		char s[96];
+		estado_puente(s + 8, sizeof s - 8);
+		memcpy(s, "Puente: ", 8);
 		texto_corto(p, &letra_peq, 57, 62, 190, s, C_GRIS);
 	}
 

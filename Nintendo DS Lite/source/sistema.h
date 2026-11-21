@@ -168,7 +168,7 @@ const char *wifi_resumen(void); // «Zona wifi · puente: buscando…»
 
 // El teclado de la pantalla de abajo (teclado.c).
 typedef struct {
-	char texto[72];
+	char texto[200];
 	int fila, col;
 	bool mayus, simbolos;
 } Teclado;
@@ -181,5 +181,49 @@ void teclado_dibujar_texto(const Teclado *t, Color *p, int x, int y, int w, bool
 // Lo que se guarda en la tarjeta (guardar.c).
 bool wifi_leer(char *ssid, int nssid, char *clave, int nclave, bool *guardada);
 bool wifi_guardar(const char *ssid, const char *clave, bool guardada);
+bool puente_codigo_leer(char *c, int n);
+bool puente_codigo_guardar(const char *c);
+
+// --- Cifrado (cifrado.c): ChaCha20, como en el puente ---
+typedef struct {
+	uint8_t clave[32], nonce[12], bloque[64];
+	uint32_t contador;
+	int pos;
+} Flujo;
+void chacha_bloque(const uint8_t clave[32], uint32_t contador, const uint8_t nonce[12], uint8_t sal[64]);
+void flujo_iniciar(Flujo *f, const uint8_t clave[32], uint8_t sentido);
+void flujo_xor(Flujo *f, uint8_t *b, int n);
+void clave_sesion(const char *codigo, const uint8_t nS[16], const uint8_t nD[16], uint8_t sal[32]);
+
+// --- Conexión TCP (la plataforma) ---
+int plat_tcp_abrir(const char *ip, int puerto);   // empieza a conectar; -1 si no se puede
+int plat_tcp_listo(int s);                        // 1 conectado, 0 aún no, -1 no se ha podido
+int plat_tcp_enviar(int s, const void *b, int n); // lo que se ha mandado (0 si ahora no cabe), -1 error
+int plat_tcp_recibir(int s, void *b, int n);      // lo que ha llegado (0 si nada), -1 cerrado
+void plat_tcp_cerrar(int s);
+uint32_t plat_azar(void);                         // algo de azar (la hora, el barrido de la pantalla…)
+
+// --- El puente (puente.c) ---
+enum { PU_SIN_RED, PU_BUSCANDO, PU_CONECTANDO, PU_SALUDO, PU_SIN_CODIGO, PU_CODIGO_MAL, PU_LISTO, PU_ERROR };
+void puente_iniciar(void);
+void puente_paso(void);
+int puente_estado(void);
+const char *puente_nombre(void);
+const char *puente_ip(void);
+void puente_poner_codigo(const char *codigo);
+bool puente_libre(void);                // conectado y sin nada pendiente
+bool puente_pedir(const char *linea);   // una petición (si está libre)
+int puente_respuesta(char ***lineas);   // las líneas de la respuesta cuando llega; -1 si aún no
+int partir(char *s, char **trozos, int max); // corta por los tabuladores
+
+// --- WhatsApp (wa.c) y las filas de estado de las apps (apps.c) ---
+void wa_entrar(void);
+int wa_paso(const Entrada *e);
+void wa_dibujar(Color *arriba, Color *abajo);
+int wa_n_chats(void);                // (para la prueba)
+const char *wa_ultimo_texto(void);   // (para la prueba) el último mensaje del chat abierto
+void fila_estado(Color *p, int y, int estado, const char *titulo, const char *detalle); // 0 hecho, 1 esperando, 2 falta
+int estado_wifi(char *detalle, int n);
+int estado_puente(char *detalle, int n);
 
 #endif

@@ -36,6 +36,7 @@ void sistema_iniciar(void)
 	inicio_arranque = ahora_ms;
 	plat_hora(&hora);
 	wifi_arrancar();
+	puente_iniciar();
 }
 
 // Los toques: cuándo empieza uno, si el dedo se arrastra y si ha sido un toque corto.
@@ -194,6 +195,7 @@ bool sistema_paso(Entrada *e, Color *arriba, Color *abajo)
 	ahora_ms = plat_ms();
 	plat_hora(&hora);
 	procesar_toque(e);
+	puente_paso(); // la conexión con el puente sigue aunque no haya ninguna app abierta
 
 	int r = NADA;
 	switch (vista) {

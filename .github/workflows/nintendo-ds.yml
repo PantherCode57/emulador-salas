@@ -1,7 +1,8 @@
 name: Nintendo DS Lite
 
-# Panther OS para la Nintendo DS Lite (la carpeta «Nintendo DS Lite»): prueba en el PC con fotos de
-# todas las pantallas y panther.nds para la tarjeta de la flashcard, con BlocksDS.
+# Panther OS para la Nintendo DS Lite (la carpeta «Nintendo DS Lite»): el puente (Go) con sus pruebas,
+# la prueba de la DS en el PC (que habla de verdad con el puente, con un WhatsApp de mentira) con
+# fotos de todas las pantallas, y panther.nds para la tarjeta de la flashcard, con BlocksDS.
 on:
   push:
     branches: [desarrollo, master]
@@ -23,19 +24,36 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: "Nintendo DS Lite/letras/go.mod"
-          cache-dependency-path: "Nintendo DS Lite/letras/go.sum"
+          cache-dependency-path: |
+            Nintendo DS Lite/letras/go.sum
+            Nintendo DS Lite/puente/go.sum
       - name: Copiar la carpeta (make no se lleva bien con los espacios del nombre)
         run: cp -r "Nintendo DS Lite" /tmp/ds
       - name: Dibujar las letras
         working-directory: /tmp/ds/letras
         run: go run -mod=mod . -salida ../generado/letras.c
+      - name: El puente
+        working-directory: /tmp/ds/puente
+        run: |
+          go vet ./...
+          go test ./...
+          go build -trimpath -o /tmp/puente-ds .
       - name: Probar en el PC (y sacar fotos de las pantallas)
         working-directory: /tmp/ds
         run: |
           gcc -std=gnu11 -O1 -g -Wall -Werror -Wno-format-truncation -fsanitize=address,undefined -fno-sanitize-recover=all \
             source/*.c generado/letras.c pc/prueba.c -lm -o prueba
+          /tmp/puente-ds -falso -sin-vincular -codigo 123456 -datos /tmp/puente-datos > puente.txt 2>&1 &
+          PUENTE=$!
+          sleep 1
           ./prueba fotos tarjeta | tee prueba.txt
+          kill $PUENTE || true
+          echo "--- registro del puente:"
+          cat puente.txt
           grep -q "prueba ds: todo bien" prueba.txt
+          grep -q 'VINCULAR 34612345678' puente.txt
+          grep -q 'ENVIADO 111@s.whatsapp.net "hola"' puente.txt
+          grep -q 'ENVIADO 111@s.whatsapp.net "Vale"' puente.txt
       - name: Compilar para la DS (BlocksDS)
         working-directory: /tmp/ds
         run: |

@@ -227,10 +227,10 @@ void teclado_dibujar_texto(const Teclado *t, Color *p, int x, int y, int w, bool
 {
 	redondeado(p, x, y, w, 26, 8, C_PANEL2, 256);
 	marco(p, x, y, w, 26, 8, 1, C_VIOLETA);
-	char visto[72];
+	char visto[sizeof t->texto];
 	if (tapar) {
 		int n = 0;
-		for (const char *s = t->texto; *s && n < 70; s++)
+		for (const char *s = t->texto; *s && n < (int)sizeof visto - 1; s++)
 			if (((unsigned char)*s & 0xC0) != 0x80)
 				visto[n++] = '*';
 		visto[n] = 0;
