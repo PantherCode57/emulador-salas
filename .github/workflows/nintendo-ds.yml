@@ -41,6 +41,18 @@ jobs:
         run: |
           docker run --rm -v /tmp/ds:/work -w /work skylyrac/blocksds:slim-v1.25.0 make -j4
           ls -la panther.nds
+      - name: Comprobar la cabecera (0x200 y solo DS, para las flashcards antiguas)
+        working-directory: /tmp/ds
+        run: |
+          python3 - <<'FIN'
+          import struct
+          b = open("panther.nds", "rb").read()
+          unidad, cabecera = b[0x12], struct.unpack_from("<I", b, 0x84)[0]
+          a9 = struct.unpack_from("<4I", b, 0x20)
+          a7 = struct.unpack_from("<4I", b, 0x30)
+          print("unidad %d, cabecera %#x, arm9 %s, arm7 %s" % (unidad, cabecera, [hex(x) for x in a9], [hex(x) for x in a7]))
+          assert unidad == 0 and cabecera == 0x200, "la cabecera no es la de las flashcards antiguas"
+          FIN
       - uses: actions/upload-artifact@v4
         with:
           name: panther-ds
