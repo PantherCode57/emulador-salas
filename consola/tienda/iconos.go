@@ -150,22 +150,32 @@ func capturaJuego(ctx context.Context, g juegoPM) (image.Image, error) {
 
 // guardarTarjeta: la tarjeta «Panther Store» de la pantalla principal (264×152, como las otras).
 func guardarTarjeta(f *fuentes, ruta string) error {
+	return guardarPlaca(f, colTiendaA, colTiendaB, icBolsa, "Panther Store", ruta)
+}
+
+// tarjetaDeApp: la de una app que llega por la tienda, con su color, su icono y su nombre. Se
+// dibuja en el trabajador, así que no usa las caras de las letras de la pantalla (no se pueden
+// usar a la vez desde dos sitios): guardarPlaca hace las suyas.
+func tarjetaDeApp(f *fuentes, e *elemento, ruta string) error {
+	return guardarPlaca(f, e.color, mezclaColor(e.color, color.RGBA{0, 0, 0, 255}, 0.25), e.glifo, e.nombre, ruta)
+}
+
+func guardarPlaca(f *fuentes, a, b color.RGBA, glifo, nombre, ruta string) error {
 	im := image.NewRGBA(image.Rect(0, 0, 264, 152))
-	p := placa(260, 146, 20, colTiendaA, colTiendaB)
+	p := placa(260, 146, 20, a, b)
 	draw.Draw(im, image.Rect(2, 3, 262, 149), p, image.Point{}, draw.Over)
 	if f.ic != nil {
-		glifoCentrado(im, f.iconoDe(60), icBolsa, 132, 52, colTexto)
+		glifoCentrado(im, cara(f.ic, 60), glifo, 132, 52, colTexto)
 	}
-	nombre := "Panther Store"
-	var cara font.Face
+	var letra font.Face
 	for tam := 34.0; tam >= 22; tam-- {
-		cara = cara0(f, tam)
-		if medir(cara, nombre) <= 232 {
+		letra = cara0(f, tam)
+		if medir(letra, nombre) <= 232 {
 			break
 		}
 	}
 	l := &lienzo{img: im, f: f}
-	l.texto((264-medir(cara, nombre))/2, 133, nombre, cara, colTexto)
+	l.texto((264-medir(letra, nombre))/2, 133, nombre, letra, colTexto)
 	if err := os.MkdirAll(filepath.Dir(ruta), 0o755); err != nil && !strings.Contains(ruta, string(os.PathSeparator)) {
 		return err
 	}

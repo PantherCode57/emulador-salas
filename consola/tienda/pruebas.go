@@ -98,6 +98,11 @@ func dibujarPruebas(f *fuentes, dir string) error {
 	if err := guardar(a, "3-apps-abajo"); err != nil {
 		return err
 	}
+	a.sel[0], a.prim[0] = 9, 7 // la Pokédex
+	if err := guardar(a, "3-apps-pokedex"); err != nil {
+		return err
+	}
+	a.sel[0], a.prim[0] = 8, 5
 
 	// Juegos: SuperTux descomprimiendo, Cave Story que falló, Celeste puesto.
 	for _, e := range t.apps {
@@ -143,6 +148,9 @@ func dibujarPruebas(f *fuentes, dir string) error {
 	a.saliendo = true
 	a.cargaHasta = time.Now().Add(time.Hour)
 	if err := guardar(a, "10-saliendo"); err != nil {
+		return err
+	}
+	if err := tarjetaDeApp(f, porNombre(t.apps, "pokedex"), filepath.Join(dir, "tarjeta-pokedex.png")); err != nil {
 		return err
 	}
 	return guardarTarjeta(f, filepath.Join(dir, "tarjeta-tienda.png"))

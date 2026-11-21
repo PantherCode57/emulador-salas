@@ -99,8 +99,17 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
   ahora». Los mensajes se guardan en `chat.jsonl` (los 300 últimos). Teclado en pantalla como en
   Instagram; START envía.
   - `-prueba <carpeta>` dibuja las pantallas con una conversación inventada.
+- `pokedex/`: la Pokédex. Al entrar hay dos botones: «Cartas» y «Juegos» (está por llegar).
+  - Cartas: la Pokédex nacional entera (del 1 al 1025) en una lista, con el número y el nombre en
+    español de cada Pokémon (`nombres.go`, sacado de los datos de PokeAPI). A marca o desmarca
+    «conseguido», y se guarda en `~/.config/panther/pokedex/cartas.json`. L y R saltan de
+    generación; izquierda y derecha, de 8 en 8.
+  - Y abre el buscador, con el teclado en pantalla: por nombre (sin tildes ni signos: «mr mime»,
+    «flabebe») o por número («25»). B quita lo buscado y se queda en el mismo Pokémon.
+  - Solo nombres y números: no lleva imágenes de los Pokémon. No necesita internet.
+  - `-prueba <carpeta>` dibuja las pantallas con una colección inventada.
 - `tienda/`: la Panther Store. Pone y quita con A las apps de Panther OS (WhatsApp, Claude,
-  Instagram, Duolingo, Ajedrez, Zarpa, YouTube, Spotin, Pokémon y Navegador) y juegos libres de PortMaster
+  Instagram, Duolingo, Ajedrez, Zarpa, YouTube, Spotin, Pokémon, Pokédex y Navegador) y juegos libres de PortMaster
   que ya vienen con sus datos («ready to run» y sin «power»: Cave Story, Celeste Classic, SuperTux,
   Sonic Robo Blast 2, SRB2Kart, OpenTTD y OpenTyrian), con su icono, de qué va, lo que ocupa y si ya
   está puesto, y el avance mientras se baja. L y R cambian entre apps y juegos; X abre la ficha.
@@ -117,6 +126,15 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
     su descripción en español y les hace la tarjeta de la lista (`images/panther/`), como en los
     otros apartados. Las capturas salen del repositorio de PortMaster. Al quitar un juego se borran
     sus partidas (están en su carpeta), y lo pregunta.
+  - Se pone al día sola: al abrirla, si la fuente tiene otra tienda (la pieza `tienda` de
+    `tienda.json`), la baja comprobando su suma, deja la de antes en `tienda.antes` y se abre con la
+    nueva. La de la consola de antes del 21/11/2026 no sabía: se la pone `Pokemon.sh` una vez
+    (busca «PantherStore/2» en el programa), así que basta con quitar y poner Pokémon.
+  - Las apps que llegan después de la instalación (la Pokédex) se dan de alta al ponerlas, como
+    harían `menus.py`, `ajustes_menu.py` y `tema.py`: su apartado en `es_systems.cfg` (con sudo;
+    copia en `*.antes-tienda`), su tarjeta (la dibuja la tienda con su color, su icono y su nombre)
+    y el `theme.xml` de su apartado, y al reiniciar EmulationStation (parado), que se abra
+    directamente y su sitio en la pantalla principal. Con las que ya estaban no cambia nada.
   - Las tarjetas: EmulationStation solo las cambia al reiniciarse. Al salir de la tienda, si has
     cambiado algo, deja en marcha (`systemd-run`) `tienda -reiniciar-es <pid>`, que espera a que la
     tienda se cierre y a que no haya ninguna app ni juego abierto, y lo reinicia.

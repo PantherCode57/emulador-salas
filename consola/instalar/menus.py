@@ -4,8 +4,8 @@ EmulationStation parado (si no, al cerrarse guardaría sus ajustes encima).
 
 - Nombres cortos en español para los sistemas que se usan.
 - Las consolas, dentro de la tarjeta «Emuladores», con su marca, año y descripción.
-- Apartados propios (WhatsApp, Claude, Instagram, Duolingo, Ajedrez, Spotin, YouTube, Navegador, Pokémon, Panther Store y
-  Salas: carpetas en /roms con scripts .sh).
+- Apartados propios (WhatsApp, Claude, Instagram, Duolingo, Ajedrez, Spotin, YouTube, Navegador, Pokémon, Pokédex,
+  Panther Store y Salas: carpetas en /roms con scripts .sh).
 - Idioma de los menús: español.
 Antes de cambiar nada guarda una copia (*.panther-original) de cada archivo, una sola vez.
 """
@@ -160,6 +160,17 @@ NUEVOS = """	<system>
 		<release>2026</release>
 	</system>
 	<system>
+		<name>pokedex</name>
+		<fullname>Pokédex</fullname>
+		<path>/roms/pokedex/</path>
+		<extension>.sh .SH</extension>
+		<command>%ROM%</command>
+		<platform>pokedex</platform>
+		<theme>pokedex</theme>
+		<manufacturer>Panther OS</manufacturer>
+		<release>2026</release>
+	</system>
+	<system>
 		<name>salas</name>
 		<fullname>Salas</fullname>
 		<path>/roms/salas/</path>
@@ -228,5 +239,6 @@ for r in ("/etc/emulationstation/es_systems.cfg", "/etc/emulationstation/es_syst
     sistemas(Path(r))
 idioma(Path("/home/ark/.emulationstation/es_settings.cfg"))
 for c in ("/roms/whatsapp", "/roms/salas", "/roms/spotin", "/roms/pokemon", "/roms/youtube", "/roms/navegador",
-          "/roms/instagram", "/roms/claude", "/roms/duolingo", "/roms/ajedrez", "/roms/zarpa", "/roms/tienda"):
+          "/roms/instagram", "/roms/claude", "/roms/duolingo", "/roms/ajedrez", "/roms/zarpa", "/roms/tienda",
+          "/roms/pokedex"):
     Path(c).mkdir(exist_ok=True)

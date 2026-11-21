@@ -28,7 +28,9 @@ var cliente = &http.Client{
 	},
 }
 
-const agente = "PantherStore/1 (consola portátil)"
+// agente: con qué nombre pide las cosas. Pokemon.sh busca «PantherStore/2» en el programa para saber
+// si la tienda de la consola ya se pone al día sola: no lo cambies sin cambiar también eso.
+const agente = "PantherStore/2 (consola portátil)"
 
 // errSinRed: no hay conexión (para decirlo así, sin el error largo de Go).
 var errSinRed = errors.New("no hay conexión a internet")

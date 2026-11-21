@@ -62,6 +62,7 @@ type app struct {
 	avisoHasta time.Time
 	cargaHasta time.Time
 	saliendo   bool
+	alDia      string // «Poniendo al día la Panther Store…» mientras se baja la nueva
 
 	cambios   bool
 	pulsados  uint16

@@ -133,6 +133,20 @@ func reiniciarES(pidTienda int) {
 		logf("reinicio: EmulationStation no está en marcha como servicio; no lo reinicio")
 		return
 	}
+	// Una app nueva (la Pokédex) también necesita sus ajustes del menú (que se abra directamente
+	// y su sitio en la pantalla principal): con EmulationStation parado, que al pararse los guarda.
+	if t := nuevaTienda(); t.ajustesPendientes() {
+		logf("reinicio: paro EmulationStation para poner los ajustes de las apps nuevas")
+		if out, err := exec.Command("sudo", "-n", "systemctl", "stop", "emulationstation").CombinedOutput(); err != nil {
+			logf("reinicio: %v %s", err, strings.TrimSpace(string(out)))
+		} else if err := t.ponerAjustes(); err != nil {
+			logf("reinicio: ajustes: %v", err)
+		}
+		if out, err := exec.Command("sudo", "-n", "systemctl", "start", "emulationstation").CombinedOutput(); err != nil {
+			logf("reinicio: %v %s", err, strings.TrimSpace(string(out)))
+		}
+		return
+	}
 	logf("reinicio: reinicio EmulationStation para poner las tarjetas al día")
 	if out, err := exec.Command("sudo", "-n", "systemctl", "restart", "emulationstation").CombinedOutput(); err != nil {
 		logf("reinicio: %v %s", err, strings.TrimSpace(string(out)))

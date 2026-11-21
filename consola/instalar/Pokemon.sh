@@ -23,6 +23,34 @@ if [ -x "$EMU" ] && ! grep -q -a "en marcha" "$EMU"; then
 	rm -f "$T" "$J"
 fi
 
+# La Panther Store de antes del 21/11/2026 no se ponía al día sola ni sabía dar de alta en el menú
+# las apps nuevas (la Pokédex). Si la que hay es esa, se pone la de la release, comprobando su suma,
+# aparte y sin esperar (Pokémon se abre ya). Solo pasa una vez: desde entonces la tienda se pone al
+# día sola al abrirla. La de antes queda en tienda.antes-sola. «PantherStore/2» es lo que la tienda
+# nueva dice al pedir cosas (consola/tienda/red.go).
+TIENDA=/home/ark/panther/tienda/tienda
+if [ -x "$TIENDA" ] && ! grep -q -a "PantherStore/2" "$TIENDA"; then
+	S=/dev/shm/pokemon-tienda-nueva.sh
+	cat > "$S" <<'FIN'
+T="$1.bajando"
+J=/dev/shm/pokemon-tienda-nueva.json
+rm -f "$T" "$J"
+if curl -fsSL --max-time 60 "$2/tienda.json" -o "$J" &&
+	SUMA=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["piezas"]["tienda"]["sha256"])' "$J") &&
+	curl -fsSL --max-time 300 "$2/tienda" -o "$T" &&
+	[ "$(sha256sum "$T" | cut -d' ' -f1)" = "$SUMA" ] && grep -q -a "PantherStore/2" "$T"; then
+	[ -f "$1.antes-sola" ] || cp -p "$1" "$1.antes-sola"
+	chmod 755 "$T" && mv -f "$T" "$1"
+fi
+rm -f "$T" "$J" "$0"
+FIN
+	if command -v setsid > /dev/null; then
+		setsid -f bash "$S" "$TIENDA" "$FUENTE" > /dev/null 2>&1 < /dev/null
+	else
+		nohup bash "$S" "$TIENDA" "$FUENTE" > /dev/null 2>&1 < /dev/null &
+	fi
+fi
+
 # La pantalla (y en Pokémon, también los juegos de GB, GBC y GBA) es el emulador de Panther, sin RetroArch.
 export CONSOLA_RETROARCH=$EMU
 export CONSOLA_NUCLEO="$DIR/pokemulador_libretro.so"

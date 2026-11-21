@@ -20,6 +20,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -115,7 +116,12 @@ func main() {
 	abrirRegistro()
 	log.Printf("Panther Store en marcha (%dx%d)", ancho, alto)
 
-	a := nuevaApp(f, nuevaTienda())
+	t := nuevaTienda()
+	t.tarjetaApp = func(e *elemento, ruta string) error { return tarjetaDeApp(f, e, ruta) }
+	a := nuevaApp(f, t)
+	a.dibujarCarga()
+	pintarFB(a.l.img)
+	alDia(a)
 	botones := make(chan uint16, 64)
 	a.srv = nuevoServidorPantalla(botones)
 	if err := a.srv.escuchar(); err != nil {
@@ -151,6 +157,49 @@ func main() {
 	}
 	log.Printf("hasta luego")
 	time.Sleep(100 * time.Millisecond)
+}
+
+// alDia: antes de abrir la pantalla, si en la fuente hay otra Panther Store, se pone y se abre esa
+// (ver actualizar.go). Sin conexión, en unos segundos se sigue con esta.
+func alDia(a *app) {
+	t := a.t
+	yo := programaPropio(t.panther)
+	if yo == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(t.ctx, 6*time.Second)
+	ind, err := leerIndice(ctx, t.fuente)
+	cancel()
+	if ind == nil {
+		logf("al día: no se ha podido mirar la fuente (%v)", err)
+		return
+	}
+	t.indice = ind
+	ultimo := -1
+	pintar := func(h, total int64) {
+		pct := 0
+		if total > 0 {
+			pct = int(h * 100 / total)
+		}
+		if pct/5 == ultimo {
+			return
+		}
+		ultimo = pct / 5
+		a.alDia = fmt.Sprintf("Poniendo al día la Panther Store… %d %%", pct)
+		a.l.limpiarFondo()
+		a.dibujarCarga()
+		pintarFB(a.l.img)
+	}
+	cambiada, err := ponerseAlDia(t.ctx, t.fuente, ind, yo, pintar)
+	a.alDia = ""
+	if err != nil {
+		logf("al día: %v", err)
+	}
+	if cambiada {
+		if err := reabrir(yo); err != nil {
+			logf("al día: no se ha podido abrir la nueva: %v", err)
+		}
+	}
 }
 
 // abrirRegistro: registro.txt se va añadiendo y se vacía al pasar de 256 KB.

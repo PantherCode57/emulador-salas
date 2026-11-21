@@ -13,6 +13,7 @@ import (
 // botones (el mismo trabajador), pero no reinicia EmulationStation: lo dice.
 func sinPantalla(poner, quitar string) error {
 	t := nuevaTienda()
+	t.tarjetaApp = func(e *elemento, ruta string) error { return tarjetaDeApp(cargarFuentes(), e, ruta) }
 	ctx, cancel := context.WithTimeout(t.ctx, 2*time.Hour)
 	defer cancel()
 	if ind, err := leerIndice(ctx, t.fuente); ind != nil {

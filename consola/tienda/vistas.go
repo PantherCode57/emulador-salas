@@ -54,7 +54,9 @@ func (a *app) dibujarCarga() {
 	l := a.l
 	a.logo(ancho/2-55, alto/2-120, 110)
 	l.centrado(image.Rect(0, alto/2+4, ancho, alto/2+40), "Panther Store", l.f.grande, colTexto)
-	if a.saliendo {
+	if a.alDia != "" {
+		l.centrado(image.Rect(0, alto/2+48, ancho, alto/2+72), a.alDia, l.f.pequena, colSuave)
+	} else if a.saliendo {
 		l.centrado(image.Rect(0, alto/2+48, ancho, alto/2+72), "Poniendo al día la pantalla principal…", l.f.pequena, colSuave)
 	}
 	l.centrado(image.Rect(0, alto-48, ancho, alto-20), "Panther OS", l.f.mini, colSuave)

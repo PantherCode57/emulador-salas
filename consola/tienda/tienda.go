@@ -29,6 +29,12 @@ type tienda struct {
 	tarjetas  string // las tarjetas del tema (las de las apps)
 	puestos   string // lo que la tienda ha puesto de cada juego
 
+	// Para dar de alta en EmulationStation las apps nuevas (menu_es.go).
+	esSistemas []string                             // es_systems.cfg (y es_systems.sd1)
+	esAjustes  string                               // es_settings.cfg
+	tema       string                               // el tema de Panther OS
+	tarjetaApp func(e *elemento, ruta string) error // dibuja la tarjeta de una app (nil: no se dibuja)
+
 	catalogoPM time.Time // cuándo se leyó el ports.json de PortMaster (cero: no se ha leído)
 	errPM      error
 
@@ -67,6 +73,10 @@ func nuevaTienda() *tienda {
 		roms:     entorno("TIENDA_ROMS", "/roms"),
 		tarjetas: entorno("TIENDA_TARJETAS", "/roms/themes/es-theme-panther/_panther/tarjetas"),
 		puestos:  filepath.Join(carpetaDatos, "puestos"),
+		esSistemas: strings.Split(entorno("TIENDA_ES_SISTEMAS",
+			"/etc/emulationstation/es_systems.cfg:/etc/emulationstation/es_systems.sd1"), ":"),
+		esAjustes: entorno("TIENDA_ES_AJUSTES", filepath.Join(casa, ".emulationstation", "es_settings.cfg")),
+		tema:      entorno("TIENDA_TEMA", "/roms/themes/es-theme-panther"),
 	}
 	if !strings.HasSuffix(t.fuente, "/") {
 		t.fuente += "/"
@@ -424,6 +434,10 @@ func (t *tienda) ponerApp(ctx context.Context, tr trabajoApp, informar avance) e
 		reiniciarServicio("panther-whatsapp") // con el programa nuevo
 	}
 	logf("puesta %s (%d piezas)", e.id, len(pasos))
+	// Las apps que llegan después de la instalación (la Pokédex) no tienen apartado en el menú.
+	if err := t.darDeAlta(e); err != nil {
+		return fmt.Errorf("no se ha podido poner en el menú: %w", err)
+	}
 	return nil
 }
 

@@ -1,15 +1,16 @@
 name: Consola portátil (arm64)
 
 # Programas de la consola portátil (consola/): el WhatsApp, Spotin, YouTube, Instagram, Claude,
-# Duolingo, Ajedrez, Zarpa, el Navegador, la Panther Store, Pokémon con su enlace, la animación de
-# arranque, el núcleo de la pantalla (lakka/nucleo) y el mGBA de Pokemulador (scripts de Lua para
-# GBA-PK), compilados en una máquina arm64 de GitHub. Ninguno lleva claves: el enlace de la consola
-# entra en Tailscale con la cuenta de quien la usa (un QR la primera vez).
+# Duolingo, Ajedrez, Zarpa, el Navegador, la Panther Store, Pokémon con su enlace, la Pokédex, la
+# animación de arranque, el núcleo de la pantalla (lakka/nucleo) y el mGBA de Pokemulador (scripts
+# de Lua para GBA-PK), compilados en una máquina arm64 de GitHub. Ninguno lleva claves: el enlace de
+# la consola entra en Tailscale con la cuenta de quien la usa (un QR la primera vez).
 #
 # Al subir a «desarrollo», el trabajo «release» deja las apps en la release «panther-apps» (de
 # prueba, nunca la «latest»), con tienda.json (tamaño y sha256 de cada pieza). De ahí las baja la
-# Panther Store de la consola. La crea y la pone al día GITHUB_TOKEN, así que su etiqueta no lanza
-# publish.yml (lo que hace GITHUB_TOKEN no arranca otros flujos).
+# Panther Store de la consola, que también se baja a sí misma si hay otra versión. La crea y la pone
+# al día GITHUB_TOKEN, así que su etiqueta no lanza publish.yml (lo que hace GITHUB_TOKEN no arranca
+# otros flujos).
 on:
   push:
     branches-ignore: [ master ]
@@ -49,6 +50,7 @@ jobs:
             consola/ajedrez/go.sum
             consola/zarpa/go.sum
             consola/tienda/go.sum
+            consola/pokedex/go.sum
       - name: WhatsApp
         working-directory: consola/whatsapp
         run: |
@@ -117,6 +119,13 @@ jobs:
           go vet ./...
           CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/pokemon .
           ../../piezas/pokemon -prueba ../../piezas/pantallas-pokemon
+      - name: Pokédex
+        working-directory: consola/pokedex
+        run: |
+          go vet ./...
+          go test ./...
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o ../../piezas/pokedex .
+          ../../piezas/pokedex -prueba ../../piezas/pantallas-pokedex
       - name: Enlace de las salas (sin clave)
         working-directory: consola/enlace
         run: |
@@ -270,10 +279,11 @@ jobs:
           set -euo pipefail
           mkdir subir
           # Los nombres son los de «pieza.nombre» en consola/tienda/catalogo.go.
-          for n in whatsapp claude instagram duolingo ajedrez zarpa youtube spotin pokemon navegador \
-                   enlace pokemulador_libretro.so mgba_libretro.so \
+          # «tienda» es la propia Panther Store: se la baja ella misma al abrirse si es otra.
+          for n in whatsapp claude instagram duolingo ajedrez zarpa youtube spotin pokemon pokedex navegador \
+                   tienda enlace pokemulador_libretro.so mgba_libretro.so \
                    WhatsApp.sh Claude.sh Instagram.sh Duolingo.sh Ajedrez.sh Zarpa.sh Youtube.sh \
-                   Spotin.sh Pokemon.sh Navegador.sh; do
+                   Spotin.sh Pokemon.sh Pokedex.sh Navegador.sh; do
             cp "piezas/$n" subir/
           done
           cp piezas/pokemon-lua/*.lua subir/
