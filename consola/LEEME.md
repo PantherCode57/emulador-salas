@@ -106,7 +106,11 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
     generación; izquierda y derecha, de 8 en 8.
   - Y abre el buscador, con el teclado en pantalla: por nombre (sin tildes ni signos: «mr mime»,
     «flabebe») o por número («25»). B quita lo buscado y se queda en el mismo Pokémon.
-  - Solo nombres y números: no lleva imágenes de los Pokémon. No necesita internet.
+  - A la izquierda del nombre, el sprite pequeño de cada Pokémon. No van en la app ni en el
+    repositorio (son de Nintendo): se bajan de PokeAPI (`raw.githubusercontent.com/PokeAPI/sprites`,
+    `POKEDEX_SPRITES`) cuando salen en la lista y se guardan en `~/.config/panther/pokedex/sprites`.
+    Mientras la app está abierta va bajando de fondo los que faltan (unos 2 MB en total), así que
+    luego salen sin internet. Sin conexión se ve un hueco. Lo demás no necesita internet.
   - `-prueba <carpeta>` dibuja las pantallas con una colección inventada.
 - `tienda/`: la Panther Store. Pone y quita con A las apps de Panther OS (WhatsApp, Claude,
   Instagram, Duolingo, Ajedrez, Zarpa, YouTube, Spotin, Pokémon, Pokédex y Navegador) y juegos libres de PortMaster

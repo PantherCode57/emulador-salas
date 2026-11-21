@@ -38,6 +38,7 @@ func dibujarPruebas(f *fuentes, dir string) error {
 		col.cambiar(n)
 	}
 	a := nuevaApp(f, col)
+	a.sp.delDisco() // los que haya en la consola (sin internet: si no hay, salen los huecos)
 	a.cargaHasta = time.Now().Add(time.Hour)
 	if err := guardar(a, "1-carga"); err != nil {
 		return err

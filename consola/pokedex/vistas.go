@@ -8,7 +8,7 @@ import (
 )
 
 // Pantallas con el estilo de Panther OS (fondo de las listas, letra Selawik) y el rojo de la
-// Pokédex. No hay dibujos de Pokémon: solo sus nombres y sus números.
+// Pokédex. Los dibujos de los Pokémon no van en la app: se bajan a la consola (sprites.go).
 var (
 	colPokedex   = color.RGBA{0xe3, 0x2b, 0x3c, 0xff}
 	colPokedexOs = color.RGBA{0xa3, 0x16, 0x2c, 0xff}
@@ -198,8 +198,14 @@ func (a *app) dibujarCartas() {
 		} else {
 			a.translucido(r, 14, 0x12)
 		}
-		l.izquierda(image.Rect(r.Min.X+16, r.Min.Y, r.Min.X+96, r.Max.Y), numero(n), l.f.numero, colAzul)
-		l.izquierda(image.Rect(r.Min.X+104, r.Min.Y, r.Max.X-150, r.Max.Y), a.nombreVisible(n), l.f.nombre, colTexto)
+		l.izquierda(image.Rect(r.Min.X+16, r.Min.Y, r.Min.X+86, r.Max.Y), numero(n), l.f.numero, colAzul)
+		sx, sy := r.Min.X+90, r.Min.Y+(r.Dy()-spriteAlto)/2
+		if im := a.sp.img[n]; im != nil {
+			l.pegar(im, sx, sy)
+		} else { // aún no ha llegado (o no hay internet): un hueco
+			a.translucido(image.Rect(sx+6, sy+3, sx+spriteAncho-6, sy+spriteAlto-3), 8, 0x14)
+		}
+		l.izquierda(image.Rect(r.Min.X+142, r.Min.Y, r.Max.X-150, r.Max.Y), a.nombreVisible(n), l.f.nombre, colTexto)
 		cx, cy := r.Max.X-28, (r.Min.Y+r.Max.Y)/2
 		if a.col.tiene[n] {
 			if elegido {
@@ -216,6 +222,7 @@ func (a *app) dibujarCartas() {
 			l.marcoRedondo(image.Rect(cx-12, cy-12, cx+12, cy+12), 12, 2, colApagado)
 		}
 	}
+	a.pedirSprites()
 	// barra de la derecha: dónde se está
 	if len(a.lista) > filasLista {
 		top, bot := listaArriba, listaArriba+filasLista*filaAlto-6
@@ -228,6 +235,20 @@ func (a *app) dibujarCartas() {
 		a.ayudaAbajo(a.ayudaCartas("A  Quitar"))
 	} else {
 		a.ayudaAbajo(a.ayudaCartas("A  Conseguido"))
+	}
+}
+
+// pedirSprites: los dibujos de lo que se ve y de un poco más arriba y más abajo. Lo que se ve va
+// lo último, que es lo primero que se baja.
+func (a *app) pedirSprites() {
+	ini, fin := a.primera, min(a.primera+filasLista, len(a.lista))
+	for k := max(ini-filasLista, 0); k < min(fin+filasLista, len(a.lista)); k++ {
+		if k < ini || k >= fin {
+			a.sp.pedir(a.lista[k])
+		}
+	}
+	for k := fin - 1; k >= ini; k-- {
+		a.sp.pedir(a.lista[k])
 	}
 }
 

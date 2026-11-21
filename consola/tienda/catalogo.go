@@ -133,7 +133,7 @@ func catalogoApps() []*elemento {
 			pieza{nombre: "caramelos-frlg.lua", locales: []string{"pokemon-lua/caramelos-frlg.lua"}, destino: "caramelos-frlg.lua", modo: 0o644}),
 		app("pokedex", "Pokédex", "Pokedex.sh",
 			"Todos los Pokémon con su número: marca las cartas que tienes.",
-			"La Pokédex nacional entera, del 1 al 1025, con el número y el nombre de cada Pokémon. En «Cartas» marcas los que tienes y se guarda, y el buscador los encuentra por nombre o por número con el teclado en pantalla. Los juegos llegarán más adelante. No necesita internet.",
+			"La Pokédex nacional entera, del 1 al 1025, con el número y el nombre de cada Pokémon. En «Cartas» marcas los que tienes y se guarda, y el buscador los encuentra por nombre o por número con el teclado en pantalla. Los dibujos de los Pokémon se bajan de PokeAPI a la consola la primera vez; lo demás va sin internet. Los juegos llegarán más adelante.",
 			color.RGBA{0xe3, 0x2b, 0x3c, 0xff}, ""),
 		app("navegador", "Navegador", "Navegador.sh",
 			"Un navegador sencillo para leer páginas web con los botones.",

@@ -2,8 +2,9 @@
 // nacional con su número y su nombre, para ir marcando las cartas que tienes.
 //
 // Al entrar hay dos botones: «Cartas» (la lista, con el buscador) y «Juegos» (está por llegar).
-// Lo conseguido se guarda en ~/.config/panther/pokedex/cartas.json. No necesita internet y no
-// lleva imágenes de los Pokémon: solo sus nombres y sus números (nombres.go).
+// Lo conseguido se guarda en ~/.config/panther/pokedex/cartas.json. La app solo lleva los nombres
+// y los números (nombres.go): los dibujos de los Pokémon, que son de Nintendo, se bajan de PokeAPI
+// a la consola cuando hacen falta (sprites.go).
 //
 // Como el resto de apps de la consola, el emulador de Panther (con el núcleo de la pantalla de
 // salas) enseña la imagen y nos pasa los botones.
@@ -80,6 +81,7 @@ func main() {
 	log.Printf("Pokédex de la consola en marcha (%dx%d)", ancho, alto)
 
 	a := nuevaApp(f, abrirColeccion(carpetaDatos))
+	a.sp.arrancar()
 	botones := make(chan uint16, 64)
 	a.srv = nuevoServidorPantalla(botones)
 	if err := a.srv.escuchar(); err != nil {

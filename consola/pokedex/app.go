@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -27,6 +28,7 @@ type app struct {
 	srv *servidorPantalla
 	luz *luz
 	col *coleccion
+	sp  *sprites
 
 	salir chan struct{}
 
@@ -51,7 +53,8 @@ type app struct {
 }
 
 func nuevaApp(f *fuentes, col *coleccion) *app {
-	a := &app{f: f, l: nuevoLienzo(f), col: col, salir: make(chan struct{}), cambios: true, luz: nuevaLuz()}
+	a := &app{f: f, l: nuevoLienzo(f), col: col, salir: make(chan struct{}), cambios: true, luz: nuevaLuz(),
+		sp: nuevosSprites(filepath.Join(carpetaDatos, "sprites"))}
 	a.cargaHasta = time.Now().Add(700 * time.Millisecond)
 	a.lista = todos()
 	return a
@@ -96,6 +99,10 @@ func (a *app) bucle(botones <-chan uint16, ra *retroarch) {
 			return
 		case m := <-botones:
 			a.botones(m)
+		case r := <-a.sp.listo:
+			if a.sp.recibir(r) && a.pant == pCartas {
+				a.cambios = true
+			}
 		case <-reloj.C:
 			a.repetir()
 			if !a.avisoHasta.IsZero() && time.Now().After(a.avisoHasta) {
