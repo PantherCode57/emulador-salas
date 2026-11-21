@@ -143,7 +143,7 @@ static int estado_puente(char *detalle, int n)
 		snprintf(detalle, n, "%s (%s)", nombre, ip);
 		return 0;
 	}
-	snprintf(detalle, n, "Buscándolo en la red… (aún no está hecho)");
+	snprintf(detalle, n, "Buscándolo… (aún no está hecho)");
 	return 1;
 }
 
