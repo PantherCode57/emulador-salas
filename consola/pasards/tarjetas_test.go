@@ -75,8 +75,13 @@ func TestTarjetas(t *testing.T) {
 	s.meter("ff390000.mmc", "mmc1", "mmcblk1", "emmc-cid", "MMC", 32, 1)
 	s.meter("ff390000.mmc", "mmc1", "mmcblk1boot0", "emmc-cid", "MMC", 64, 0)
 
-	// «/» está en mmcblk0p2 (179:2).
-	panther, err := tarjetaDeDispositivo(179, 2)
+	// Como en la consola: «/» no es un disco (0:18) y la tarjeta tiene montadas /boot y /roms.
+	montajes := `overlay / overlay rw,relatime,lowerdir=/x 0 0
+/dev/mmcblk0p1 /boot vfat rw,relatime 0 0
+/dev/mmcblk0p2 /roms exfat rw,relatime 0 0
+tmpfs /dev/shm tmpfs rw 0 0
+`
+	panther, err := tarjetaDePanther(montajes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,8 +141,29 @@ func TestTarjetas(t *testing.T) {
 	}
 }
 
+func TestTarjetaDePantherSinMontar(t *testing.T) {
+	s := nuevoSys(t)
+	s.meter("ff370000.mmc", "mmc0", "mmcblk0", "panther-cid", "SD", 0, 2)
+	s.meter("ff390000.mmc", "mmc1", "mmcblk1", "emmc-cid", "MMC", 32, 1)
+	// Solo «/dev/root»: con una sola tarjeta SD, es esa.
+	p, err := tarjetaDePanther("/dev/root / ext4 rw 0 0\n")
+	if err != nil || p.disco != "mmcblk0" {
+		t.Fatalf("con /dev/root: %+v %v", p, err)
+	}
+	// Nada montado de ninguna tarjeta: no se adivina.
+	if _, err := tarjetaDePanther("overlay / overlay rw 0 0\n"); err == nil {
+		t.Fatal("sin nada montado no debería elegir ninguna")
+	}
+	// La memoria de dentro montada no cuenta: no es SD.
+	p, err = tarjetaDePanther("/dev/mmcblk1p1 /mnt ext4 rw 0 0\n/dev/mmcblk0p1 /boot vfat rw 0 0\n")
+	if err != nil || p.disco != "mmcblk0" {
+		t.Fatalf("con la eMMC montada: %+v %v", p, err)
+	}
+}
+
 func TestSoloLectura(t *testing.T) {
 	m := `/dev/root / ext4 rw,noatime 0 0
+overlay /otra overlay rw,relatime 0 0
 devtmpfs /dev devtmpfs rw,relatime 0 0
 tmpfs /dev/shm tmpfs rw,nosuid,nodev 0 0
 /dev/mmcblk0p1 /boot vfat rw,relatime 0 0

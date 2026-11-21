@@ -21,14 +21,12 @@ const memoria = "/dev/shm/pasards"
 var errSoloLectura = errors.New("no se ha podido dejar la tarjeta en solo lectura; la consola se reinicia")
 
 func tarjetaDeRaiz() (tarjeta, error) {
-	var st syscall.Stat_t
-	if err := syscall.Stat("/", &st); err != nil {
+	m, err := os.ReadFile("/proc/mounts")
+	if err != nil {
 		return tarjeta{}, err
 	}
-	d := uint64(st.Dev)
-	maj := uint32((d>>8)&0xfff) | uint32((d>>32)&^0xfff)
-	min := uint32(d&0xff) | uint32((d>>12)&^0xff)
-	return tarjetaDeDispositivo(maj, min)
+	log.Printf("montajes al empezar:\n%s", m)
+	return tarjetaDePanther(string(m))
 }
 
 func mkdev(maj, min uint32) uint64 {

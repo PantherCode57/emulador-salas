@@ -52,26 +52,47 @@ func leerTarjeta(disco string) (tarjeta, error) {
 		host: real[:i], tam: sectores * 512}, nil
 }
 
-// tarjetaDeDispositivo: la tarjeta donde está la partición maj:min (la de «/»).
-func tarjetaDeDispositivo(maj, min uint32) (tarjeta, error) {
-	real, err := filepath.EvalSymlinks(filepath.Join(raizSys, "dev", "block", fmt.Sprintf("%d:%d", maj, min)))
-	if err != nil {
-		return tarjeta{}, err
+// tarjetasSD: todas las tarjetas SD que se ven (sin la memoria de dentro ni sus «boot»).
+func tarjetasSD() []tarjeta {
+	m, _ := filepath.Glob(filepath.Join(raizSys, "block", "mmcblk*"))
+	var r []tarjeta
+	for _, x := range m {
+		n := filepath.Base(x)
+		if strings.Contains(n, "boot") || strings.Contains(n, "rpmb") {
+			continue
+		}
+		if t, err := leerTarjeta(n); err == nil && t.tipo == "SD" {
+			r = append(r, t)
+		}
 	}
-	real = filepath.ToSlash(real)
-	i := strings.LastIndex(real, "/block/")
-	if i < 0 {
-		return tarjeta{}, fmt.Errorf("%d:%d no es un disco", maj, min)
+	return r
+}
+
+// tarjetaDePanther: la tarjeta de Panther OS. La XF35H tiene una sola ranura, así que es la tarjeta
+// SD que tiene algo montado (/boot, /roms…). No se mira «/»: en Panther OS no es un disco normal
+// (sale como 0:18).
+func tarjetaDePanther(mounts string) (tarjeta, error) {
+	sds := tarjetasSD()
+	if len(sds) == 0 {
+		return tarjeta{}, fmt.Errorf("no veo ninguna tarjeta SD en la ranura")
 	}
-	disco := strings.Split(real[i+len("/block/"):], "/")[0]
-	t, err := leerTarjeta(disco)
-	if err != nil {
-		return t, err
+	var montadas []tarjeta
+	for _, t := range sds {
+		if len(montajesPropios(mounts, t.disco)) > 0 {
+			montadas = append(montadas, t)
+		}
 	}
-	if t.tipo != "SD" {
-		return t, fmt.Errorf("Panther OS no va en la tarjeta de la ranura (va en %s, %s)", disco, t.tipo)
+	if len(montadas) == 1 {
+		return montadas[0], nil
 	}
-	return t, nil
+	if len(montadas) == 0 && len(sds) == 1 && strings.Contains(mounts, "/dev/root ") {
+		return sds[0], nil // solo «/dev/root»: con una sola ranura, es esta
+	}
+	var n []string
+	for _, t := range sds {
+		n = append(n, t.disco)
+	}
+	return tarjeta{}, fmt.Errorf("no sé cuál es la tarjeta de Panther OS (SD: %s; montadas: %d)", strings.Join(n, ", "), len(montadas))
 }
 
 // tarjetasEn: las tarjetas que hay ahora en ese lector (cuando se cambia, la nueva puede salir con
@@ -136,9 +157,8 @@ func (l lector) releer() error {
 	return nil
 }
 
-// montajesDe: los puntos de montaje que están en ese disco (y «/», que a veces sale como /dev/root),
-// con si están en solo lectura.
-func montajesDe(mounts, disco string) map[string]bool {
+// montajesPropios: los puntos de montaje de las particiones de ese disco, con si están en solo lectura.
+func montajesPropios(mounts, disco string) map[string]bool {
 	r := map[string]bool{}
 	for _, l := range strings.Split(mounts, "\n") {
 		c := strings.Fields(l)
@@ -146,10 +166,23 @@ func montajesDe(mounts, disco string) map[string]bool {
 			continue
 		}
 		dev, punto, opciones := c[0], c[1], c[3]
-		if !strings.HasPrefix(dev, "/dev/"+disco) && punto != "/" {
+		if dev != "/dev/"+disco && !strings.HasPrefix(dev, "/dev/"+disco+"p") {
 			continue
 		}
 		r[punto] = strings.Split(opciones, ",")[0] == "ro"
+	}
+	return r
+}
+
+// montajesDe: los de ese disco y «/dev/root» (el disco de arranque, que en esta consola es la
+// tarjeta de Panther OS), que son los que tienen que quedar en solo lectura.
+func montajesDe(mounts, disco string) map[string]bool {
+	r := montajesPropios(mounts, disco)
+	for _, l := range strings.Split(mounts, "\n") {
+		c := strings.Fields(l)
+		if len(c) >= 4 && c[0] == "/dev/root" {
+			r[c[1]] = strings.Split(c[3], ",")[0] == "ro"
+		}
 	}
 	return r
 }
