@@ -177,6 +177,9 @@ void teclado_iniciar(Teclado *t, const char *inicial);
 int teclado_paso(Teclado *t, const Entrada *e);
 void teclado_dibujar(const Teclado *t, Color *abajo, const char *titulo);
 void teclado_dibujar_texto(const Teclado *t, Color *p, int x, int y, int w, bool tapar); // la caja con lo escrito
+// El código del puente, desde cualquier app (apps.c): 1 puesto, -1 cancelado, 2 cambio, 0 nada.
+int codigo_paso(Teclado *t, const Entrada *e, char *aviso, int naviso);
+void codigo_dibujar(const Teclado *t, Color *arriba, Color *abajo, const char *aviso);
 
 // Lo que se guarda en la tarjeta (guardar.c).
 bool wifi_leer(char *ssid, int nssid, char *clave, int nclave, bool *guardada);
@@ -203,18 +206,73 @@ int plat_tcp_recibir(int s, void *b, int n);      // lo que ha llegado (0 si nad
 void plat_tcp_cerrar(int s);
 uint32_t plat_azar(void);                         // algo de azar (la hora, el barrido de la pantalla…)
 
+// --- El sonido (la plataforma): la DS va tocando un anillo de muestras de 16 bits, una y otra vez ---
+#define AUDIO_ANILLO 32768                   // muestras (unos 2 s)
+int plat_audio_tasa(void);                   // muestras por segundo de verdad (16 005 en la DS)
+void plat_audio_empezar(const int16_t *anillo); // lo toca desde el principio
+void plat_audio_parar(void);
+uint32_t plat_audio_tocadas(void);           // cuántas ha tocado desde que empezó
+void plat_audio_escrito(const int16_t *p, int n); // que la DS vea lo que se acaba de escribir
+
 // --- El puente (puente.c) ---
+// Una conexión con el puente, con su saludo (la de las peticiones y la de cada vídeo).
+enum { CANAL_CERRADO, CANAL_CONECTANDO, CANAL_SALUDO, CANAL_BIEN, CANAL_LISTO };
+typedef struct {
+	int sock, fase;
+	Flujo ent, sal;
+	char crudo[160];
+	int ncrudo;
+	uint32_t desde;
+	char nombre[48];
+} Canal;
+bool canal_abrir(Canal *c, const char *ip);
+int canal_paso(Canal *c, const char *codigo); // 1 listo, 0 aún no, -1 no se puede, -2 código malo
+bool canal_enviar(Canal *c, const char *linea);
+int canal_recibir(Canal *c, uint8_t *b, int n); // lo que ha llegado, descifrado (0 nada, -1 cerrado)
+void canal_cerrar(Canal *c);
+
 enum { PU_SIN_RED, PU_BUSCANDO, PU_CONECTANDO, PU_SALUDO, PU_SIN_CODIGO, PU_CODIGO_MAL, PU_LISTO, PU_ERROR };
 void puente_iniciar(void);
 void puente_paso(void);
 int puente_estado(void);
 const char *puente_nombre(void);
 const char *puente_ip(void);
+const char *puente_codigo(void);
 void puente_poner_codigo(const char *codigo);
 bool puente_libre(void);                // conectado y sin nada pendiente
 bool puente_pedir(const char *linea);   // una petición (si está libre)
 int puente_respuesta(char ***lineas);   // las líneas de la respuesta cuando llega; -1 si aún no
+int puente_datos(const uint8_t **d);    // si la respuesta era una foto («B <n>»), sus bytes; -1 si no
+void puente_olvidar(void);              // lo que esté por llegar ya no hace falta (al cambiar de app)
 int partir(char *s, char **trozos, int max); // corta por los tabuladores
+
+// --- Fotos en JPEG (jpeg.c) ---
+bool jpeg_tam(const uint8_t *d, int n, int *w, int *h);
+// La pinta con su esquina en (x0, y0) en p (de pitch × alto); lo que se salga no se pinta.
+bool jpeg_pintar(const uint8_t *d, int n, Color *p, int pitch, int alto, int x0, int y0);
+
+// --- Los vídeos (video.c): YouTube y los de Instagram, por otra conexión con el puente ---
+void video_abrir(const char *clave, const char *titulo, uint32_t desde_ms);
+void video_cerrar(void);
+int video_paso(const Entrada *e);              // SALIR cuando se cierra; e == NULL: sin mandos
+void video_dibujar(Color *arriba, Color *abajo); // abajo == NULL: solo la imagen
+bool video_acabado(void);                      // ha llegado al final
+int video_imagenes(void);                      // (para la prueba) cuántas se han enseñado
+uint32_t video_muestras(void);                 // (para la prueba) cuánto sonido ha llegado
+
+// --- Instagram (ig.c) y YouTube (yt.c) ---
+void ig_entrar(void);
+int ig_paso(const Entrada *e);
+void ig_dibujar(Color *arriba, Color *abajo);
+int ig_n_posts(void);                // (para la prueba)
+int ig_n_chats(void);                // (para la prueba)
+const char *ig_ultimo_texto(void);   // (para la prueba)
+bool ig_foto_puesta(void);           // (para la prueba) la foto de la publicación está pintada
+void yt_entrar(void);
+int yt_paso(const Entrada *e);
+void yt_dibujar(Color *arriba, Color *abajo);
+int yt_n_videos(void);               // (para la prueba)
+bool yt_mini_puesta(void);           // (para la prueba)
 
 // --- WhatsApp (wa.c) y las filas de estado de las apps (apps.c) ---
 void wa_entrar(void);
@@ -225,5 +283,12 @@ const char *wa_ultimo_texto(void);   // (para la prueba) el último mensaje del 
 void fila_estado(Color *p, int y, int estado, const char *titulo, const char *detalle); // 0 hecho, 1 esperando, 2 falta
 int estado_wifi(char *detalle, int n);
 int estado_puente(char *detalle, int n);
+
+// Una conversación (WhatsApp e Instagram): burbujas de abajo arriba entre y0 e y1.
+typedef struct {
+	bool mio;
+	char hora[10], de[44], texto[408];
+} MsgDS;
+void conversacion(Color *p, const MsgDS *m, int n, int *desplazar, int y0, int y1, Color mia, const char *vacio);
 
 #endif

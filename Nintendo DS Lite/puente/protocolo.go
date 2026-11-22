@@ -30,16 +30,44 @@ import (
 //	WA CHAT <jid>           R n / CHAT <versión>\t<nombre>, y M\t<mío 0/1>\t<hora>\t<de>\t<texto>
 //	WA ENVIAR <jid>\t<txt>  R 1 / OK <versión>
 //	WA VINCULAR <teléfono>  R 1 / CODIGO <código de 8 letras para el WhatsApp del móvil>
+//	IG …                    Instagram (instagram.go)
+//	YT …                    YouTube (youtube.go)
+//	IMG <clave> <w> <h> [c] B <n> y n bytes: una foto en JPEG (imagenes.go)
+//	VER <clave> <desde> <f> un vídeo: desde ahí la conexión es solo para él (video.go)
 //
 // Si algo falla: R 1 / ERROR <qué>.
 
 type puente struct {
-	codigo string
-	nombre string
-	wa     whatsapp
+	codigo  string
+	nombre  string
+	wa      whatsapp
+	ig      instagramDS // instagram.go
+	yt      youtubeDS   // youtube.go
+	ayuda   *ayudante   // la app de Android (YouTube y los vídeos), o nil
+	pruebas bool        // deja ver «archivo:» (el vídeo de la prueba del emulador)
 
 	mu     sync.Mutex
 	fallos map[string]*intentos // códigos malos por IP
+
+	unaVez sync.Once
+	reg    *registro   // las claves de las fotos y los vídeos (imagenes.go)
+	fotos  *cacheFotos // las últimas fotos hechas
+
+	muIG     sync.Mutex
+	igCursor string // lo siguiente del inicio de Instagram
+}
+
+// registro: las claves (se hace la primera vez, que las pruebas no lo ponen).
+func (p *puente) registro() *registro {
+	p.unaVez.Do(func() {
+		if p.reg == nil {
+			p.reg = nuevoRegistro()
+		}
+		if p.fotos == nil {
+			p.fotos = &cacheFotos{}
+		}
+	})
+	return p.reg
 }
 
 type intentos struct {
@@ -148,6 +176,17 @@ func (k *conexion) responder(lineas ...string) error {
 	return err
 }
 
+// responderDatos: «B <n>» y n bytes (una foto), cifrado.
+func (k *conexion) responderDatos(d []byte) error {
+	b := append([]byte(fmt.Sprintf("B %d\n", len(d))), d...)
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.sal.xor(b)
+	_ = k.c.SetWriteDeadline(time.Now().Add(30 * time.Second))
+	_, err := k.c.Write(b)
+	return err
+}
+
 func (p *puente) atender(c net.Conn) {
 	defer c.Close()
 	ip := ipDe(c)
@@ -204,8 +243,25 @@ func (p *puente) atender(c net.Conn) {
 			log.Printf("%s: se ha ido (%v)", ip, err)
 			return
 		}
-		if err := k.responder(p.orden(strings.TrimRight(linea, "\r\n"))...); err != nil {
+		orden := strings.TrimRight(linea, "\r\n")
+		switch {
+		case strings.HasPrefix(orden, "IMG "):
+			d, err := p.imagen(strings.TrimPrefix(orden, "IMG "))
+			if err != nil {
+				err = k.responder("ERROR " + limpiar(err.Error(), 120))
+			} else {
+				err = k.responderDatos(d)
+			}
+			if err != nil {
+				return
+			}
+		case strings.HasPrefix(orden, "VER "):
+			p.ver(k, r, ip, strings.TrimPrefix(orden, "VER ")) // la conexión ya es la del vídeo
 			return
+		default:
+			if err := k.responder(p.orden(orden)...); err != nil {
+				return
+			}
 		}
 	}
 }
@@ -218,6 +274,10 @@ func (p *puente) orden(linea string) []string {
 		return []string{"PONG"}
 	case "WA":
 		return p.ordenWA(resto)
+	case "IG":
+		return p.ordenIG(resto)
+	case "YT":
+		return p.ordenYT(resto)
 	}
 	return []string{"ERROR no sé hacer «" + limpiar(cmd, 20) + "»"}
 }

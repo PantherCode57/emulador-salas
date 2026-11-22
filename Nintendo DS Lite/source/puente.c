@@ -1,61 +1,19 @@
 // La conexión con el puente (puente/ en esta carpeta): buscarlo, saludarlo con su código y pedirle
 // cosas. Todo va cifrado (cifrado.c). Cada petición es una línea y cada respuesta «R <n>» y n
-// líneas. Solo hay una petición a la vez: puente_pedir() y, cuando llega, puente_respuesta().
+// líneas, o «B <n>» y n bytes (una foto). Solo hay una petición a la vez: puente_pedir() y, cuando
+// llega, puente_respuesta() (y puente_datos() si era una foto).
+//
+// El saludo va aparte (canal_*), porque los vídeos usan otra conexión con el mismo saludo (video.c).
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "sistema.h"
 
-#define RX_MAX 32768
+#define RX_MAX 65536
 #define MAX_LINEAS 96
 
-static int estado = PU_SIN_RED, sock = -1;
-static char ip[20], nombre[48], codigo[8];
-static Flujo ent, sal;
-static char crudo[256];
-static int ncrudo;
-static bool esperando_bien;
-static char rx[RX_MAX], resp[RX_MAX];
-static int nrx;
-static char *lineas[MAX_LINEAS];
-static int nlineas = -1;
-static bool esperando, ping_interno;
-static uint32_t desde, ultimo_uso;
-
-static void cambiar(int e)
-{
-	estado = e;
-	desde = ahora_ms;
-}
-
-static void cerrar(int e)
-{
-	if (sock >= 0)
-		plat_tcp_cerrar(sock);
-	sock = -1;
-	nrx = ncrudo = 0;
-	esperando = esperando_bien = ping_interno = false;
-	nlineas = -1;
-	cambiar(e);
-}
-
-void puente_iniciar(void)
-{
-	if (!puente_codigo_leer(codigo, sizeof codigo))
-		codigo[0] = 0;
-}
-
-int puente_estado(void) { return estado; }
-const char *puente_nombre(void) { return nombre; }
-const char *puente_ip(void) { return ip; }
-
-void puente_poner_codigo(const char *c)
-{
-	snprintf(codigo, sizeof codigo, "%s", c);
-	puente_codigo_guardar(codigo);
-	cerrar(PU_BUSCANDO);
-}
+// --- Una conexión con el puente: el saludo y lo cifrado ---
 
 // Bytes al azar: lo que se tenga a mano (la hora, las imágenes, el barrido de la pantalla…) pasado
 // por ChaCha20. No tienen que ser secretos: la clave sale también del azar del puente.
@@ -89,7 +47,7 @@ static bool de_hex(const char *s, uint8_t *b, int n)
 	return true;
 }
 
-static bool enviar_todo(const uint8_t *b, int n)
+static bool enviar_todo(int sock, const uint8_t *b, int n)
 {
 	int hecho = 0, vueltas = 0;
 	while (hecho < n) {
@@ -101,7 +59,28 @@ static bool enviar_todo(const uint8_t *b, int n)
 	return true;
 }
 
-static bool enviar_cifrado(const char *s)
+bool canal_abrir(Canal *c, const char *ip)
+{
+	memset(c, 0, sizeof *c);
+	c->sock = plat_tcp_abrir(ip, PUERTO_PUENTE);
+	if (c->sock < 0) {
+		c->fase = CANAL_CERRADO;
+		return false;
+	}
+	c->fase = CANAL_CONECTANDO;
+	c->desde = ahora_ms;
+	return true;
+}
+
+void canal_cerrar(Canal *c)
+{
+	if (c->fase != CANAL_CERRADO && c->sock >= 0)
+		plat_tcp_cerrar(c->sock);
+	c->sock = -1;
+	c->fase = CANAL_CERRADO;
+}
+
+bool canal_enviar(Canal *c, const char *s)
 {
 	uint8_t buf[640];
 	int n = (int)strlen(s);
@@ -109,49 +88,187 @@ static bool enviar_cifrado(const char *s)
 		n = sizeof buf - 1;
 	memcpy(buf, s, n);
 	buf[n++] = '\n';
-	flujo_xor(&sal, buf, n);
-	return enviar_todo(buf, n);
+	flujo_xor(&c->sal, buf, n);
+	return enviar_todo(c->sock, buf, n);
+}
+
+int canal_recibir(Canal *c, uint8_t *b, int n)
+{
+	int k = plat_tcp_recibir(c->sock, b, n);
+	if (k > 0)
+		flujo_xor(&c->ent, b, k);
+	return k;
+}
+
+int canal_paso(Canal *c, const char *codigo)
+{
+	switch (c->fase) {
+	case CANAL_CONECTANDO: {
+		int l = plat_tcp_listo(c->sock);
+		if (l > 0) {
+			c->fase = CANAL_SALUDO;
+			c->ncrudo = 0;
+			c->desde = ahora_ms;
+		} else if (l < 0 || ahora_ms - c->desde > 8000) {
+			return -1;
+		}
+		return 0;
+	}
+	case CANAL_SALUDO: {
+		// «PANTHER-PUENTE 1 <32 cifras hexadecimales>», sin cifrar.
+		int k = plat_tcp_recibir(c->sock, c->crudo + c->ncrudo, (int)sizeof c->crudo - 1 - c->ncrudo);
+		if (k < 0)
+			return -1;
+		c->ncrudo += k;
+		c->crudo[c->ncrudo] = 0;
+		char *fin = memchr(c->crudo, '\n', c->ncrudo);
+		if (!fin)
+			return (c->ncrudo >= (int)sizeof c->crudo - 1 || ahora_ms - c->desde > 8000) ? -1 : 0;
+		*fin = 0;
+		uint8_t nS[16], nD[16], clave[32];
+		char *h = strrchr(c->crudo, ' ');
+		if (strncmp(c->crudo, "PANTHER-PUENTE ", 15) != 0 || !h || strlen(h + 1) < 32 || !de_hex(h + 1, nS, 16))
+			return -1;
+		azar(nD, 16);
+		char hola[64];
+		int n = snprintf(hola, sizeof hola, "HOLA 1 ");
+		for (int i = 0; i < 16; i++)
+			n += snprintf(hola + n, sizeof hola - n, "%02x", nD[i]);
+		hola[n++] = '\n';
+		if (!enviar_todo(c->sock, (const uint8_t *)hola, n))
+			return -1;
+		clave_sesion(codigo, nS, nD, clave);
+		flujo_iniciar(&c->sal, clave, 1);
+		flujo_iniciar(&c->ent, clave, 2);
+		if (!canal_enviar(c, "PIN-OK"))
+			return -1;
+		c->fase = CANAL_BIEN;
+		c->ncrudo = 0;
+		c->desde = ahora_ms;
+		return 0;
+	}
+	case CANAL_BIEN: {
+		// «R 1 / BIEN <nombre>»: si en vez de eso se cierra, el código no es el bueno.
+		int k = canal_recibir(c, (uint8_t *)c->crudo + c->ncrudo, (int)sizeof c->crudo - 1 - c->ncrudo);
+		if (k < 0)
+			return -2;
+		c->ncrudo += k;
+		c->crudo[c->ncrudo] = 0;
+		char *a = memchr(c->crudo, '\n', c->ncrudo);
+		char *b = a ? memchr(a + 1, '\n', c->ncrudo - (a + 1 - c->crudo)) : NULL;
+		if (!b)
+			return (c->ncrudo >= (int)sizeof c->crudo - 1 || ahora_ms - c->desde > 8000) ? -1 : 0;
+		*b = 0;
+		if (strncmp(c->crudo, "R 1\nBIEN ", 9) != 0)
+			return -2;
+		snprintf(c->nombre, sizeof c->nombre, "%s", c->crudo + 9);
+		c->fase = CANAL_LISTO;
+		return 1;
+	}
+	case CANAL_LISTO:
+		return 1;
+	}
+	return -1;
+}
+
+// --- La conexión de las peticiones ---
+
+static int estado = PU_SIN_RED;
+static Canal can = {.sock = -1};
+static char ip[20], nombre[48], codigo[8];
+static char rx[RX_MAX], resp[RX_MAX];
+static int nrx;
+static char *lineas[MAX_LINEAS];
+static int nlineas = -1, ndatos = -1;
+static bool esperando, ping_interno, descartar;
+static uint32_t desde, ultimo_uso;
+
+static void cambiar(int e)
+{
+	estado = e;
+	desde = ahora_ms;
+}
+
+static void cerrar(int e)
+{
+	canal_cerrar(&can);
+	nrx = 0;
+	esperando = ping_interno = descartar = false;
+	nlineas = ndatos = -1;
+	cambiar(e);
+}
+
+void puente_iniciar(void)
+{
+	if (!puente_codigo_leer(codigo, sizeof codigo))
+		codigo[0] = 0;
+}
+
+int puente_estado(void) { return estado; }
+const char *puente_nombre(void) { return nombre; }
+const char *puente_ip(void) { return ip; }
+const char *puente_codigo(void) { return codigo; }
+
+void puente_poner_codigo(const char *c)
+{
+	snprintf(codigo, sizeof codigo, "%s", c);
+	puente_codigo_guardar(codigo);
+	cerrar(PU_BUSCANDO);
 }
 
 // recibir: lo que haya llegado, descifrado, al final de rx. false si se ha cerrado.
 static bool recibir(void)
 {
-	uint8_t buf[2048];
-	for (int vueltas = 0; vueltas < 16; vueltas++) {
-		int k = plat_tcp_recibir(sock, buf, sizeof buf);
+	for (int vueltas = 0; vueltas < 24; vueltas++) {
+		if (nrx >= RX_MAX - 1)
+			return false; // demasiado grande: algo va mal
+		int n = RX_MAX - 1 - nrx;
+		int k = canal_recibir(&can, (uint8_t *)rx + nrx, n > 2048 ? 2048 : n);
 		if (k < 0)
 			return false;
 		if (k == 0)
 			break;
-		flujo_xor(&ent, buf, k);
-		if (nrx + k > RX_MAX - 1)
-			return false; // demasiado grande: algo va mal
-		memcpy(rx + nrx, buf, k);
 		nrx += k;
 	}
 	return true;
 }
 
-// respuesta_completa: si en rx hay ya una respuesta entera («R <n>» y n líneas), la pasa a lineas.
-static bool respuesta_completa(void)
+// respuesta_completa: si en rx hay ya una respuesta entera («R <n>» y n líneas, o «B <n>» y n
+// bytes), la pasa a resp (y a lineas). -1 si lo que llega no tiene sentido.
+static int respuesta_completa(void)
 {
 	char *fin = memchr(rx, '\n', nrx);
 	if (!fin)
-		return false;
+		return 0;
+	int cab = (int)(fin + 1 - rx);
+	if (rx[0] == 'B' && rx[1] == ' ') {
+		int n = atoi(rx + 2);
+		if (n < 0 || n > RX_MAX - 64)
+			return -1;
+		if (nrx < cab + n)
+			return 0;
+		memcpy(resp, rx + cab, n);
+		ndatos = n;
+		nlineas = 0;
+		memmove(rx, rx + cab + n, nrx - cab - n);
+		nrx -= cab + n;
+		return 1;
+	}
 	if (strncmp(rx, "R ", 2) != 0)
-		return false;
+		return -1;
 	int n = atoi(rx + 2);
 	char *p = fin + 1, *lim = rx + nrx;
 	for (int i = 0; i < n; i++) {
 		char *q = memchr(p, '\n', lim - p);
 		if (!q)
-			return false;
+			return 0;
 		p = q + 1;
 	}
 	int largo = (int)(p - (fin + 1));
 	memcpy(resp, fin + 1, largo);
 	resp[largo] = 0;
 	nlineas = 0;
+	ndatos = -1;
 	char *s = resp;
 	for (int i = 0; i < n; i++) {
 		char *q = strchr(s, '\n');
@@ -165,75 +282,7 @@ static bool respuesta_completa(void)
 	int usado = (int)(p - rx);
 	memmove(rx, p, nrx - usado);
 	nrx -= usado;
-	return true;
-}
-
-static void saludo(void)
-{
-	if (!esperando_bien) {
-		// «PANTHER-PUENTE 1 <32 cifras hexadecimales>», sin cifrar.
-		int k = plat_tcp_recibir(sock, crudo + ncrudo, (int)sizeof crudo - 1 - ncrudo);
-		if (k < 0) {
-			cerrar(PU_ERROR);
-			return;
-		}
-		ncrudo += k;
-		crudo[ncrudo] = 0;
-		char *fin = memchr(crudo, '\n', ncrudo);
-		if (!fin) {
-			if (ncrudo >= (int)sizeof crudo - 1 || ahora_ms - desde > 8000)
-				cerrar(PU_ERROR);
-			return;
-		}
-		*fin = 0;
-		uint8_t nS[16], nD[16], clave[32];
-		char *h = strrchr(crudo, ' ');
-		if (strncmp(crudo, "PANTHER-PUENTE ", 15) != 0 || !h || strlen(h + 1) < 32 || !de_hex(h + 1, nS, 16)) {
-			cerrar(PU_ERROR);
-			return;
-		}
-		azar(nD, 16);
-		char hola[64];
-		int n = snprintf(hola, sizeof hola, "HOLA 1 ");
-		for (int i = 0; i < 16; i++)
-			n += snprintf(hola + n, sizeof hola - n, "%02x", nD[i]);
-		hola[n++] = '\n';
-		if (!enviar_todo((const uint8_t *)hola, n)) {
-			cerrar(PU_ERROR);
-			return;
-		}
-		clave_sesion(codigo, nS, nD, clave);
-		flujo_iniciar(&sal, clave, 1);
-		flujo_iniciar(&ent, clave, 2);
-		nrx = 0;
-		if (!enviar_cifrado("PIN-OK")) {
-			cerrar(PU_ERROR);
-			return;
-		}
-		esperando_bien = true;
-		desde = ahora_ms;
-		return;
-	}
-	// «R 1 / BIEN <nombre>»: si en vez de eso se cierra, el código no es el bueno.
-	if (!recibir()) {
-		cerrar(PU_CODIGO_MAL);
-		return;
-	}
-	if (respuesta_completa()) {
-		esperando_bien = false;
-		bool bien = nlineas == 1 && strncmp(lineas[0], "BIEN ", 5) == 0;
-		if (bien)
-			snprintf(nombre, sizeof nombre, "%s", lineas[0] + 5);
-		nlineas = -1;
-		if (bien) {
-			ultimo_uso = ahora_ms;
-			cambiar(PU_LISTO);
-		} else {
-			cerrar(PU_CODIGO_MAL);
-		}
-	} else if (ahora_ms - desde > 8000) {
-		cerrar(PU_ERROR);
-	}
+	return 1;
 }
 
 void puente_paso(void)
@@ -255,42 +304,50 @@ void puente_paso(void)
 				cambiar(PU_SIN_CODIGO);
 				break;
 			}
-			sock = plat_tcp_abrir(ip, PUERTO_PUENTE);
-			if (sock >= 0)
+			if (canal_abrir(&can, ip))
 				cambiar(PU_CONECTANDO);
 			else
 				cerrar(PU_ERROR);
 		}
 		break;
 	}
-	case PU_CONECTANDO: {
-		int l = plat_tcp_listo(sock);
-		if (l > 0) {
-			ncrudo = 0;
-			esperando_bien = false;
-			cambiar(PU_SALUDO);
-		} else if (l < 0 || ahora_ms - desde > 8000) {
+	case PU_CONECTANDO:
+	case PU_SALUDO: {
+		int r = canal_paso(&can, codigo);
+		if (r == 1) {
+			snprintf(nombre, sizeof nombre, "%s", can.nombre);
+			nrx = 0;
+			nlineas = ndatos = -1;
+			ultimo_uso = ahora_ms;
+			cambiar(PU_LISTO);
+		} else if (r == -1) {
 			cerrar(PU_ERROR);
+		} else if (r == -2) {
+			cerrar(PU_CODIGO_MAL);
+		} else if (estado == PU_CONECTANDO && can.fase >= CANAL_SALUDO) {
+			estado = PU_SALUDO;
 		}
 		break;
 	}
-	case PU_SALUDO:
-		saludo();
-		break;
 	case PU_LISTO:
 		if (!recibir()) {
 			cerrar(PU_ERROR);
 			break;
 		}
-		if (esperando && respuesta_completa()) {
-			esperando = false;
-			if (ping_interno) {
-				ping_interno = false;
-				nlineas = -1;
+		if (esperando) {
+			int r = respuesta_completa();
+			if (r < 0) {
+				cerrar(PU_ERROR);
+			} else if (r > 0) {
+				esperando = false;
+				if (ping_interno || descartar) {
+					ping_interno = descartar = false;
+					nlineas = ndatos = -1;
+				}
+			} else if (ahora_ms - desde > 25000) {
+				cerrar(PU_ERROR);
 			}
-		} else if (esperando && ahora_ms - desde > 20000) {
-			cerrar(PU_ERROR);
-		} else if (!esperando && nlineas < 0 && ahora_ms - ultimo_uso > 40000) {
+		} else if (nlineas < 0 && ahora_ms - ultimo_uso > 40000) {
 			if (puente_pedir("PING")) // que el puente no cierre por no hablar
 				ping_interno = true;
 		}
@@ -313,11 +370,12 @@ bool puente_pedir(const char *linea)
 {
 	if (!puente_libre())
 		return false;
-	if (!enviar_cifrado(linea)) {
+	if (!canal_enviar(&can, linea)) {
 		cerrar(PU_ERROR);
 		return false;
 	}
 	esperando = true;
+	descartar = false;
 	desde = ultimo_uso = ahora_ms;
 	return true;
 }
@@ -330,6 +388,21 @@ int puente_respuesta(char ***l)
 	*l = lineas;
 	nlineas = -1;
 	return n;
+}
+
+int puente_datos(const uint8_t **d)
+{
+	int n = ndatos;
+	*d = (const uint8_t *)resp;
+	ndatos = -1;
+	return n;
+}
+
+void puente_olvidar(void)
+{
+	if (esperando)
+		descartar = true;
+	nlineas = ndatos = -1;
 }
 
 // partir: corta una línea por los tabuladores (la modifica). Devuelve cuántos trozos.

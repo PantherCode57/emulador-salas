@@ -69,12 +69,12 @@ const App apps[N_APPS] = {
 		"pasa a la DS ya preparada, en poca calidad para que su wifi pueda con ella.",
 		RGB(30, 215, 96), RGB(12, 120, 55), icono_musica},
 	{"Instagram", "Fotos, reels e historias",
-		"Verás tu inicio, las historias y tus mensajes. El puente baja las fotos y las hace pequeñas, a "
-		"la medida de las pantallas de la DS.",
+		"Tu inicio, las historias y tus mensajes. El puente baja las fotos y las hace pequeñas, a la "
+		"medida de las pantallas de la DS. Se entra desde la app Puente DS del móvil.",
 		RGB(247, 119, 55), RGB(193, 53, 132), icono_foto},
 	{"YouTube", "Vídeos",
-		"Buscarás vídeos y los verás en pequeño. La DS no puede con un vídeo normal: el puente lo "
-		"convierte en uno muy pequeño, con pocas imágenes por segundo.",
+		"Buscas vídeos y los ves en pequeño. La DS no puede con un vídeo normal: el móvil lo convierte "
+		"en uno muy pequeño, con pocas imágenes por segundo.",
 		RGB(255, 60, 60), RGB(170, 10, 20), icono_play},
 	{"Navegador", "Páginas web",
 		"Abrirás páginas web. El puente las abre de verdad y le manda a la DS cómo se ven; tú tocas, "
@@ -91,8 +91,49 @@ static int actual;
 void app_entrar(int i)
 {
 	actual = i;
+	puente_olvidar(); // lo que pidió la app de antes ya no hace falta
 	if (i == 0)
 		wa_entrar();
+	else if (i == 2)
+		ig_entrar();
+	else if (i == 3)
+		yt_entrar();
+}
+
+// El código del puente desde cualquier app (como en WhatsApp). 1 puesto, -1 cancelado, 2 cambio.
+int codigo_paso(Teclado *t, const Entrada *e, char *aviso, int naviso)
+{
+	if (e->toque_ini && en(e->tx, e->ty, 0, 0, 64, 28))
+		return -1;
+	int r = teclado_paso(t, e);
+	if (r == TECLADO_CANCELAR)
+		return -1;
+	if (r != TECLADO_ACEPTAR)
+		return r == TECLADO_CAMBIO ? 2 : 0;
+	int n = (int)strlen(t->texto);
+	bool cifras = n == 6;
+	for (int i = 0; i < n; i++)
+		cifras = cifras && t->texto[i] >= '0' && t->texto[i] <= '9';
+	if (!cifras) {
+		snprintf(aviso, naviso, "El código son 6 cifras");
+		return 2;
+	}
+	puente_poner_codigo(t->texto);
+	return 1;
+}
+
+void codigo_dibujar(const Teclado *t, Color *arriba, Color *abajo, const char *aviso)
+{
+	llenar(arriba, C_FONDO);
+	barra_arriba(arriba, "Puente");
+	texto(arriba, &letra_titulo, 12, 30, "Código del puente", C_BLANCO);
+	texto_parrafo(arriba, &letra_peq, 12, 52, 232, "Son las 6 cifras que enseña la app Puente DS del móvil. "
+		"Se apunta en la tarjeta: solo hace falta una vez.", C_SUAVE);
+	teclado_dibujar_texto(t, arriba, 8, 112, 240, false);
+	if (aviso && aviso[0])
+		texto_centro(arriba, &letra_peq, ANCHO / 2, 150, aviso, C_AMARILLO);
+	ayuda(arriba, "START aceptar     B borrar");
+	teclado_dibujar(t, abajo, "Código del puente");
 }
 
 // Las tres filas de la pantalla de abajo: wifi, puente y la app.
@@ -165,6 +206,10 @@ int app_paso(const Entrada *e)
 {
 	if (actual == 0)
 		return wa_paso(e);
+	if (actual == 2)
+		return ig_paso(e);
+	if (actual == 3)
+		return yt_paso(e);
 	if (toca_atras(e))
 		return SALIR;
 	if ((e->toque_ini && en(e->tx, e->ty, 8, 36, 240, 46)) || (e->pulsado & B_A)) {
@@ -179,6 +224,14 @@ void app_dibujar(Color *arriba, Color *abajo)
 {
 	if (actual == 0) {
 		wa_dibujar(arriba, abajo);
+		return;
+	}
+	if (actual == 2) {
+		ig_dibujar(arriba, abajo);
+		return;
+	}
+	if (actual == 3) {
+		yt_dibujar(arriba, abajo);
 		return;
 	}
 	const App *a = &apps[actual];
@@ -203,5 +256,5 @@ void app_dibujar(Color *arriba, Color *abajo)
 	fila_estado(abajo, 36, w, "Wifi", detalle);
 	int pu = estado_puente(detalle, sizeof detalle);
 	fila_estado(abajo, 88, pu, "Puente", detalle);
-	fila_estado(abajo, 140, 2, a->nombre, "Llegará pronto: primero va WhatsApp");
+	fila_estado(abajo, 140, 2, a->nombre, "Llegará pronto: primero van WhatsApp, Instagram y YouTube");
 }

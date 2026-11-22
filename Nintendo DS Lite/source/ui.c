@@ -92,3 +92,58 @@ void boton(Color *p, int x, int y, int w, int h, const char *s, Color c1, Color 
 		marco(p, x - 2, y - 2, w + 4, h + 4, 10, 2, C_BLANCO);
 	texto_centro(p, &letra_negrita, x + w / 2, y + (h - letra_negrita.alto) / 2, s, C_BLANCO);
 }
+
+// alto_burbuja: lo que ocupa un mensaje en la conversación.
+static int alto_burbuja(const MsgDS *m, int *ancho)
+{
+	int max = 176, w = ancho_texto(&letra_normal, m->texto);
+	int alto_texto = w > max ? texto_parrafo(NULL, &letra_normal, 0, 0, max, m->texto, 0) : letra_normal.alto + 2;
+	if (w > max)
+		w = max;
+	int wh = ancho_texto(&letra_peq, m->hora);
+	if (w < wh)
+		w = wh;
+	if (!m->mio && m->de[0]) {
+		int wd = ancho_texto(&letra_peq, m->de);
+		if (w < wd)
+			w = wd > max ? max : wd;
+	}
+	*ancho = w + 14;
+	return 5 + ((!m->mio && m->de[0]) ? 13 : 0) + alto_texto + letra_peq.alto + 4;
+}
+
+// conversacion: los mensajes, de abajo arriba, entre y0 e y1 (desplazar: cuánto se ha subido).
+void conversacion(Color *p, const MsgDS *msgs, int nmsgs, int *desplazar, int y0, int y1, Color mia, const char *vacio)
+{
+	int total = 0, alto[64], ancho[64];
+	if (nmsgs > 64)
+		nmsgs = 64;
+	for (int i = 0; i < nmsgs; i++)
+		total += (alto[i] = alto_burbuja(&msgs[i], &ancho[i])) + 4;
+	int maximo = total - (y1 - y0);
+	if (maximo < 0)
+		maximo = 0;
+	if (*desplazar > maximo)
+		*desplazar = maximo;
+	if (nmsgs == 0) {
+		texto_centro(p, &letra_normal, ANCHO / 2, (y0 + y1) / 2 - 8, vacio, C_GRIS);
+		return;
+	}
+	int yb = y1 + *desplazar;
+	for (int i = nmsgs - 1; i >= 0 && yb > y0; i--) {
+		const MsgDS *m = &msgs[i];
+		int y = yb - alto[i], w = ancho[i];
+		int x = m->mio ? ANCHO - 6 - w : 6;
+		if (y < y1) {
+			redondeado(p, x, y, w, alto[i], 8, m->mio ? mia : C_PANEL2, 256);
+			int ty = y + 4;
+			if (!m->mio && m->de[0]) {
+				texto_corto(p, &letra_peq, x + 7, ty, w - 14, m->de, C_AZUL);
+				ty += 13;
+			}
+			ty = texto_parrafo(p, &letra_normal, x + 7, ty, 176, m->texto, C_BLANCO);
+			texto_derecha(p, &letra_peq, x + w - 7, ty - 1, m->hora, m->mio ? mezclar(mia, C_BLANCO, 150) : C_GRIS);
+		}
+		yb = y - 4;
+	}
+}

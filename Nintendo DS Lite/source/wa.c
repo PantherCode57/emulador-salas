@@ -14,11 +14,6 @@ typedef struct {
 	int noleidos;
 } ChatDS;
 
-typedef struct {
-	bool mio;
-	char hora[10], de[44], texto[408];
-} MsgDS;
-
 #define MAX_CHATS 40
 #define MAX_MSGS 40
 #define FILA_Y 28
@@ -397,60 +392,6 @@ static void dibujar_aviso(Color *p, int y)
 	texto_corto(p, &letra_peq, (ANCHO - w) / 2 + 8, y + 3, w - 16, aviso, C_AMARILLO);
 }
 
-// alto_burbuja: lo que ocupa un mensaje en la conversación.
-static int alto_burbuja(const MsgDS *m, int *ancho)
-{
-	int max = 176, w = ancho_texto(&letra_normal, m->texto);
-	int alto_texto = w > max ? texto_parrafo(NULL, &letra_normal, 0, 0, max, m->texto, 0) : letra_normal.alto + 2;
-	if (w > max)
-		w = max;
-	int wh = ancho_texto(&letra_peq, m->hora);
-	if (w < wh)
-		w = wh;
-	if (!m->mio && m->de[0]) {
-		int wd = ancho_texto(&letra_peq, m->de);
-		if (w < wd)
-			w = wd > max ? max : wd;
-	}
-	*ancho = w + 14;
-	return 5 + ((!m->mio && m->de[0]) ? 13 : 0) + alto_texto + letra_peq.alto + 4;
-}
-
-// conversacion: los mensajes, de abajo arriba, entre y0 e y1.
-static void conversacion(Color *p, int y0, int y1)
-{
-	int total = 0, alto[MAX_MSGS], ancho[MAX_MSGS];
-	for (int i = 0; i < nmsgs; i++)
-		total += (alto[i] = alto_burbuja(&msgs[i], &ancho[i])) + 4;
-	int maximo = total - (y1 - y0);
-	if (maximo < 0)
-		maximo = 0;
-	if (desplazar > maximo)
-		desplazar = maximo;
-	if (nmsgs == 0) {
-		texto_centro(p, &letra_normal, ANCHO / 2, (y0 + y1) / 2 - 8,
-			cargado || vinculado() ? "Cargando mensajes…" : "Sin mensajes", C_GRIS);
-		return;
-	}
-	int yb = y1 + desplazar;
-	for (int i = nmsgs - 1; i >= 0 && yb > y0; i--) {
-		const MsgDS *m = &msgs[i];
-		int y = yb - alto[i], w = ancho[i];
-		int x = m->mio ? ANCHO - 6 - w : 6;
-		if (y < y1) {
-			redondeado(p, x, y, w, alto[i], 8, m->mio ? BURBUJA_MIA : C_PANEL2, 256);
-			int ty = y + 4;
-			if (!m->mio && m->de[0]) {
-				texto_corto(p, &letra_peq, x + 7, ty, w - 14, m->de, C_AZUL);
-				ty += 13;
-			}
-			ty = texto_parrafo(p, &letra_normal, x + 7, ty, 176, m->texto, C_BLANCO);
-			texto_derecha(p, &letra_peq, x + w - 7, ty - 1, m->hora, m->mio ? RGB(160, 220, 200) : C_GRIS);
-		}
-		yb = y - 4;
-	}
-}
-
 static void dibujar_estado(Color *abajo)
 {
 	char d[80];
@@ -543,7 +484,7 @@ static void dibujar_lista(Color *arriba, Color *abajo)
 static void dibujar_chat(Color *arriba, Color *abajo)
 {
 	fondo_arriba(arriba, abierto_nombre);
-	conversacion(arriba, 20, 174);
+	conversacion(arriba, msgs, nmsgs, &desplazar, 20, 174, BURBUJA_MIA, cargado || vinculado() ? "Cargando mensajes…" : "Sin mensajes");
 	barra_arriba(arriba, abierto_nombre); // encima de lo que se salga por arriba
 	dibujar_aviso(arriba, 154);
 	ayuda(arriba, "▲▼ moverse     A escribir     B volver");
@@ -561,7 +502,7 @@ static void dibujar_teclado(Color *arriba, Color *abajo)
 {
 	if (vista == V_ESCRIBIR) {
 		fondo_arriba(arriba, abierto_nombre);
-		conversacion(arriba, 20, 134);
+		conversacion(arriba, msgs, nmsgs, &desplazar, 20, 134, BURBUJA_MIA, "Cargando mensajes…");
 		barra_arriba(arriba, abierto_nombre);
 		teclado_dibujar_texto(&tec, arriba, 8, 142, 240, false);
 		ayuda(arriba, "START enviar     B borrar     X mayúsculas");

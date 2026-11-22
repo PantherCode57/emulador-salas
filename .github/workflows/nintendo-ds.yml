@@ -1,8 +1,8 @@
 name: Nintendo DS Lite
 
 # Panther OS para la Nintendo DS Lite (la carpeta «Nintendo DS Lite»): el puente (Go) con sus pruebas,
-# la prueba de la DS en el PC (que habla de verdad con el puente, con un WhatsApp de mentira) con
-# fotos de todas las pantallas, y panther.nds para la tarjeta de la flashcard, con BlocksDS.
+# la prueba de la DS en el PC (que habla de verdad con el puente, con WhatsApp, Instagram y YouTube de
+# mentira) con fotos de todas las pantallas, y panther.nds para la tarjeta de la flashcard, con BlocksDS.
 on:
   push:
     branches: [desarrollo, master]
@@ -54,6 +54,9 @@ jobs:
           grep -q 'VINCULAR 34612345678' puente.txt
           grep -q 'ENVIADO 111@s.whatsapp.net "hola"' puente.txt
           grep -q 'ENVIADO 111@s.whatsapp.net "Vale"' puente.txt
+          grep -q 'IG MEGUSTA 1001 1' puente.txt
+          grep -q 'IG ENVIADO t1 "Vale"' puente.txt
+          grep -q 'vídeo cerrado' puente.txt
       - name: Compilar para la DS (BlocksDS)
         working-directory: /tmp/ds
         run: |

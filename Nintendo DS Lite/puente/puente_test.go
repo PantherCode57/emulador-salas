@@ -235,7 +235,7 @@ func TestRemoto(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, orden := range []string{"PING", "WA ESTADO", "WA CHATS"} {
+	for _, orden := range []string{"PING", "WA ESTADO", "WA CHATS", "IG ESTADO", "YT ESTADO"} {
 		if err := d.mandar(orden); err != nil {
 			t.Fatal(err)
 		}
@@ -247,5 +247,18 @@ func TestRemoto(t *testing.T) {
 		if len(l) == 0 || strings.HasPrefix(l[0], "ERROR") {
 			t.Fatalf("%s: %q", orden, l)
 		}
+	}
+	// El vídeo de la prueba (prueba.sh lo deja en la app): lo descodifica Android y llega a la DS.
+	if os.Getenv("PUENTE_VIDEO") == "" {
+		return
+	}
+	v, err := conectar(t, dir, os.Getenv("PUENTE_CODIGO"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	im, mu, fin := verVideo(t, v, "archivo:prueba", 2*time.Minute)
+	t.Logf("vídeo de Android: %d imágenes, %d muestras, acabado %v", im, mu, fin)
+	if im < 10 || mu < 16000 || !fin {
+		t.Fatalf("el vídeo de Android no llega bien: %d imágenes, %d muestras, acabado %v", im, mu, fin)
 	}
 }

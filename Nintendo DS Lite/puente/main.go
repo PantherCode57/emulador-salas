@@ -9,11 +9,16 @@
 //     va cifrado (cifrado.go).
 //   - Se habla con líneas de texto: cada respuesta es «R <n>» y n líneas (protocolo.go).
 //   - WhatsApp (wa_real.go): su propia sesión, vinculada desde la DS con el número de teléfono.
+//   - Instagram (instagram.go): el de la consola, con la sesión que se pone en la app de Android.
+//   - YouTube (youtube.go) y los vídeos (video.go): los saca y descodifica la app de Android (el
+//     «ayudante»: PUENTE_AYUDANTE=127.0.0.1:<puerto> y PUENTE_AYUDANTE_CLAVE=<clave>) y aquí se
+//     hacen pequeños para la DS.
 //
 // Uso: puente-ds [-datos carpeta] [-puerto 8790] [-codigo 123456] [-nombre texto] [-dns ip:53,…]
 //
-//	[-probar-red] [-falso [-sin-vincular]]
-//	-falso         WhatsApp de mentira (para las pruebas de la DS en el PC)
+//	[-probar-red] [-falso [-sin-vincular]] [-pruebas]
+//	-falso         WhatsApp, Instagram y YouTube de mentira (para las pruebas de la DS en el PC)
+//	-pruebas       deja pedir «VER archivo:…» al ayudante (la prueba del emulador de Android)
 //	-sin-vincular  con -falso, empieza sin vincular (para probar la vinculación)
 //	-dns           los servidores DNS (en Android no hay /etc/resolv.conf: los pasa la app)
 //	-probar-red    al arrancar, mira si se llega a WhatsApp (DNS y TLS) y lo dice en el registro
@@ -52,6 +57,7 @@ func main() {
 	sinVincular := flag.Bool("sin-vincular", false, "con -falso, empieza sin vincular")
 	dns := flag.String("dns", "", "servidores DNS (ip:puerto separados por comas)")
 	probarRed := flag.Bool("probar-red", false, "mirar al arrancar si se llega a WhatsApp")
+	pruebas := flag.Bool("pruebas", false, "dejar ver el vídeo de la prueba del emulador")
 	flag.Parse()
 	log.SetFlags(log.Ldate | log.Ltime)
 	if *dns != "" {
@@ -78,7 +84,18 @@ func main() {
 		}
 		wa = r
 	}
-	p := &puente{codigo: c, nombre: *nombre, wa: wa, fallos: map[string]*intentos{}}
+	p := &puente{codigo: c, nombre: *nombre, wa: wa, fallos: map[string]*intentos{}, pruebas: *pruebas}
+	if dir := os.Getenv("PUENTE_AYUDANTE"); dir != "" {
+		p.ayuda = &ayudante{dir: dir, clave: os.Getenv("PUENTE_AYUDANTE_CLAVE")}
+		log.Printf("ayudante de Android en %s", dir)
+	}
+	if *falso {
+		p.ig = nuevoIGFalso()
+		p.yt = &ytFalso{}
+	} else {
+		p.ig = nuevoIGReal(filepath.Join(*datos, "instagram"))
+		p.yt = ytAyudante{p.ayuda}
+	}
 	log.Printf("puente %s en el puerto %d: «%s», código %s", version, *puerto, p.nombre, c)
 	go func() {
 		if err := p.contestarBusquedas(*puerto); err != nil {

@@ -310,6 +310,64 @@ uint32_t plat_azar(void)
 	return mezcla ^ (vblanks * 2654435761u) ^ ((uint32_t)REG_VCOUNT << 16) ^ (uint32_t)time(NULL) ^ keysHeld();
 }
 
+// --- El sonido: un canal que toca el anillo sin parar, y dos temporizadores que cuentan las muestras ---
+// El canal cuenta con la mitad del reloj de la DS y libnds le pone 1047 para 16 000 Hz
+// (SOUNDXTMR_FREQ); el temporizador 0 cuenta lo mismo con el reloj entero (2094), y el 1 cuenta las
+// vueltas del 0: una por muestra.
+
+#define F_SONIDO 16000
+
+static int canal_sonido = -1;
+static uint32_t tocadas;
+static uint16_t ultimo_t1;
+
+static int recarga_sonido(void)
+{
+	return (-(BUS_CLOCK >> 1) - ((F_SONIDO + 1) >> 1)) / F_SONIDO; // como SOUNDXTMR_FREQ: -1047
+}
+
+int plat_audio_tasa(void)
+{
+	return (int)((BUS_CLOCK >> 1) / -recarga_sonido()); // 16 004
+}
+
+void plat_audio_parar(void)
+{
+	if (canal_sonido >= 0)
+		soundKill(canal_sonido);
+	canal_sonido = -1;
+	TIMER_CR(0) = 0;
+	TIMER_CR(1) = 0;
+}
+
+void plat_audio_empezar(const int16_t *anillo)
+{
+	plat_audio_parar();
+	DC_FlushRange(anillo, AUDIO_ANILLO * 2);
+	TIMER_DATA(0) = (uint16_t)(2 * recarga_sonido());
+	TIMER_DATA(1) = 0;
+	TIMER_CR(1) = TIMER_ENABLE | TIMER_CASCADE;
+	tocadas = 0;
+	ultimo_t1 = 0;
+	canal_sonido = soundPlaySample(anillo, SoundFormat_16Bit, AUDIO_ANILLO * 2, F_SONIDO, 127, 64, true, 0);
+	TIMER_CR(0) = TIMER_ENABLE | TIMER_DIV_1;
+}
+
+uint32_t plat_audio_tocadas(void)
+{
+	if (canal_sonido < 0)
+		return tocadas;
+	uint16_t t = TIMER_DATA(1);
+	tocadas += (uint16_t)(t - ultimo_t1);
+	ultimo_t1 = t;
+	return tocadas;
+}
+
+void plat_audio_escrito(const int16_t *p, int n)
+{
+	DC_FlushRange(p, n * 2);
+}
+
 // --- El programa ---
 
 int main(int argc, char **argv)
@@ -336,6 +394,7 @@ int main(int argc, char **argv)
 		mkdir(carpeta, 0777);
 	}
 
+	soundEnable();
 	wifi_ok = Wifi_InitDefault(INIT_ONLY | WIFI_ATTEMPT_DSI_MODE);
 	estado = wifi_ok ? RED_PARADA : RED_APAGADA;
 

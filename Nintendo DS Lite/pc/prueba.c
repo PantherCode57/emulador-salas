@@ -168,6 +168,24 @@ int plat_tcp_recibir(int s, void *b, int n)
 void plat_tcp_cerrar(int s) { close(s); }
 uint32_t plat_azar(void) { return (uint32_t)rand() ^ (imagen << 16); }
 
+// El sonido de mentira: «toca» 16 000 muestras por segundo desde que empieza.
+static bool sonando;
+static uint32_t sonando_desde;
+int plat_audio_tasa(void) { return 16000; }
+void plat_audio_empezar(const int16_t *anillo)
+{
+	(void)anillo;
+	sonando = true;
+	sonando_desde = imagen;
+}
+void plat_audio_parar(void) { sonando = false; }
+uint32_t plat_audio_tocadas(void) { return sonando ? (imagen - sonando_desde) * 16000 / 60 : 0; }
+void plat_audio_escrito(const int16_t *p, int n)
+{
+	(void)p;
+	(void)n;
+}
+
 // --- Las fotos (PNG sin comprimir, para no necesitar nada más) ---
 
 static uint32_t tabla_crc[256];
@@ -398,6 +416,50 @@ static const Paso guion[] = {
 	{1530, 0, 0, 0, "31_wa_respuesta_rapida"},
 	{1535, B_B, 0, 0, NULL},
 	{1545, 0, 0, 0, "32_wa_lista_otra_vez"},
+	// Instagram (de mentira, en el puente)
+	{1550, B_B, 0, 0, NULL},
+	{1560, B_TOQUE, 46 + 164, 43, NULL},
+	{1700, 0, 0, 0, "33_ig_inicio"},
+	{1705, B_A, 0, 0, NULL}, // me gusta
+	{1720, B_ABAJO, 0, 0, NULL}, // la publicación del vídeo
+	{1800, 0, 0, 0, "34_ig_publicacion_video"},
+	{1805, B_X, 0, 0, NULL}, // verlo
+	{1900, 0, 0, 0, "35_ig_video"},
+	{1905, B_B, 0, 0, NULL},
+	{1910, B_R, 0, 0, NULL}, // historias
+	{1960, 0, 0, 0, "36_ig_historias"},
+	{1965, B_A, 0, 0, NULL},
+	{2030, 0, 0, 0, "37_ig_historia"},
+	{2035, B_B, 0, 0, NULL},
+	{2040, B_R, 0, 0, NULL}, // mensajes
+	{2090, 0, 0, 0, "38_ig_mensajes"},
+	{2095, B_A, 0, 0, NULL},
+	{2140, 0, 0, 0, "39_ig_chat"},
+	{2145, B_TOQUE, 8 + 58, 80 + 17, NULL}, // «Vale»
+	{2200, 0, 0, 0, "40_ig_enviado"},
+	{2205, B_B, 0, 0, NULL},
+	{2210, B_B, 0, 0, NULL},
+	// YouTube (de mentira, en el puente)
+	{2220, B_TOQUE, 46, 43 + 78, NULL},
+	{2280, 0, 0, 0, "41_yt_inicio"},
+	{2285, B_A, 0, 0, NULL}, // a buscar: g a t o s
+	{2290, B_TOQUE, TECLA_X(8, 2), TECLA_Y(2), NULL},
+	{2296, B_TOQUE, TECLA_X(0, 2), TECLA_Y(2), NULL},
+	{2302, B_TOQUE, TECLA_X(8, 2), TECLA_Y(1), NULL},
+	{2308, B_TOQUE, TECLA_X(16, 2), TECLA_Y(1), NULL},
+	{2314, B_TOQUE, TECLA_X(2, 2), TECLA_Y(2), NULL},
+	{2320, 0, 0, 0, "42_yt_buscar"},
+	{2325, B_START, 0, 0, NULL},
+	{2400, 0, 0, 0, "43_yt_lista"},
+	{2405, B_A, 0, 0, NULL}, // el primero
+	{2500, 0, 0, 0, "44_yt_video"},
+	{2505, B_A, 0, 0, NULL}, // pausa
+	{2520, 0, 0, 0, "45_yt_pausa"},
+	{2525, B_A, 0, 0, NULL}, // sigue
+	{2900, 0, 0, 0, "46_yt_fin"},
+	{2905, B_B, 0, 0, NULL},
+	{2915, B_B, 0, 0, NULL},
+	{2925, 0, 0, 0, "47_inicio_al_final"},
 };
 #define N_GUION ((int)(sizeof guion / sizeof guion[0]))
 
@@ -442,7 +504,7 @@ int main(int argc, char **argv)
 	int toque_hasta = -1, tx = 0, ty = 0;
 	uint32_t antes = 0;
 	srand(12345);
-	for (imagen = 1; imagen <= 1560; imagen++) {
+	for (imagen = 1; imagen <= 2930; imagen++) {
 		Entrada e;
 		memset(&e, 0, sizeof e);
 		for (int i = 0; i < N_GUION; i++) {
@@ -493,6 +555,28 @@ int main(int argc, char **argv)
 			mal("el mensaje escrito no sale en el chat");
 		if (imagen == 1528 && strcmp(wa_ultimo_texto(), "Vale") != 0)
 			mal("la respuesta rápida no sale en el chat");
+		if (imagen == 1698 && ig_n_posts() != 2)
+			mal("Instagram: no salen las 2 publicaciones del inicio");
+		if (imagen == 1698 && !ig_foto_puesta())
+			mal("Instagram: la foto de la publicación no se pinta");
+		if (imagen == 1898 && video_imagenes() < 3)
+			mal("Instagram: el vídeo no enseña imágenes");
+		if (imagen == 2028 && !ig_foto_puesta())
+			mal("Instagram: la foto de la historia no se pinta");
+		if (imagen == 2088 && ig_n_chats() != 2)
+			mal("Instagram: no salen los 2 chats");
+		if (imagen == 2198 && strcmp(ig_ultimo_texto(), "Vale") != 0)
+			mal("Instagram: la respuesta rápida no sale en el chat");
+		if (imagen == 2398 && yt_n_videos() != 6)
+			mal("YouTube: la búsqueda no da los 6 vídeos");
+		if (imagen == 2398 && !yt_mini_puesta())
+			mal("YouTube: la miniatura no se pinta");
+		if (imagen == 2498 && video_imagenes() < 6)
+			mal("YouTube: el vídeo no enseña imágenes");
+		if (imagen == 2898 && !video_acabado())
+			mal("YouTube: el vídeo no llega al final");
+		if (imagen == 2898 && video_muestras() < 60000)
+			mal("YouTube: no llega el sonido del vídeo");
 
 		for (int i = 0; i < N_GUION; i++)
 			if (guion[i].imagen == imagen && guion[i].foto)
