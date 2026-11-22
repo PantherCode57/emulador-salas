@@ -24,6 +24,7 @@ type tienda struct {
 	local     string // ~/panther-instalar
 	panther   string // ~/panther
 	roms      string // /roms
+	raiz      string // «/» (para probar en el PC: dónde mirar las librerías de 32 bits y PortMaster)
 	ports     string // /roms/ports
 	descargas string // donde se dejan los zip mientras se bajan
 	tarjetas  string // las tarjetas del tema (las de las apps)
@@ -71,6 +72,7 @@ func nuevaTienda() *tienda {
 		local:    entorno("TIENDA_LOCAL", filepath.Join(casa, "panther-instalar")),
 		panther:  entorno("TIENDA_PANTHER", filepath.Join(casa, "panther")),
 		roms:     entorno("TIENDA_ROMS", "/roms"),
+		raiz:     entorno("TIENDA_RAIZ", "/"),
 		tarjetas: entorno("TIENDA_TARJETAS", "/roms/themes/es-theme-panther/_panther/tarjetas"),
 		puestos:  filepath.Join(carpetaDatos, "puestos"),
 		esSistemas: strings.Split(entorno("TIENDA_ES_SISTEMAS",
@@ -278,10 +280,18 @@ func (t *tienda) mirar() {
 		s := scriptJuego(g)
 		e.puesto = s != "" && existe(filepath.Join(t.ports, s)) && !existe(t.marcaAMedias(g.zip))
 		e.tam = g.tam
+		if g.externo != nil {
+			e.tam += g.externo.tam
+		}
 		e.disponible = g.url != ""
 		e.motivo = ""
 		if !e.disponible {
 			e.motivo = "PortMaster ya no lo ofrece para esta consola"
+		} else if g.arm32 {
+			if f := t.falta32(g.libs32); f != "" {
+				e.disponible = false
+				e.motivo = "La consola no tiene lo que pide este juego de 32 bits (falta " + f + ")"
+			}
 		}
 	}
 }

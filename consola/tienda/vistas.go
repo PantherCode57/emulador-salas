@@ -301,6 +301,9 @@ func (a *app) dibujarFicha() {
 	sub := "App de Panther OS"
 	if e.tipo == tJuego {
 		sub = "Juego libre de PortMaster · " + e.genero
+		if e.juego.externo != nil {
+			sub = "Juego gratis de GameJolt · " + e.genero
+		}
 	}
 	a.cabecera(e.nombre, sub)
 	img := e.imagen
@@ -341,7 +344,11 @@ func (a *app) dibujarFicha() {
 			de += fmt.Sprintf(" · %d", g.anio)
 		}
 		dato("Hecho por", de)
-		dato("Viene de", "PortMaster")
+		if g.externo != nil {
+			dato("Viene de", "GameJolt y PortMaster")
+		} else {
+			dato("Viene de", "PortMaster")
+		}
 	}
 	b := image.Rect(x, 78+imagenAlto-38, ancho-24, 78+imagenAlto)
 	switch {

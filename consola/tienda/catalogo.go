@@ -48,6 +48,15 @@ type juegoPM struct {
 	anio    int
 	autor   string   // quién lo hizo (para la lista de EmulationStation)
 	runtime []string // lo que pide de PortMaster (libs/*.squashfs); los de la lista no piden nada
+
+	// Los que no traen el juego (externo.go): su autor lo da gratis en su página y la tienda lo baja
+	// de allí. Su port va fijo (el que se ha comprobado con ese archivo), no el último de PortMaster.
+	externo *externoPM
+	arm32   bool     // es de 32 bits (armhf): la consola tiene que poder con ellos
+	libs32  []string // lo que pide de la consola en 32 bits (para decir si no lo tiene)
+	// Dónde guarda las partidas (patrones dentro de /roms/ports): se guardan al quitarlo y se
+	// devuelven al ponerlo, que es como se pone al día.
+	partidas []string
 }
 
 type elemento struct {
@@ -212,5 +221,35 @@ func catalogoJuegos() []*elemento {
 			&juegoPM{zip: "opentyrian.zip", tam: 5374583, md5: "749b4765627786604f4f3b3bfd1a47fd",
 				url:   "https://github.com/PortsMaster/PortMaster-New/releases/download/2026-04-02_0757/opentyrian.zip",
 				items: []string{"OpenTyrian.sh", "opentyrian/"}, captura: "screenshot.jpg", anio: 1995, autor: "Eclipse Software"}),
+		geometryCrash(j),
 	}
+}
+
+// geometryCrash: el «Geometry Dash» de PortMaster. No es el de RobTop (ese es de pago y no está en
+// PortMaster): es un fan-game gratis de BootDark. Su port (gcrash.zip, de JanTrueno) trae el
+// cargador de GameMaker para la consola y un parche para jugar con los botones, pero no el juego:
+// hay que bajar la versión de Windows de GameJolt. Eso lo hace la tienda, desde la consola, y lo
+// deja preparado (lo que el .sh hacía al abrirlo la primera vez). Ver externo.go.
+func geometryCrash(j func(nombre, genero, desc, larga string, c color.RGBA, g *juegoPM) *elemento) *elemento {
+	e := j("Geometry Crash", "Ritmo, plataformas",
+		"Salta al ritmo de la música esquivando pinchos: un fan-game de Geometry Dash.",
+		"Un fan-game gratis de Geometry Dash, de BootDark: un cubo avanza al ritmo de la música y salta para esquivar pinchos, con niveles cada vez más difíciles. La tienda lo baja de GameJolt y lo deja listo para los botones: A salta, START pausa y SELECT + START sale. Tus partidas se guardan aunque lo quites.",
+		color.RGBA{0x2b, 0x9a, 0xe0, 0xff},
+		&juegoPM{zip: "gcrash.zip", tam: 13734988, md5: "0fdf67998bd9ee36edd126efbfc33bcb",
+			url:   "https://github.com/PortsMaster/PortMaster-New/releases/download/2024-07-18_2225/gcrash.zip",
+			items: []string{"Geometry Crash.sh", "gcrash"}, captura: "screenshot.png", anio: 2020, autor: "BootDark",
+			arm32: true,
+			// lo que pide gmloader (libzip y libcrypto ya los trae el port)
+			libs32: []string{"libSDL2-2.0.so.0", "libopenal.so.1", "libfreetype.so.6", "libstdc++.so.6",
+				"libz.so.1", "libbz2.so.1.0"},
+			partidas: []string{"gcrash/gamedata/*.ini"},
+			externo: &externoPM{
+				pagina:   "https://gamejolt.com/games/Geometry_Crash/476353",
+				gamejolt: 803726,
+				archivo:  "geometry-crash-1.0.5.exe",
+				tam:      55788032,
+				preparar: prepararGCrash,
+			}})
+	e.licencia = "Gratis, de GameJolt (con el port de PortMaster)"
+	return e
 }

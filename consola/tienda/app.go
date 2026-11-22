@@ -361,6 +361,9 @@ func (a *app) accion(e *elemento) {
 		switch {
 		case e.tipo == tJuego:
 			texto = "Se borra el juego con sus partidas guardadas y sus ajustes, y quedan libres " + tamTexto(a.t.ocupaJuego(e.juego)) + "."
+			if len(e.juego.partidas) > 0 {
+				texto = "Se borra el juego y quedan libres " + tamTexto(a.t.ocupaJuego(e.juego)) + ". Tus partidas se guardan en la consola: si lo vuelves a poner, sigues donde lo dejaste."
+			}
 		case e.app.servicio:
 			texto = "Se quita su tarjeta de la pantalla principal. El servicio de Panther (la hora, la batería, el volumen y los avisos de mensajes) sigue en marcha."
 		}

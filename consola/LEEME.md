@@ -142,8 +142,9 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
 - `tienda/`: la Panther Store. Pone y quita con A las apps de Panther OS (WhatsApp, Claude,
   Instagram, Duolingo, Ajedrez, Zarpa, YouTube, Spotin, Pokémon, Pokédex, Navegador y Flashear tarjeta) y juegos libres de PortMaster
   que ya vienen con sus datos («ready to run» y sin «power»: Cave Story, Celeste Classic, SuperTux,
-  Sonic Robo Blast 2, SRB2Kart, OpenTTD y OpenTyrian), con su icono, de qué va, lo que ocupa y si ya
-  está puesto, y el avance mientras se baja. L y R cambian entre apps y juegos; X abre la ficha.
+  Sonic Robo Blast 2, SRB2Kart, OpenTTD y OpenTyrian, y Geometry Crash, ver abajo), con su icono, de
+  qué va, lo que ocupa y si ya está puesto, y el avance mientras se baja. L y R cambian entre apps y
+  juegos; X abre la ficha.
   - Apps: se bajan de la fuente de la tienda (`TIENDA_FUENTE`, con un `tienda.json` con el tamaño
     y el sha256 de cada pieza; por defecto, la release `panther-apps` del repositorio, que pone al
     día `consola.yml` en cada subida a `desarrollo`) y, si no hay, se copian de `~/panther-instalar`. Al quitar una app se
@@ -157,6 +158,21 @@ Lo que se le pone a una consola portátil con Linux (probado en una Game Console
     su descripción en español y les hace la tarjeta de la lista (`images/panther/`), como en los
     otros apartados. Las capturas salen del repositorio de PortMaster. Al quitar un juego se borran
     sus partidas (están en su carpeta), y lo pregunta.
+  - **Geometry Crash** (`externo.go`): es el «Geometry Dash» de PortMaster, un fan-game gratis de
+    BootDark (el Geometry Dash de RobTop es de pago y no está en PortMaster). Su port (`gcrash.zip`)
+    no trae el juego, porque su autor no ha dado permiso para repartirlo: PortMaster pide bajar la
+    versión de Windows de GameJolt en el PC y copiarla a la consola. La tienda lo hace sola, desde la
+    consola: pide a GameJolt la descarga (la misma petición que su botón «Descargar»), comprueba que
+    es `geometry-crash-1.0.5.exe` y lo prepara al ponerlo, con su barra. Lo que hace es lo mismo que
+    haría el `.sh` del port al abrirlo la primera vez: saca el juego con el `7zzs` del port, comprueba
+    el md5 de `data.win`, le pone el parche de PortMaster con su `xdelta3` (`game.droid`), mete la
+    música en el apk y borra lo que solo sirve en Windows. Así se abre a la primera.
+    - El juego no pasa nunca por la fuente de la tienda ni por el repositorio.
+    - Su port va fijo (el de 2024-07-18, comprobado con esa versión del juego), no el último de
+      PortMaster. Es de 32 bits (armhf): solo se ofrece si la consola tiene lo que pide gmloader en
+      32 bits (`falta32`).
+    - Sus partidas (`gcrash/gamedata/*.ini`) se guardan en `~/.config/panther/tienda/partidas` al
+      quitarlo y se devuelven al ponerlo, así que «Quitar y Poner» no las pierde.
   - Se pone al día sola: al abrirla, si la fuente tiene otra tienda (la pieza `tienda` de
     `tienda.json`), la baja comprobando su suma, deja la de antes en `tienda.antes` y se abre con la
     nueva. La de la consola de antes del 21/11/2026 no sabía: se la pone `Pokemon.sh` una vez

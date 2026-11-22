@@ -50,15 +50,6 @@ func leer(t *testing.T, ruta string) string {
 	return string(b)
 }
 
-func porID(l []*elemento, id string) *elemento {
-	for _, e := range l {
-		if e.id == id {
-			return e
-		}
-	}
-	return nil
-}
-
 func nada(string, int64, int64) {}
 
 func TestPonerYQuitarApp(t *testing.T) {

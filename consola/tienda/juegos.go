@@ -97,6 +97,18 @@ func aplicarCatalogoPM(juegos []*elemento, cat map[string]entradaPM) {
 			continue
 		}
 		g := *e.juego
+		if g.externo != nil {
+			// Su port va fijo: es el que se ha comprobado con el archivo de la página del juego (si
+			// PortMaster lo cambia, puede que pida otra versión). Solo se mira que no pida más consola.
+			if c.Attr.Image.Screenshot != "" {
+				g.captura = c.Attr.Image.Screenshot
+			}
+			if contiene(c.Attr.Reqs, "power") || contiene(c.Attr.Reqs, "2gb") {
+				g.url = ""
+			}
+			e.juego = &g
+			continue
+		}
 		if c.Source.URL != "" {
 			g.url, g.md5, g.tam = c.Source.URL, c.Source.MD5, c.Source.Size
 		}
@@ -158,8 +170,12 @@ func (t *tienda) ponerJuego(ctx context.Context, tr trabajoJuego, informar avanc
 			return fmt.Errorf("necesita %s de PortMaster, que no está en la consola", r)
 		}
 	}
-	if libre := espacioLibre(t.ports); libre >= 0 && libre < g.tam*3+(64<<20) {
-		return fmt.Errorf("no cabe: hacen falta %s y quedan %s", tamTexto(g.tam*3), tamTexto(libre))
+	hace := g.tam * 3
+	if g.externo != nil {
+		hace += g.externo.tam * 4 // lo bajado, lo que sale de dentro y el juego con el parche
+	}
+	if libre := espacioLibre(t.ports); libre >= 0 && libre < hace+(64<<20) {
+		return fmt.Errorf("no cabe: hacen falta %s y quedan %s", tamTexto(hace), tamTexto(libre))
 	}
 	if err := os.MkdirAll(t.descargas, 0o755); err != nil {
 		return err
@@ -185,6 +201,35 @@ func (t *tienda) ponerJuego(ctx context.Context, tr trabajoJuego, informar avanc
 		return err
 	}
 	_ = os.Remove(zipRuta)
+	if x := g.externo; x != nil {
+		// El juego, de su página, y prepararlo (ver externo.go).
+		carpeta := carpetaJuego(&g)
+		if carpeta == "" {
+			return errors.New("el port no tiene carpeta")
+		}
+		bajado := filepath.Join(t.descargas, x.archivo)
+		if tamDe(bajado) != x.tam {
+			if err := bajarExterno(ctx, x, bajado, informar); err != nil {
+				return err
+			}
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		p := preparacion{dir: filepath.Join(t.ports, carpeta), archivo: bajado, pm: t.carpetasPM(), informar: informar}
+		if err := x.preparar(ctx, p); err != nil {
+			if ctx.Err() == nil {
+				_ = os.Remove(bajado) // por si llegó mal: la próxima vez se baja de nuevo
+			}
+			return err
+		}
+		_ = os.Remove(bajado)
+	}
+	if len(g.partidas) > 0 {
+		if err := t.devolverPartidas(&g); err != nil {
+			logf("partidas de %s: %v", g.zip, err)
+		}
+	}
 	_ = os.Remove(t.descargas) // solo si ha quedado vacía
 	informar("Poniendo", 1, 1)
 	if err := t.apuntarEnLista(tr); err != nil {
@@ -289,6 +334,11 @@ func descomprimir(ctx context.Context, zipRuta, dir string, informar func(h, tt 
 func (t *tienda) quitarJuego(ctx context.Context, tr trabajoJuego, informar avance) error {
 	g := tr.g
 	informar("Quitando", 0, 1)
+	if len(g.partidas) > 0 {
+		if err := t.guardarPartidas(&g); err != nil {
+			return fmt.Errorf("no se han podido guardar tus partidas: %v", err)
+		}
+	}
 	nombres := map[string]bool{}
 	var orden []string
 	poner := func(it string) {
@@ -321,6 +371,10 @@ func (t *tienda) quitarJuego(ctx context.Context, tr trabajoJuego, informar avan
 	_ = os.Remove(t.registroJuego(g.zip))
 	_ = os.Remove(t.marcaAMedias(g.zip))
 	_ = os.Remove(filepath.Join(t.descargas, g.zip+".part"))
+	if g.externo != nil {
+		_ = os.Remove(filepath.Join(t.descargas, g.externo.archivo))
+		_ = os.Remove(filepath.Join(t.descargas, g.externo.archivo+".part"))
+	}
 	_ = os.Remove(t.descargas)
 	informar("Quitando", 1, 1)
 	logf("quitado %s (%s)", g.zip, strings.Join(orden, ", "))
