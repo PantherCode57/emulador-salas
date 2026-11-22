@@ -77,6 +77,8 @@ static void procesar(char **l, int n)
 		}
 		if (nvideos == 0)
 			poner_aviso("No ha salido nada");
+		else
+			aviso[0] = 0;
 		buscando = pedir_mas = false;
 		sel_desde = ahora_ms;
 	} else if (!strncmp(l[0], "ERROR ", 6)) {

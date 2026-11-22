@@ -417,7 +417,7 @@ int video_paso(const Entrada *e)
 		video_cerrar();
 		return SALIR;
 	}
-	bool pausa = (e->pulsado & B_A) || (e->toque_ini && en(e->tx, e->ty, 98, 120, 60, 44));
+	bool pausa = (e->pulsado & B_A) || (e->toque_ini && en(e->tx, e->ty, 98, 112, 60, 42));
 	if (pausa) {
 		if (fase == V_VIENDO || fase == V_CONECTANDO || fase == V_PIDIENDO) {
 			reloj_parado = reloj();
@@ -430,11 +430,11 @@ int video_paso(const Entrada *e)
 		}
 		return CAMBIO;
 	}
-	if ((e->pulsado & B_IZQ) || (e->toque_ini && en(e->tx, e->ty, 22, 120, 64, 44))) {
+	if ((e->pulsado & B_IZQ) || (e->toque_ini && en(e->tx, e->ty, 22, 112, 64, 42))) {
 		saltar(-10000);
 		return CAMBIO;
 	}
-	if ((e->pulsado & B_DER) || (e->toque_ini && en(e->tx, e->ty, 170, 120, 64, 44))) {
+	if ((e->pulsado & B_DER) || (e->toque_ini && en(e->tx, e->ty, 170, 112, 64, 42))) {
 		saltar(10000);
 		return CAMBIO;
 	}
@@ -498,21 +498,21 @@ void video_dibujar(Color *arriba, Color *abajo)
 		circulo(abajo, 12 + w, 97, 6, C_BLANCO, 256);
 	}
 	// los botones: 10 s atrás, pausa, 10 s adelante
-	redondeado(abajo, 22, 120, 64, 44, 12, C_PANEL, 256);
-	triangulo(abajo, 40, 142, 52, 134, 52, 150, C_BLANCO);
-	triangulo(abajo, 52, 142, 64, 134, 64, 150, C_BLANCO);
-	texto_centro(abajo, &letra_peq, 54, 166, "10 s", C_GRIS);
-	redondeado(abajo, 98, 120, 60, 44, 12, C_ROJO, 256);
+	redondeado(abajo, 22, 112, 64, 42, 12, C_PANEL, 256);
+	triangulo(abajo, 40, 133, 52, 125, 52, 141, C_BLANCO);
+	triangulo(abajo, 52, 133, 64, 125, 64, 141, C_BLANCO);
+	texto_centro(abajo, &letra_peq, 54, 157, "10 s", C_GRIS);
+	redondeado(abajo, 98, 112, 60, 42, 12, C_ROJO, 256);
 	bool parado = fase != V_VIENDO && fase != V_CONECTANDO && fase != V_PIDIENDO;
 	if (parado) {
-		triangulo(abajo, 120, 130, 120, 154, 140, 142, C_BLANCO);
+		triangulo(abajo, 120, 121, 120, 145, 140, 133, C_BLANCO);
 	} else {
-		rect(abajo, 117, 131, 7, 22, C_BLANCO);
-		rect(abajo, 132, 131, 7, 22, C_BLANCO);
+		rect(abajo, 117, 122, 7, 22, C_BLANCO);
+		rect(abajo, 132, 122, 7, 22, C_BLANCO);
 	}
-	redondeado(abajo, 170, 120, 64, 44, 12, C_PANEL, 256);
-	triangulo(abajo, 192, 134, 204, 142, 192, 150, C_BLANCO);
-	triangulo(abajo, 204, 134, 216, 142, 204, 150, C_BLANCO);
-	texto_centro(abajo, &letra_peq, 202, 166, "10 s", C_GRIS);
+	redondeado(abajo, 170, 112, 64, 42, 12, C_PANEL, 256);
+	triangulo(abajo, 192, 125, 204, 133, 192, 141, C_BLANCO);
+	triangulo(abajo, 204, 125, 216, 133, 204, 141, C_BLANCO);
+	texto_centro(abajo, &letra_peq, 202, 157, "10 s", C_GRIS);
 	ayuda(abajo, fase == V_FIN ? "A otra vez     B salir" : "A pausa     ◄► 10 s     B salir");
 }

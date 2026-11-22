@@ -27,10 +27,15 @@ import java.util.Set;
 import java.util.TimeZone;
 
 // El puente en segundo plano: arranca libpuente.so (el puente de Go, «puente/» en la carpeta de la
-// DS) y, si se para, lo vuelve a arrancar. Con un aviso fijo: Android lo pide para no cerrarlo, y
+// DS) y, si se para, lo vuelve a arrancar. Antes abre el ayudante (Ayudante.java: YouTube y los
+// vídeos, que el puente de Go no puede hacer solo en Android). Con un aviso fijo: Android lo pide para no cerrarlo, y
 // así se ve que está encendido. Mantiene el wifi despierto y deja oír los mensajes a toda la red
 // (con los que la DS busca el puente).
 public class Servicio extends Service {
+    interface Apunte {
+        void apuntar(String s);
+    }
+
     static final String CANAL = "puente";
     static volatile boolean enMarcha;
 
@@ -41,6 +46,7 @@ public class Servicio extends Service {
     private PowerManager.WakeLock wakeLock;
     private boolean falso;
     private String codigoPrueba;
+    private Ayudante ayudante;
 
     static File datos(Context c) {
         return new File(c.getFilesDir(), "puente");
@@ -100,7 +106,7 @@ public class Servicio extends Service {
                 Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
         b.setSmallIcon(R.drawable.icono)
                 .setContentTitle("Puente DS en marcha")
-                .setContentText("La Nintendo DS usa WhatsApp a través de este móvil")
+                .setContentText("La Nintendo DS usa WhatsApp, Instagram y YouTube a través de este móvil")
                 .setContentIntent(abrir)
                 .setOngoing(true);
         Notification n = b.build();
@@ -125,6 +131,11 @@ public class Servicio extends Service {
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "puente-ds:red");
         wakeLock.setReferenceCounted(false);
         wakeLock.acquire();
+        try {
+            ayudante = new Ayudante(this, falso, this::apuntar);
+        } catch (Exception e) {
+            apuntar("sin ayudante (YouTube y vídeos): " + e);
+        }
         new Thread(this::vigilar, "puente").start();
     }
 
@@ -144,6 +155,7 @@ public class Servicio extends Service {
                 args.add(servidoresDNS());
                 if (falso) {
                     args.add("-falso");
+                    args.add("-pruebas");
                 }
                 if (codigoPrueba != null) {
                     args.add("-codigo");
@@ -152,6 +164,10 @@ public class Servicio extends Service {
                 ProcessBuilder pb = new ProcessBuilder(args);
                 pb.environment().put("TZ", TimeZone.getDefault().getID());
                 pb.environment().put("HOME", getFilesDir().getAbsolutePath());
+                if (ayudante != null) {
+                    pb.environment().put("PUENTE_AYUDANTE", "127.0.0.1:" + ayudante.puerto);
+                    pb.environment().put("PUENTE_AYUDANTE_CLAVE", ayudante.clave);
+                }
                 pb.redirectErrorStream(true);
                 apuntar("arranco el puente");
                 proceso = pb.start();
@@ -230,6 +246,9 @@ public class Servicio extends Service {
         Process p = proceso;
         if (p != null) {
             p.destroy();
+        }
+        if (ayudante != null) {
+            ayudante.cerrar();
         }
         if (multicast != null && multicast.isHeld()) {
             multicast.release();

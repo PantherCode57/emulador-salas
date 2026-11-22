@@ -36,15 +36,28 @@ android {
         jniLibs {
             useLegacyPackaging = true
         }
+        resources {
+            excludes += setOf("META-INF/*.md", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/DEPENDENCIES",
+                "META-INF/*.kotlin_module", "META-INF/versions/**")
+        }
     }
 
+    // NewPipe Extractor es de Java 17 y usa cosas de Java que los Android antiguos no traen: van
+    // dentro de la app («desugaring»).
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
 
     lint {
         abortOnError = false
         checkReleaseBuilds = false
     }
+}
+
+dependencies {
+    // YouTube: la librería de la app NewPipe (buscar y sacar los vídeos)
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.27.1")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.0.4")
 }

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Puente DS: lleva el puente de Panther OS para la Nintendo DS Lite (WhatsApp con la cuenta de la
-     dueña de la DS). Va en segundo plano con un aviso fijo, que Android pide para no cerrarlo. -->
+<!-- Puente DS: lleva el puente de Panther OS para la Nintendo DS Lite (WhatsApp, Instagram y YouTube
+     con las cuentas de la dueña de la DS). Va en segundo plano con un aviso fijo, que Android pide
+     para no cerrarlo. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -30,6 +31,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Entrar en Instagram (la web de Instagram dentro de la app). -->
+        <activity
+            android:name=".EntrarInstagram"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
 
         <service
             android:name=".Servicio"

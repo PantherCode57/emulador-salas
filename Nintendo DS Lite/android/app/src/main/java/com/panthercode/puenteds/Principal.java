@@ -33,7 +33,8 @@ import java.util.List;
 // La pantalla de Puente DS: si está en marcha, el código de 6 cifras para escribirlo en la DS, la
 // IP del móvil y los pasos. Desde aquí se enciende y se apaga.
 public class Principal extends Activity {
-    private TextView estado, codigo, ips, registro;
+    private TextView estado, codigo, ips, registro, instagram;
+    private Button salirIG;
     private Button boton;
     private final Handler reloj = new Handler(Looper.getMainLooper());
 
@@ -76,7 +77,7 @@ public class Principal extends Activity {
 
         texto(l, "Puente DS", 28, Color.WHITE, true);
         estado = texto(l, "", 18, Color.rgb(30, 215, 96), false);
-        texto(l, "Código para la DS (se escribe una vez en WhatsApp de la DS):", 15, Color.rgb(200, 200, 212), false);
+        texto(l, "Código para la DS (se escribe una vez en la DS, en WhatsApp, Instagram o YouTube):", 15, Color.rgb(200, 200, 212), false);
         codigo = texto(l, "…", 48, Color.rgb(196, 170, 255), true);
         codigo.setGravity(Gravity.CENTER);
         ips = texto(l, "", 15, Color.rgb(200, 200, 212), false);
@@ -85,8 +86,29 @@ public class Principal extends Activity {
                 + "móvil sin contraseña.\n"
                 + "2. En la DS abre WhatsApp y escribe el código de arriba.\n"
                 + "3. Vincula tu WhatsApp desde la DS: escribe tu número y mete en tu móvil el código que "
-                + "te da (WhatsApp → Dispositivos vinculados → Vincular con el número de teléfono).", 14,
+                + "te da (WhatsApp → Dispositivos vinculados → Vincular con el número de teléfono).\n"
+                + "4. Para Instagram, entra aquí abajo con tu cuenta (una sola vez).\n"
+                + "5. YouTube no necesita nada: busca desde la DS.", 14,
                 Color.rgb(150, 150, 165), false);
+
+        texto(l, "Instagram", 20, Color.WHITE, true);
+        instagram = texto(l, "", 15, Color.rgb(200, 200, 212), false);
+        Button entrarIG = new Button(this);
+        entrarIG.setText("Entrar en Instagram");
+        entrarIG.setOnClickListener(v -> startActivity(new Intent(this, EntrarInstagram.class)));
+        l.addView(entrarIG);
+        salirIG = new Button(this);
+        salirIG.setText("Salir de Instagram en la DS");
+        salirIG.setOnClickListener(v -> {
+            File d = EntrarInstagram.carpeta(this);
+            d.mkdirs();
+            try {
+                new File(d, "salir").createNewFile();
+            } catch (Exception ignorado) {
+            }
+            reloj.postDelayed(this::refrescar, 3000);
+        });
+        l.addView(salirIG);
 
         boton = new Button(this);
         boton.setOnClickListener(v -> {
@@ -161,6 +183,21 @@ public class Principal extends Activity {
         codigo.setText(c.length() == 6 ? c.substring(0, 3) + " " + c.substring(3) : "…");
         List<String> l = direcciones();
         ips.setText(l.isEmpty() ? "Este móvil no está en ningún wifi" : "Este móvil en el wifi: " + android.text.TextUtils.join(", ", l));
+        File ig = EntrarInstagram.carpeta(this);
+        String usuario = "";
+        try {
+            usuario = new org.json.JSONObject(leer(new File(ig, "cuenta.json"), 64 * 1024)).optString("usuario", "");
+        } catch (Exception ignorado) {
+        }
+        boolean cuenta = new File(ig, "cuenta.json").exists();
+        if (new File(ig, "sesion-nueva").exists()) {
+            instagram.setText("Comprobando la sesión con Instagram…");
+        } else if (cuenta) {
+            instagram.setText(usuario.isEmpty() ? "La DS ya tiene tu Instagram" : "La DS tiene el Instagram de @" + usuario);
+        } else {
+            instagram.setText("Aún no has entrado: pulsa «Entrar en Instagram» y escribe tu usuario y tu contraseña en la página de Instagram.");
+        }
+        salirIG.setVisibility(cuenta ? View.VISIBLE : View.GONE);
         if (registro.getVisibility() == View.VISIBLE) {
             registro.setText(leer(Servicio.registro(this), 6000));
         }

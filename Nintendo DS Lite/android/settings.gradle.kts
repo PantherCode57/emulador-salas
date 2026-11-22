@@ -15,6 +15,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // NewPipe Extractor (YouTube) está en JitPack
+        maven { url = uri("https://jitpack.io") }
     }
 }
 
