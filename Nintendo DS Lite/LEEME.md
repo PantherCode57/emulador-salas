@@ -33,7 +33,8 @@ desde el menú de la flashcard. Por ahora tiene:
   código y de 16 bytes al azar de cada lado (`puente/cifrado.go` y `source/cifrado.c`). Sin el código
   no se entra, y con 5 códigos malos seguidos esa IP queda fuera 5 minutos. Así nadie más de un wifi
   abierto puede leer los chats.
-- **Peticiones:** son líneas de texto y cada respuesta es `R <n>` y n líneas (`puente/protocolo.go`).
+- **Peticiones:** son líneas de texto y cada respuesta es `R <n>` y n líneas, o `B <n>` y n bytes si
+  es una foto (`puente/protocolo.go`).
 - **WhatsApp** (`puente/wa_real.go`): una sesión propia con whatsmeow, como el WhatsApp de la consola.
   - Se vincula desde la DS sin QR: se escribe el número con el prefijo (34…) y el puente pide a
     WhatsApp un código de 8 letras.
@@ -42,11 +43,40 @@ desde el menú de la flashcard. Por ahora tiene:
   - En la DS: lista de chats con los no leídos, conversación con burbujas, escribir con el teclado y
     cuatro respuestas rápidas. Al abrir un chat, los mensajes quedan leídos también en el móvil.
   - Los emojis que la DS no sabe dibujar salen como se escribían antes (`:)`, `xD`, `<3`…).
-- `puente-ds -falso` usa un WhatsApp de mentira; con él, la prueba del PC hace todo el camino de
-  verdad por TCP: código malo, código bueno, vincular, chats, escribir y respuesta rápida.
-- Las demás apps (Spotin, Instagram, YouTube, Navegador y Tienda) aún dicen «llegará pronto».
-- **Falta** dónde va el puente: tiene que ser un aparato de ella (lo más práctico, su móvil, que
-  además puede hacer la zona wifi para la DS).
+- **Instagram** (`puente/instagram.go`): el mismo Instagram que la app de la consola (`puente/ig/` son
+  copias de `consola/instagram`; si allí se arregla algo, se vuelve a copiar).
+  - La sesión la pone ella en su móvil: en la app Puente DS, «Entrar en Instagram» abre la web de
+    Instagram dentro de la app, escribe su usuario y su contraseña allí y la sesión pasa al puente.
+  - En la DS hay tres pestañas: **Inicio** (la foto arriba; abajo quién, el texto, «me gusta», las
+    fotos de cada publicación con ◄► y los vídeos con X), **Historias** (pasan solas o tocando a los
+    lados) y **Mensajes** (como WhatsApp, con respuestas rápidas).
+- **YouTube** (`puente/youtube.go`): buscar con el teclado, la lista con la miniatura arriba y verlos.
+  Lo busca la app de Android con NewPipe Extractor (la librería de la app NewPipe). Sin cuenta.
+- **Fotos** (`IMG`, `puente/imagenes.go`): la DS no ve direcciones, sino claves cortas; el puente baja
+  la foto y se la manda ya en JPEG pequeño, a la medida de sus pantallas. La DS los lee con
+  `source/jpeg.c`.
+- **Vídeos** (`VER`, `puente/video.go` y `source/video.c`): van por otra conexión con el mismo
+  saludo. El móvil descodifica el vídeo con lo que trae (MediaCodec) y el puente le manda a la DS
+  imágenes JPEG de 256×144 como mucho (unas 12 por segundo) y el sonido en ADPCM a 16 kHz. Manda el
+  sonido: la imagen que se ve es la que toca según lo que lleva sonado. La DS le dice al puente por
+  dónde va; si el wifi no da para todo, el puente se salta imágenes y baja la calidad, nunca el
+  sonido. Se puede pausar y saltar 10 s (◄►) o tocar la barra.
+- `puente-ds -falso` usa WhatsApp, Instagram y YouTube de mentira; con él, la prueba del PC hace todo
+  el camino de verdad por TCP: código malo, código bueno, vincular, chats, escribir, respuesta rápida,
+  el inicio de Instagram con sus fotos, un vídeo, las historias, los mensajes, buscar en YouTube, la
+  miniatura y un vídeo entero con pausa.
+- Spotin, el navegador y la tienda aún dicen «llegará pronto».
+
+## La app del móvil (`android/`, «Puente DS»)
+
+- Lleva el puente de Go dentro (como `libpuente.so`) y lo tiene en marcha en segundo plano, con un
+  aviso fijo. Arranca sola al encender el móvil. Desde Android 5.
+- Lleva también el «ayudante» (`Ayudante.java`), lo que el puente de Go no puede hacer en Android:
+  buscar en YouTube y sacar sus vídeos (NewPipe Extractor), y descodificar los vídeos (`Video.java`).
+  Solo escucha dentro del móvil y con una clave.
+- En su pantalla: el código para la DS, la IP del móvil, Instagram (entrar o salir) y el registro.
+- GitHub la compila y la prueba en un emulador de Android (`.github/workflows/nintendo-ds-android.yml`):
+  se le habla como la DS y se le pide un vídeo de prueba de 4 s, que descodifica Android.
 
 ## Ponerlo en la flashcard
 
@@ -67,6 +97,8 @@ no lo hace, Panther OS funciona igual, pero no se acuerda del wifi.
   - `sistema.c`: el arranque, la pantalla de inicio y el paso de una pantalla a otra.
   - `apps.c`: las seis apps y sus iconos. Los iconos son dibujos sencillos, no los logotipos de cada
     marca.
+  - `wa.c`, `ig.c` y `yt.c`: WhatsApp, Instagram y YouTube; `video.c`: los vídeos; `jpeg.c`: las fotos.
+  - `puente.c` y `cifrado.c`: la conexión con el puente.
   - `wifi.c`, `teclado.c`, `ui.c` (las piezas comunes) y `dibujo.c` (formas y letras).
   - `plataforma_ds.c`: lo que habla con la DS de verdad. Es lo único que depende de la DS.
 - `pc/prueba.c`: hace de DS en el PC (botones, toques, un wifi de mentira y un puente de mentira).
