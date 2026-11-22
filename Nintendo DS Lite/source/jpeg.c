@@ -46,7 +46,7 @@ static Comp comp[3];
 static int ncomp, ancho_j, alto_j, reinicio, hmax, vmax;
 static uint8_t planos[3][256]; // las muestras de un MCU, por componente (16×16 como mucho)
 
-static int u16(const uint8_t *p) { return (p[0] << 8) | p[1]; }
+static int be16(const uint8_t *p) { return (p[0] << 8) | p[1]; }
 
 static bool hacer_huff(Huff *h, const uint8_t *bits, const uint8_t *vals, int nvals)
 {
@@ -348,7 +348,7 @@ static const uint8_t *cabeceras(const uint8_t *d, int n, bool solo_tam)
 			p += 2;
 			continue;
 		}
-		int l = u16(p + 2);
+		int l = be16(p + 2);
 		const uint8_t *s = p + 4, *sig = p + 2 + l;
 		if (l < 2 || sig > fin)
 			return NULL;
@@ -357,8 +357,8 @@ static const uint8_t *cabeceras(const uint8_t *d, int n, bool solo_tam)
 		case 0xC1: { // baseline (o extendido de 8 bits, que se lee igual)
 			if (l < 8 || s[0] != 8)
 				return NULL;
-			alto_j = u16(s + 1);
-			ancho_j = u16(s + 3);
+			alto_j = be16(s + 1);
+			ancho_j = be16(s + 3);
 			ncomp = s[5];
 			if ((ncomp != 1 && ncomp != 3) || l < 8 + 3 * ncomp || ancho_j <= 0 || alto_j <= 0)
 				return NULL;
@@ -415,13 +415,13 @@ static const uint8_t *cabeceras(const uint8_t *d, int n, bool solo_tam)
 				if (q + 1 + 64 * (prec + 1) > sig)
 					return NULL;
 				for (int i = 0; i < 64; i++)
-					cuant[id][i] = prec ? (uint16_t)u16(q + 1 + i * 2) : q[1 + i];
+					cuant[id][i] = prec ? (uint16_t)be16(q + 1 + i * 2) : q[1 + i];
 				q += 1 + 64 * (prec + 1);
 			}
 			break;
 		}
 		case 0xDD:
-			reinicio = u16(s);
+			reinicio = be16(s);
 			break;
 		case 0xDA: { // los datos
 			if (!sof || l < 6 || s[0] != ncomp)
