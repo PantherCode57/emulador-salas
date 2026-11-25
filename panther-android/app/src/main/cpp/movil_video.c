@@ -14,6 +14,7 @@
 #include <time.h>
 
 #define HZ 59.7275 /* imágenes por segundo de la GB, la GBC y la GBA */
+#define GUARDAR_CADA 60000 /* ms: cada cuánto se guarda dónde vas, por si la app se cierra de golpe */
 
 static SDL_Window *ventana;
 static SDL_Renderer *pintor;
@@ -26,8 +27,13 @@ static SDL_Rect zona;    /* donde va el juego */
 static SDL_Rect marco;   /* el recuadro 4:3 de dentro: los 640×480 de la consola */
 static bool a_su_ritmo = true;
 static struct timespec siguiente;
+static uint64_t guardado; /* cuándo se guardó por última vez dónde ibas */
 
+#ifdef TEMA_POKEDEX
+static const SDL_Color FONDO = {163, 45, 45, 255};
+#else
 static const SDL_Color FONDO = {13, 10, 20, 255};
+#endif
 
 static void colocar(void) {
 	int w, h;
@@ -118,8 +124,14 @@ void video_empezar(void) {
 	SDL_SetRenderTarget(pintor, NULL);
 	SDL_SetRenderDrawColor(pintor, FONDO.r, FONDO.g, FONDO.b, 255);
 	SDL_RenderClear(pintor);
+	tactil_fondo(pintor);
 	SDL_SetRenderDrawColor(pintor, 0, 0, 0, 255);
 	SDL_RenderFillRect(pintor, &zona);
+}
+
+void video_a_marco(float x, float y, int *mx, int *my) {
+	*mx = marco.w > 0 ? (int)((x * pan_w - marco.x) * ANCHO / marco.w) : -1;
+	*my = marco.h > 0 ? (int)((y * pan_h - marco.y) * ALTO / marco.h) : -1;
 }
 
 /* Como en la consola: GB y GBC a un número entero de veces; GBA, primero a un entero sin suavizar y
@@ -229,9 +241,25 @@ static void esperar_turno(void) {
 			;
 }
 
+/* Cada minuto se guarda dónde vas, como al irte a otra app (juego.c lo hace al ver ese aviso de SDL):
+ * si el móvil cierra la app de golpe, se sigue desde ahí. */
+static void guardar_de_vez_en_cuando(void) {
+	uint64_t ya = ahora_ms();
+	if (!guardado)
+		guardado = ya;
+	if (ya - guardado < GUARDAR_CADA)
+		return;
+	guardado = ya;
+	SDL_Event e;
+	SDL_zero(e);
+	e.type = SDL_APP_WILLENTERBACKGROUND;
+	SDL_PushEvent(&e);
+}
+
 void video_presentar(void) {
 	tactil_dibujar(pintor, mandos_pulsados_pantalla(), !a_su_ritmo);
 	SDL_RenderPresent(pintor);
+	guardar_de_vez_en_cuando();
 	if (a_su_ritmo)
 		esperar_turno();
 }

@@ -108,6 +108,17 @@
     <string name="emudex_copia_de">%1$s · %2$s</string>
     <string name="emudex_recuperar">Recuperar</string>
 
+    <!-- El emulador Panther -->
+    <string name="emudex_panther">Emulador Panther</string>
+    <string name="emudex_panther_titulo">Usar Panther en GB, GBC y GBA</string>
+    <string name="emudex_panther_texto">El emulador de la consola Panther: menú propio, «Rápido» en pantalla y seguir donde lo dejaste. Usa tus partidas de siempre y vale en las salas.</string>
+    <string name="emudex_panther_no_abre">No se ha podido abrir el juego con el emulador Panther. Puedes abrirlo con el de antes: mantén pulsado el juego.</string>
+    <string name="emudex_panther_a_medias">Lo dejaste a medias con el emulador de antes</string>
+    <string name="emudex_panther_a_medias_texto">Panther no puede seguir justo desde ahí: empezará desde la última vez que guardaste dentro del juego. Si hace rato que no guardas, ábrelo con el de antes, guarda en el juego y sal.</string>
+    <string name="emudex_panther_abrir">Abrir con Panther</string>
+    <string name="emudex_panther_con_el_de_antes">Con el de antes</string>
+    <string name="emudex_panther_abrir_antes">Abrir con el emulador de antes</string>
+
     <!-- Trucos -->
     <string name="emudex_trucos">Trucos</string>
     <string name="emudex_caramelos_titulo">Caramelos Raros infinitos</string>

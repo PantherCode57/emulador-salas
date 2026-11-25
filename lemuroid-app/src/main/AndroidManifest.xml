@@ -70,6 +70,16 @@
             android:process=":game"
             android:theme="@style/LemuroidMaterialTheme.Game" />
 
+        <!-- Los juegos de GB, GBC y GBA con el emulador Panther (SDL). -->
+        <activity
+            android:name="com.swordfish.lemuroid.app.shared.game.panther.JuegoPanther"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+            android:exported="false"
+            android:preferMinimalPostProcessing="true"
+            android:process=":panther"
+            android:screenOrientation="fullUser"
+            android:theme="@style/LemuroidMaterialTheme.Game" />
+
         <service
             android:name=".app.mobile.feature.game.GameService"
             android:exported="false"

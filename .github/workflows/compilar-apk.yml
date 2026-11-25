@@ -10,7 +10,7 @@ name: Compilar APK
 #   4. La app, con la clave de Tailscale sacada del secreto POKEMULADOR_TS_KEY.
 on:
   push:
-    branches-ignore: [ master ]
+    branches-ignore: [ master, 'prueba/**' ]
     # El sistema del USB (Lakka) y la consola portátil tienen sus propios flujos
     paths-ignore:
       - 'lakka/**'
@@ -202,6 +202,20 @@ jobs:
           cp --remove-destination nucleo/libcitra_libretro_android.so \
             lemuroid-cores/bundled-cores/src/main/jniLibs/arm64-v8a/libcitra_libretro_android.so
           ls -la lemuroid-cores/bundled-cores/src/main/jniLibs/arm64-v8a/libcitra_libretro_android.so
+
+      - name: NDK y CMake del emulador Panther
+        run: echo "y" | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" "cmake;3.22.1" > /dev/null
+
+      - name: Buscar SDL2 y mGBA del emulador Panther ya preparados
+        uses: actions/cache@v4
+        with:
+          path: |
+            panther-android/terceros/*.tar.gz
+            panther-android/terceros/mgba-lib
+          key: panther-terceros-${{ hashFiles('panther-android/preparar.sh') }}
+
+      - name: SDL2, mGBA y Lua del emulador Panther
+        run: bash panther-android/preparar.sh
 
       - name: Compilar el enlace online para Android
         working-directory: pc/enlace

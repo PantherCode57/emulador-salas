@@ -3,6 +3,13 @@
  *   --casa <carpeta>      sus archivos: los ajustes (.config/panther) y las letras (selawk.ttf…)
  *   --recorte <píxeles>   lo que tapa la cámara de la pantalla, para no poner botones debajo
  *   --script <x.lua>      scripts de Lua de mGBA (los Caramelos Raros)
+ *   --guardados <carpeta> donde va la partida (.srm); si no, junto al juego
+ *   --estados <carpeta>   donde va lo de seguir donde lo dejaste; si no, junto al juego
+ *   --sistema <carpeta>   de ahí se carga pokemulador/multijugador.lua (las salas de Pokemulador)
+ *   --opciones <archivo>  el cable link de la sala (las opciones de Gambatte)
+ *   --capturas <carpeta>  donde van las capturas que pide la app
+ *   --sin-seguir          no guardar ni retomar dónde ibas
+ *   --sin-vibrar          los botones de la pantalla no vibran
  *   <juego>               el .gba, .gbc o .gb (o un .7z)
  *
  * Cada juego se abre en un proceso aparte (":juego" en el manifiesto) que se cierra al salir: así el
@@ -21,6 +28,8 @@
 volatile int salir_ya;
 const char *carpeta_programa = ".";
 int recorte_pantalla;
+bool vibrar_botones = true;
+volatile int resultado_juego = -1;
 
 void registro(const char *fmt, ...) {
 	va_list a;
@@ -54,7 +63,21 @@ int main(int argc, char *argv[]) {
 		else if (!strcmp(a, "--script") && i + 1 < argc) {
 			if (o.n_scripts < 8)
 				o.scripts[o.n_scripts++] = argv[++i];
-		} else if (a[0] != '-')
+		} else if (!strcmp(a, "--guardados") && i + 1 < argc)
+			o.dir_guardados = argv[++i];
+		else if (!strcmp(a, "--estados") && i + 1 < argc)
+			o.dir_estados = argv[++i];
+		else if (!strcmp(a, "--sistema") && i + 1 < argc)
+			o.dir_sistema = argv[++i];
+		else if (!strcmp(a, "--opciones") && i + 1 < argc)
+			o.opciones_nucleo = argv[++i];
+		else if (!strcmp(a, "--capturas") && i + 1 < argc)
+			o.dir_capturas = argv[++i];
+		else if (!strcmp(a, "--sin-seguir"))
+			o.sin_seguir = true;
+		else if (!strcmp(a, "--sin-vibrar"))
+			vibrar_botones = false;
+		else if (a[0] != '-')
 			o.rom = a;
 	}
 	if (casa) {
@@ -72,10 +95,12 @@ int main(int argc, char *argv[]) {
 	SDL_SetHint(SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0");
 	if (!o.rom) {
 		registro("no me han dicho qué juego abrir");
+		resultado_juego = 2;
 		return 2;
 	}
 	registro("Panther para el móvil: %s (recorte %d, %d scripts)", o.rom, recorte_pantalla, o.n_scripts);
 	int r = juego(&o);
 	SDL_Quit();
+	resultado_juego = r;
 	return r;
 }

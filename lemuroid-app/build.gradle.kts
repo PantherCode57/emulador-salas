@@ -15,7 +15,8 @@ android {
         applicationId = "com.swordfish.lemuroid"
         // Solo móviles de 64 bits (ARM): es lo que tienen hoy los móviles y lo que pide Azahar (3DS).
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            // (con -Pabis=x86_64 se compila para el emulador de Android de las pruebas)
+            abiFilters += ((findProperty("abis") as String?) ?: "arm64-v8a").split(",")
         }
         // Clave de Tailscale para las salas online. Llega del secreto de GitHub al compilar;
         // nunca se escribe en el repositorio.
@@ -151,6 +152,7 @@ dependencies {
     implementation(project(":retrograde-app-shared"))
     implementation(project(":lemuroid-metadata-libretro-db"))
     implementation(project(":lemuroid-touchinput"))
+    implementation(project(":pokemulador-panther"))
 
     "baselineProfile"(project(":baselineprofile"))
     implementation(deps.libs.androidx.profileInstaller)

@@ -18,7 +18,8 @@ import java.io.File
  *  - desde una sala, GBA-PK: con la sala abierta por nosotros, el script abre la partida; si no,
  *    entra en la del amigo por 127.0.0.1:4096, que el enlace lleva hasta él;
  *  - con el truco activado en los ajustes, los Caramelos Raros infinitos de Rojo Fuego y Verde Hoja
- *    (consola/trucos/caramelos-frlg.lua, el mismo de la consola; él mismo mira qué juego es).
+ *    (consola/trucos/caramelos-frlg.lua, el mismo de la consola; él mismo mira qué juego es). Con el
+ *    emulador Panther no hace falta: los lleva dentro.
  * Si no hay nada de eso, se borra el archivo y el juego va como siempre.
  */
 object PartidaCompartidaGba {
@@ -41,11 +42,12 @@ object PartidaCompartidaGba {
         context: Context,
         game: Game,
         sala: String?,
+        conCaramelos: Boolean = true,
     ) {
         val destino = archivo(context)
         val estado = SalaOnline.estado.value
         val enSala = sala != null && esDeGba(game) && estado.codigo == sala && estado.rolDecidido
-        val caramelos = esDeGba(game) && caramelosActivados(context)
+        val caramelos = conCaramelos && esDeGba(game) && caramelosActivados(context)
         if (!enSala && !caramelos) {
             destino.delete()
             return

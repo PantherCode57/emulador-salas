@@ -24,7 +24,8 @@ object JuegoAbierto {
     const val ACCION_CERRAR = "com.swordfish.lemuroid.CERRAR_JUEGO"
 
     private val PROCESOS = listOf(":game", ":panther")
-    private const val ESPERA_POR_LAS_BUENAS_MS = 8000L
+    private const val ESPERA_CORTA_MS = 1500L
+    private const val ESPERA_POR_LAS_BUENAS_MS = 7000L
     private const val ESPERA_A_LA_FUERZA_MS = 3000L
     private const val CADA_MS = 150L
 
@@ -36,7 +37,9 @@ object JuegoAbierto {
             val app = context.applicationContext
             if (!hay(app)) return@withContext true
             app.sendBroadcast(Intent(ACCION_CERRAR).setPackage(app.packageName))
-            if (esperar(app, ESPERA_POR_LAS_BUENAS_MS)) return@withContext true
+            if (esperar(app, ESPERA_CORTA_MS)) return@withContext true
+            // Uno en segundo plano que Android ha dejado parado no contesta (y ya guardó al pararse).
+            if (!parado(app) && esperar(app, ESPERA_POR_LAS_BUENAS_MS)) return@withContext true
             Timber.e("El juego no se cierra: se cierra su proceso")
             matar(app)
             esperar(app, ESPERA_A_LA_FUERZA_MS)
@@ -54,13 +57,20 @@ object JuegoAbierto {
         return !hay(app)
     }
 
+    private fun procesos(app: Context): List<ActivityManager.RunningAppProcessInfo> {
+        val gestor = app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        return gestor.runningAppProcesses.orEmpty().filter { it.uid == Process.myUid() && esDeJuego(it.processName) }
+    }
+
+    private fun parado(app: Context): Boolean {
+        val vistos = procesos(app)
+        return vistos.isNotEmpty() &&
+            vistos.all { it.importance >= ActivityManager.RunningAppProcessInfo.IMPORTANCE_CACHED }
+    }
+
     private fun matar(app: Context) {
         val propio = Process.myPid()
-        val gestor = app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val vistos =
-            gestor.runningAppProcesses.orEmpty()
-                .filter { it.uid == Process.myUid() && esDeJuego(it.processName) }
-                .map { it.pid }
+        val vistos = procesos(app).map { it.pid }
         val apuntado = GameProcessLock.procesoApuntado(app)?.takeIf { esDeJuego(nombre(it)) }
         (vistos + listOfNotNull(apuntado)).distinct().filter { it != propio }.forEach { pid ->
             Timber.e("Cerrando el proceso del juego $pid")

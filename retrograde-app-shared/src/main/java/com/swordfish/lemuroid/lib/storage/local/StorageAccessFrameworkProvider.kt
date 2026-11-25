@@ -219,7 +219,9 @@ class StorageAccessFrameworkProvider(private val context: Context) : StorageProv
     ): File {
         val cacheFile = GameCacheUtils.getCacheFileForGame(SAF_CACHE_SUBFOLDER, context, game)
 
-        if (cacheFile.exists()) {
+        // Pokemulador: si la copia no mide lo mismo (se cortó, o el juego ha cambiado) se vuelve a hacer.
+        val tamano = originalDocument.length()
+        if (cacheFile.exists() && (tamano <= 0L || cacheFile.length() == tamano)) {
             return cacheFile
         }
 

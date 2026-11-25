@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
@@ -68,6 +69,7 @@ import com.swordfish.lemuroid.app.mobile.feature.online.PartidasArchivo
 import com.swordfish.lemuroid.app.mobile.feature.online.SalaOnline
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.LemuroidGameTexts
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.LemuroidSmallGameImage
+import com.swordfish.lemuroid.app.shared.game.panther.Panther
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -79,6 +81,7 @@ fun MainGameContextActions(
     selectedGameState: MutableState<Game?>,
     shortcutSupported: Boolean,
     onGamePlay: (Game) -> Unit,
+    onGamePlayConElDeAntes: (Game) -> Unit,
     onGameRestart: (Game) -> Unit,
     onFavoriteToggle: (Game, Boolean) -> Unit,
     onCreateShortcut: (Game) -> Unit,
@@ -106,6 +109,7 @@ fun MainGameContextActions(
             ContextActionContent(
                 selectedGame = selectedGame,
                 onGamePlay = onGamePlay,
+                onGamePlayConElDeAntes = onGamePlayConElDeAntes,
                 selectedGameState = selectedGameState,
                 onGameRestart = onGameRestart,
                 onFavoriteToggle = onFavoriteToggle,
@@ -124,6 +128,7 @@ fun MainGameContextActions(
 private fun ContextActionContent(
     selectedGame: Game,
     onGamePlay: (Game) -> Unit,
+    onGamePlayConElDeAntes: (Game) -> Unit,
     selectedGameState: MutableState<Game?>,
     onGameRestart: (Game) -> Unit,
     onFavoriteToggle: (Game, Boolean) -> Unit,
@@ -205,6 +210,17 @@ private fun ContextActionContent(
                 selectedGameState.value = null
             },
         )
+
+        if (remember(selectedGame) { Panther.vale(context, selectedGame) }) {
+            ContextActionEntry(
+                label = stringResource(id = R.string.emudex_panther_abrir_antes),
+                icon = Icons.Default.SportsEsports,
+                onClick = {
+                    onGamePlayConElDeAntes(selectedGame)
+                    selectedGameState.value = null
+                },
+            )
+        }
 
         if (PartidasArchivo.admiteArchivo(selectedGame)) {
             ContextActionEntry(

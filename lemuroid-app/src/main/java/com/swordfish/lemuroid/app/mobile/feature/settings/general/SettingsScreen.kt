@@ -54,6 +54,7 @@ fun SettingsScreen(
             scanInProgress = scanInProgress,
         )
         GeneralSettings()
+        PantherSettings()
         TrucosSettings()
         InputSettings(navController = navController)
         MiscSettings(
@@ -103,6 +104,20 @@ private fun MiscSettings(
                 Text(text = stringResource(id = R.string.settings_description_advanced_settings))
             },
             onClick = { navController.navigateToRoute(MainRoute.SETTINGS_ADVANCED) },
+        )
+    }
+}
+
+// Pokemulador: con qué emulador van GB, GBC y GBA.
+@Composable
+private fun PantherSettings() {
+    LemuroidCardSettingsGroup(
+        title = { Text(text = stringResource(id = R.string.emudex_panther)) },
+    ) {
+        LemuroidSettingsSwitch(
+            state = booleanPreferenceState(R.string.pref_key_panther, true),
+            title = { Text(text = stringResource(id = R.string.emudex_panther_titulo)) },
+            subtitle = { Text(text = stringResource(id = R.string.emudex_panther_texto)) },
         )
     }
 }

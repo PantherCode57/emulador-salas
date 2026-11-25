@@ -34,6 +34,17 @@ class GameInteractor(
         gameLauncher.launchGameAsync(activity.activity(), game, true, useLeanback)
     }
 
+    /** Pokemulador: con el emulador de antes (el núcleo de libretro) en vez de con Panther. */
+    fun onGamePlayConElDeAntes(game: Game) {
+        if (!ensureNotBusy()) {
+            return
+        }
+        if (!ensureNotificationsPermissionAvailable()) {
+            return
+        }
+        gameLauncher.launchGameAsync(activity.activity(), game, true, useLeanback, conElDeAntes = true)
+    }
+
     /** Pokemulador: jugar al juego de una sala, con la partida de esa sala. */
     fun onGamePlayEnSala(
         game: Game,

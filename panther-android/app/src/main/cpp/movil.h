@@ -6,6 +6,9 @@
  *  - movil_video.c    la pantalla: el juego arriba (de pie) o en medio (tumbado) y los botones;
  *  - movil_tactil.c   dónde va cada botón, cuál tocas y cómo se dibujan;
  *  - movil_mandos.c   la pantalla táctil, la tecla «atrás» y los mandos Bluetooth o USB.
+ *
+ * Pokemulador lleva lo mismo dentro (pokemulador-panther, compilado con TEMA_POKEDEX): con los colores
+ * y la forma de la Pokédex, y su menú y sus avisos propios (poke_menu.c y poke_avisos.c).
  */
 #ifndef MOVIL_H
 #define MOVIL_H
@@ -14,6 +17,10 @@
 
 /* Lo que tapa la cámara o la muesca de la pantalla, en píxeles (lo dice la app al abrir el juego). */
 extern int recorte_pantalla;
+/* Vibrar al pulsar los botones de la pantalla. */
+extern bool vibrar_botones;
+/* Cómo ha acabado el juego: -1 si sigue abierto, 0 si bien, otra cosa si no se ha podido abrir. */
+extern volatile int resultado_juego;
 
 /* El botón «Menú» de la pantalla (y la tecla «atrás») pulsa SELECT y START a la vez, que es lo que
  * abre el menú de pausa en la consola. Este bit es solo para dibujarlo encendido: el juego no lo ve. */
@@ -24,11 +31,18 @@ extern int recorte_pantalla;
 void tactil_disponer(int w, int h, SDL_Rect *juego);
 /* Qué botones hay en el punto (x, y), de 0 a 1 como los da SDL. Se puede llamar desde otro hilo. */
 uint32_t tactil_botones(float x, float y);
+void tactil_fondo(SDL_Renderer *pintor); /* lo que va detrás del juego y de los botones */
 void tactil_dibujar(SDL_Renderer *pintor, uint32_t pulsados, bool rapido);
 void tactil_olvidar(void); /* borra las texturas (cambia el tamaño o se cierra la pantalla) */
 extern volatile int tactil_visible; /* se esconden al usar un mando de verdad */
 
 /* ---- movil_mandos.c ---- */
 uint32_t mandos_pulsados_pantalla(void); /* lo que está pulsado en la pantalla, para dibujarlo */
+/* Si se ha tocado la pantalla fuera de los botones (y se ha levantado el dedo): dónde, de 0 a 1. */
+bool mandos_toque(float *x, float *y);
+
+/* ---- movil_video.c ---- */
+/* De un punto de la pantalla (de 0 a 1) a los 640×480 del menú y los avisos. */
+void video_a_marco(float x, float y, int *mx, int *my);
 
 #endif

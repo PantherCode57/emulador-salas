@@ -1,5 +1,6 @@
 /* Los botones de la pantalla: dónde va cada uno, cuál tocas y cómo se dibujan (con los colores del
- * menú de Panther: fondo morado oscuro y el violeta de la consola).
+ * menú de Panther: fondo morado oscuro y el violeta de la consola). En Pokemulador (TEMA_POKEDEX) lo
+ * de alrededor es una Pokédex: la carcasa roja, la lente azul, las tres luces y el marco de la pantalla.
  *
  *  De pie:  el juego arriba (4:3, de lado a lado) y debajo, como en una Game Boy:
  *           L  [Rápido] [Menú]  R  /  la cruz y A, B  /  SELECT  START
@@ -42,16 +43,42 @@ static SDL_mutex *cerrojo;
 static int pan_w, pan_h;
 static SDL_Rect zona;
 static bool encima; /* van encima del juego */
+static int cabecera_y, cabecera_h; /* la lente y las luces de la Pokédex, de pie */
 volatile int tactil_visible = 1;
 
+#ifdef TEMA_POKEDEX
+/* Los de PokedexColors.kt. */
+static const struct color CARCASA = {163, 45, 45, 255};
+static const struct color CARCASA_OSCURA = {121, 31, 31, 255};
+static const struct color HONDO = {80, 19, 19, 255};
+static const struct color CREMA = {252, 235, 235, 255};
+static const struct color LENTE = {55, 138, 221, 255};
+static const struct color LENTE_LUZ = {181, 212, 244, 255};
+static const struct color LUZ_ROJA = {240, 149, 149, 255};
+static const struct color LUZ_AMARILLA = {250, 199, 117, 255};
+static const struct color LUZ_VERDE = {151, 196, 89, 255};
+static const struct color BOTON = {121, 31, 31, 255};
+static const struct color BOTON_PULSADO = {226, 75, 74, 255};
+static const struct color CRUZ_FONDO = {80, 19, 19, 255};
+static const struct color REDONDO = {252, 235, 235, 255};         /* A y B */
+static const struct color REDONDO_PULSADO = {247, 193, 193, 255};
+static const struct color REDONDO_TEXTO = {80, 19, 19, 255};
+static const struct color BLANCO = {255, 255, 255, 255};
+static const struct color TEXTO = {252, 235, 235, 255};
+static const struct color TEXTO_SUAVE = {247, 193, 193, 255};
+static const struct color FLECHA = {240, 149, 149, 255};
+#else
 static const struct color BOTON = {40, 33, 60, 255};
 static const struct color BOTON_PULSADO = {124, 77, 255, 255};
-static const struct color VIOLETA = {124, 77, 255, 255};
-static const struct color VIOLETA_CLARO = {167, 139, 250, 255};
+static const struct color CRUZ_FONDO = {40, 33, 60, 255};
+static const struct color REDONDO = {124, 77, 255, 255};          /* A y B */
+static const struct color REDONDO_PULSADO = {167, 139, 250, 255};
+static const struct color REDONDO_TEXTO = {245, 243, 250, 255};
 static const struct color BLANCO = {245, 243, 250, 255};
 static const struct color TEXTO = {222, 216, 238, 255};
 static const struct color TEXTO_SUAVE = {164, 158, 186, 255};
 static const struct color FLECHA = {120, 112, 146, 255};
+#endif
 
 /* ---- Dónde va cada cosa ---- */
 
@@ -87,6 +114,7 @@ static void encima_de_todo(int w, int h) {
 	float col = 0.4f * u;
 	columnas(h, u, lado + (int)(col / 2), w - lado - (int)(col / 2), col);
 	encima = true;
+	cabecera_h = 0;
 }
 
 static void tumbado(int w, int h) {
@@ -100,9 +128,15 @@ static void tumbado(int w, int h) {
 	}
 	int zw = libre < (int)(1.5f * u) ? libre : (int)(1.5f * u);
 	zona = (SDL_Rect){(w - zw) / 2, 0, zw, h};
+#ifdef TEMA_POKEDEX
+	int borde = (int)(0.035f * u);
+	zona.x += borde, zona.w -= 2 * borde;
+	zona.y += borde, zona.h -= 2 * borde;
+#endif
 	int xl = (lado + zona.x) / 2;
 	columnas(h, u, xl, w - xl, (float)(zona.x - lado));
 	encima = false;
+	cabecera_h = 0;
 }
 
 static void de_pie(int w, int h) {
@@ -113,6 +147,14 @@ static void de_pie(int w, int h) {
 	float u = (float)w;
 	int arriba = recorte_pantalla > (int)(0.03f * h) ? recorte_pantalla : (int)(0.03f * h);
 	zona = (SDL_Rect){0, arriba, w, w * 3 / 4};
+#ifdef TEMA_POKEDEX
+	/* Arriba, la lente y las luces (si hay sitio), y la pantalla con su marco. */
+	int borde = (int)(0.045f * u);
+	cabecera_h = h >= w * 17 / 10 ? (int)(0.15f * u) : 0;
+	cabecera_y = arriba;
+	zona.x = borde, zona.w = w - 2 * borde, zona.h = zona.w * 3 / 4;
+	zona.y = arriba + cabecera_h + (cabecera_h ? 0 : borde / 2);
+#endif
 	/* Los botones van juntos abajo, como un mando (donde llegan los pulgares); lo que sobra de
 	 * pantalla queda entre el juego y ellos. De abajo arriba: SELECT y START, la cruz y A, B, y L, R. */
 	int y0 = zona.y + zona.h + (int)(0.04f * u);
@@ -288,10 +330,22 @@ static SDL_Texture *pintar(SDL_Renderer *p, const struct control *k, bool pulsad
 		return NULL;
 	switch (k->forma) {
 	case CIRCULO:
-		lienzo_redondeado(&l, 0, 0, w, h, w / 2, pulsado ? VIOLETA_CLARO : VIOLETA);
-		texto_centrado(&l, w, h, LETRA_NEGRITA, (int)(h * 0.44f), BLANCO, k->texto);
+#ifdef TEMA_POKEDEX
+		lienzo_redondeado(&l, 0, 0, w, h, w / 2, HONDO);
+		lienzo_redondeado(&l, w / 24, w / 24, w - w / 12, h - w / 12, w / 2 - w / 24, pulsado ? REDONDO_PULSADO : REDONDO);
+#else
+		lienzo_redondeado(&l, 0, 0, w, h, w / 2, pulsado ? REDONDO_PULSADO : REDONDO);
+#endif
+		texto_centrado(&l, w, h, LETRA_NEGRITA, (int)(h * 0.44f), REDONDO_TEXTO, k->texto);
 		break;
 	case PASTILLA:
+#ifdef TEMA_POKEDEX
+		if (k == &c[C_MENU])
+			lienzo_redondeado(&l, 0, 0, w, h, h / 2, pulsado ? LENTE : (struct color){24, 95, 165, 255});
+		else if (k == &c[C_RAPIDO] && pulsado)
+			lienzo_redondeado(&l, 0, 0, w, h, h / 2, LUZ_VERDE);
+		else
+#endif
 		lienzo_redondeado(&l, 0, 0, w, h, h / 2, pulsado ? BOTON_PULSADO : BOTON);
 		if (k->grande)
 			texto_centrado(&l, w, h, LETRA_NEGRITA, (int)(h * 0.5f), pulsado ? BLANCO : TEXTO, k->texto);
@@ -300,8 +354,8 @@ static SDL_Texture *pintar(SDL_Renderer *p, const struct control *k, bool pulsad
 		break;
 	case CRUZ: {
 		int a = (int)(w * 0.34f);
-		lienzo_redondeado(&l, 0, (h - a) / 2, w, a, a / 4, BOTON);
-		lienzo_redondeado(&l, (w - a) / 2, 0, a, h, a / 4, BOTON);
+		lienzo_redondeado(&l, 0, (h - a) / 2, w, a, a / 4, CRUZ_FONDO);
+		lienzo_redondeado(&l, (w - a) / 2, 0, a, h, a / 4, CRUZ_FONDO);
 		float t = a * 0.34f, lejos = w * 0.33f;
 		flecha(&l, w / 2.0f, h / 2.0f - lejos, t, 0, FLECHA);
 		flecha(&l, w / 2.0f, h / 2.0f + lejos, t, 1, FLECHA);
@@ -326,6 +380,88 @@ static void pintar_brazo(SDL_Renderer *p) {
 	brazo = subir(p, &l);
 }
 
+#ifdef TEMA_POKEDEX
+static SDL_Texture *fondo;
+
+static void circulo(struct lienzo *l, int cx, int cy, int r, struct color col) {
+	lienzo_redondeado(l, cx - r, cy - r, 2 * r, 2 * r, r, col);
+}
+
+static void lente(struct lienzo *l, int cx, int cy, int r) {
+	circulo(l, cx, cy, r + r / 8 + 1, HONDO);
+	circulo(l, cx, cy, r, CREMA);
+	circulo(l, cx, cy, r - r / 5, LENTE);
+	circulo(l, cx - r / 4, cy - r / 4, r / 5, LENTE_LUZ);
+}
+
+static void luces(struct lienzo *l, int x, int y, int r, int paso) {
+	const struct color cual[3] = {LUZ_ROJA, LUZ_AMARILLA, LUZ_VERDE};
+	for (int i = 0; i < 3; i++) {
+		circulo(l, x + i * paso, y, r + r / 4 + 1, HONDO);
+		circulo(l, x + i * paso, y, r, cual[i]);
+	}
+}
+
+/* La carcasa de la Pokédex. Se dibuja una vez y queda en una textura del tamaño de la pantalla. */
+static void construir_fondo(SDL_Renderer *p) {
+	int antes = lienzo_escala;
+	lienzo_escala = 1;
+	struct lienzo l;
+	if (!lienzo_nuevo(&l, pan_w, pan_h)) {
+		lienzo_escala = antes;
+		return;
+	}
+	lienzo_borrar(&l, CARCASA);
+	int u = pan_w < pan_h ? pan_w : pan_h;
+	bool de_pie_ahora = pan_h >= pan_w;
+	if (de_pie_ahora) {
+		/* La bisagra: de ahí para abajo, la mitad de los botones. */
+		int y = zona.y + zona.h + (int)(0.055f * u);
+		lienzo_redondeado(&l, 0, y, pan_w, pan_h - y, 0, (struct color){150, 40, 40, 255});
+		lienzo_redondeado(&l, 0, y, pan_w, (int)(0.012f * u) + 1, 0, CARCASA_OSCURA);
+		lienzo_redondeado(&l, 0, y + (int)(0.012f * u) + 1, pan_w, (int)(0.004f * u) + 1, 0, HONDO);
+	}
+	if (cabecera_h > 0) {
+		int r = (int)(0.05f * u), cy = cabecera_y + (cabecera_h - (int)(0.03f * u)) / 2, x = (int)(0.045f * u) + r;
+		lente(&l, x, cy, r);
+		int rl = (int)(0.016f * u);
+		luces(&l, x + r + (int)(0.06f * u), cy - r / 2, rl, (int)(0.055f * u));
+		static const char marca[] = "Pokemulador";
+		int tam = (int)(0.058f * u);
+		texto(&l, pan_w - (int)(0.045f * u) - texto_ancho(LETRA_NEGRITA, tam, marca), cy + (int)(tam * 0.36f),
+		      LETRA_NEGRITA, tam, CREMA, marca);
+	} else if (!de_pie_ahora) {
+		/* Tumbado: la lente en el hueco de la izquierda y las luces en el de la derecha. */
+		int cy = (c[C_MENU].r.y + c[C_MENU].r.h + c[C_CRUZ].r.y) / 2;
+		int hueco = c[C_CRUZ].r.y - c[C_MENU].r.y - c[C_MENU].r.h;
+		int r = (int)(0.03f * u);
+		if (hueco > 3 * r) {
+			lente(&l, c[C_MENU].r.x + c[C_MENU].r.w / 2, cy, r);
+			int paso = (int)(0.05f * u);
+			luces(&l, c[C_RAPIDO].r.x + c[C_RAPIDO].r.w / 2 - paso, cy, (int)(0.014f * u), paso);
+		}
+	}
+	/* El marco de la pantalla. */
+	int m = (int)(0.022f * u), e = m / 4 + 1;
+	lienzo_redondeado(&l, zona.x - m - e, zona.y - m - e, zona.w + 2 * (m + e), zona.h + 2 * (m + e), m + e + m / 2, HONDO);
+	lienzo_redondeado(&l, zona.x - m, zona.y - m, zona.w + 2 * m, zona.h + 2 * m, m + m / 2, CREMA);
+	lienzo_redondeado(&l, zona.x - e, zona.y - e, zona.w + 2 * e, zona.h + 2 * e, e, HONDO);
+	fondo = subir(p, &l);
+	lienzo_escala = antes;
+}
+
+void tactil_fondo(SDL_Renderer *p) {
+	if (encima || pan_w <= 0)
+		return;
+	if (!fondo)
+		construir_fondo(p);
+	if (fondo)
+		SDL_RenderCopy(p, fondo, NULL, NULL);
+}
+#else
+void tactil_fondo(SDL_Renderer *p) { (void)p; }
+#endif
+
 static void construir(SDL_Renderer *p) {
 	int antes = lienzo_escala;
 	lienzo_escala = 1; /* aquí todo va ya en píxeles de verdad */
@@ -348,6 +484,11 @@ void tactil_olvidar(void) {
 	if (brazo)
 		SDL_DestroyTexture(brazo);
 	brazo = NULL;
+#ifdef TEMA_POKEDEX
+	if (fondo)
+		SDL_DestroyTexture(fondo);
+	fondo = NULL;
+#endif
 }
 
 static void dibujar_brazo(SDL_Renderer *p, int dir, uint8_t alfa) {

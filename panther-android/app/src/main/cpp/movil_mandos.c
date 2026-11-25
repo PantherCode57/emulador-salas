@@ -14,7 +14,11 @@ static struct {
 	SDL_FingerID id;
 	bool activo;
 	uint32_t bits;
+	bool fuera;      /* ha empezado fuera de los botones y no se ha movido: puede ser un toque */
+	float x0, y0;
 } dedos[DEDOS];
+static bool hay_toque;
+static float toque_x, toque_y;
 static SDL_mutex *cerrojo;
 static uint32_t nuevos_pantalla; /* lo pulsado desde la última lectura (aunque ya se soltara) */
 static bool atras;
@@ -46,7 +50,17 @@ static int vigilar(void *datos, SDL_Event *e) {
 		SDL_LockMutex(cerrojo);
 		int i = dedo(e->tfinger.fingerId, e->type == SDL_FINGERDOWN);
 		if (i >= 0) {
+			if (e->type == SDL_FINGERDOWN) {
+				dedos[i].fuera = b == 0;
+				dedos[i].x0 = e->tfinger.x, dedos[i].y0 = e->tfinger.y;
+			} else if (SDL_fabsf(e->tfinger.x - dedos[i].x0) > 0.03f || SDL_fabsf(e->tfinger.y - dedos[i].y0) > 0.03f) {
+				dedos[i].fuera = false;
+			}
 			if (e->type == SDL_FINGERUP) {
+				if (dedos[i].fuera) {
+					hay_toque = true;
+					toque_x = dedos[i].x0, toque_y = dedos[i].y0;
+				}
 				dedos[i].activo = false;
 				dedos[i].bits = 0;
 			} else {
@@ -186,7 +200,7 @@ void mandos_leer(uint32_t *estado, uint32_t *nuevos) {
 	atras = false;
 	SDL_UnlockMutex(cerrojo);
 
-	if (nuevos_p && vibrador)
+	if (nuevos_p && vibrador && vibrar_botones)
 		SDL_HapticRumblePlay(vibrador, 0.3f, 12);
 	if (atras_ahora)
 		nuevos_p |= BOT_SELECT | BOT_START | BOT_MENU_PANTALLA;
@@ -209,3 +223,12 @@ void mandos_leer(uint32_t *estado, uint32_t *nuevos) {
 }
 
 uint32_t mandos_pulsados_pantalla(void) { return pulsado_ahora; }
+
+bool mandos_toque(float *x, float *y) {
+	SDL_LockMutex(cerrojo);
+	bool si = hay_toque;
+	hay_toque = false;
+	*x = toque_x, *y = toque_y;
+	SDL_UnlockMutex(cerrojo);
+	return si;
+}

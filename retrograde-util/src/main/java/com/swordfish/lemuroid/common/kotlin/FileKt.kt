@@ -56,10 +56,17 @@ fun File.calculateMd5(): String {
 }
 
 fun InputStream.writeToFile(file: File) {
+    // Pokemulador: a un temporal, y con su nombre cuando está entero. Si la app se cierra a media copia
+    // no queda un juego cortado que luego no se abre.
+    val temporal = File(file.path + ".tmp")
     this.use { inputStream ->
-        file.outputStream().use { outputStream ->
+        temporal.outputStream().use { outputStream ->
             inputStream.copyTo(outputStream)
         }
+    }
+    if (!temporal.renameTo(file)) {
+        temporal.copyTo(file, overwrite = true)
+        temporal.delete()
     }
 }
 

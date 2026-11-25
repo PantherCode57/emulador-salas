@@ -1,0 +1,87 @@
+name: Pokemulador (prueba en Android)
+
+# Compila Pokemulador para el emulador de Android (x86_64) y prueba en él lo que no se puede probar de
+# otra forma: el emulador Panther dentro de la app y que un juego colgado no bloquee los demás. No lleva
+# la clave de Tailscale ni juegos (las ROMs de la prueba están hechas a mano). Solo en ramas prueba/…
+on:
+  push:
+    branches: [ 'prueba/**' ]
+    paths:
+      - 'lemuroid-app/**'
+      - 'retrograde-app-shared/**'
+      - 'retrograde-util/**'
+      - 'lemuroid-touchinput/**'
+      - 'pokemulador-panther/**'
+      - 'panther-android/app/src/main/cpp/**'
+      - 'panther-android/preparar.sh'
+      - 'consola/emulador/**'
+      - '.github/workflows/pokemulador-prueba.yml'
+
+jobs:
+  apk:
+    name: Compilar (x86_64, sin claves)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: NDK y CMake
+        run: echo "y" | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" "cmake;3.22.1" > /dev/null
+      - name: Buscar mGBA ya compilado
+        uses: actions/cache@v4
+        with:
+          path: |
+            panther-android/terceros/*.tar.gz
+            panther-android/terceros/mgba-lib
+          key: panther-terceros-${{ hashFiles('panther-android/preparar.sh') }}
+      - name: SDL2, mGBA y Lua
+        run: bash panther-android/preparar.sh
+      - name: APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleFreeBundleDebug -Pabis=x86_64 --no-daemon
+          ls -la lemuroid-app/build/outputs/apk/freeBundle/debug/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pokemulador-x86_64
+          path: lemuroid-app/build/outputs/apk/freeBundle/debug/*.apk
+          retention-days: 5
+
+  prueba:
+    name: Probar en un emulador de Android
+    needs: apk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: pokemulador-x86_64
+          path: apk
+      - name: KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Probar
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: default
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash pokemulador-panther/prueba/emulador.sh "$(ls apk/*.apk | head -1)" resultados
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pokemulador-prueba
+          path: resultados/
+          retention-days: 5

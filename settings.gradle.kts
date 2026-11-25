@@ -16,6 +16,7 @@ include(
     ":lemuroid-app-ext-free",
     ":lemuroid-app-ext-play",
     ":bundled-cores",
+    ":pokemulador-panther",
     ":baselineprofile"
 )
 
