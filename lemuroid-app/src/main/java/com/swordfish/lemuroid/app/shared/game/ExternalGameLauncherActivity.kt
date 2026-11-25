@@ -97,6 +97,7 @@ class ExternalGameLauncherActivity : ImmersiveActivity() {
                 game,
                 true,
                 TVHelper.isTV(applicationContext),
+                onError = { finish() },
             )
 
         if (!gameLaunchSuccessful) {

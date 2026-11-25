@@ -94,6 +94,20 @@
     <string name="emudex_sacar_partida_texto">Se guarda tu partida en un archivo .sav, para llevarla a otro emulador o a linkcable.app (con «Load save»).</string>
     <string name="emudex_elegir_archivo">Elegir archivo</string>
 
+    <!-- Un juego que se ha quedado abierto -->
+    <string name="emudex_cerrando_juego">Guardando y cerrando el juego que estaba abierto…</string>
+    <string name="emudex_no_se_cierra">No se puede cerrar el juego que estaba abierto. Reinicia el móvil: tu partida no se pierde.</string>
+    <string name="emudex_hay_juego_abierto">Tienes un juego abierto</string>
+    <string name="emudex_hay_juego_abierto_texto">Hay que cerrarlo para abrir este. Tienes quitado el guardado automático: se perderá lo que no hayas guardado dentro del juego.</string>
+    <string name="emudex_cerrarlo_y_seguir">Cerrarlo y seguir</string>
+
+    <!-- Copias de seguridad de las partidas -->
+    <string name="emudex_copias">Recuperar una copia de la partida</string>
+    <string name="emudex_copias_texto">Pokemulador guarda copias de tu partida mientras juegas. Elige a cuál quieres volver; la de ahora se guarda también como copia.</string>
+    <string name="emudex_copias_ninguna">Todavía no hay copias de este juego. Se hacen solas al jugar.</string>
+    <string name="emudex_copia_de">%1$s · %2$s</string>
+    <string name="emudex_recuperar">Recuperar</string>
+
     <!-- Trucos -->
     <string name="emudex_trucos">Trucos</string>
     <string name="emudex_caramelos_titulo">Caramelos Raros infinitos</string>

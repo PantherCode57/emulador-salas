@@ -112,12 +112,24 @@ fun File.writeBytesAtomic(data: ByteArray) {
     val atomicFile = AtomicFile(this)
     val outputStream = atomicFile.startWrite()
     try {
-        outputStream.use { it.write(data) }
+        // Pokemulador: lo cierra finishWrite, que antes se asegura de que está en el disco (fsync).
+        outputStream.write(data)
         atomicFile.finishWrite(outputStream)
     } catch (e: Throwable) {
         atomicFile.failWrite(outputStream)
         throw e
     }
+}
+
+/**
+ * Pokemulador: lo que se guardó con [writeBytesAtomic]. Si la app se cortó a media escritura, en los
+ * Android de antes del 11 el archivo bueno se queda en «.bak»: AtomicFile lo recupera. Da null si no
+ * hay nada guardado.
+ */
+fun File.readBytesAtomicOrNull(): ByteArray? {
+    val copia = File(path + ".bak")
+    if (!exists() && !copia.exists()) return null
+    return AtomicFile(this).readFully().takeIf { it.isNotEmpty() }
 }
 
 /** Read text from file using AtomicFile. */

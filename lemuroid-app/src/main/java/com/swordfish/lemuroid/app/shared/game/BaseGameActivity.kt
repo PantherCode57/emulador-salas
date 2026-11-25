@@ -1,7 +1,10 @@
 package com.swordfish.lemuroid.app.shared.game
 
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.view.KeyEvent
@@ -10,6 +13,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.swordfish.lemuroid.app.mobile.feature.game.GameActivity
@@ -91,8 +95,20 @@ abstract class BaseGameActivity : ImmersiveActivity() {
     private val startGameTime = System.currentTimeMillis()
     private var finishTriggered = false
 
+    // Pokemulador: la app pide cerrar este juego (guardando) para poder abrir otro.
+    private val cerrarJuego =
+        object : BroadcastReceiver() {
+            override fun onReceive(
+                context: Context?,
+                intent: Intent?,
+            ) {
+                baseGameScreenViewModel.requestFinish()
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        abiertas++
         // Pokemulador: la partida que toca (la de siempre o la de una sala). Antes que nada,
         // porque todo lo que guarda o carga el juego en este proceso sale de aquí.
         DirectoriesManager.perfil = intent.getStringExtra(EXTRA_PERFIL)
@@ -127,6 +143,12 @@ abstract class BaseGameActivity : ImmersiveActivity() {
         }
 
         lifecycle.addObserver(baseGameScreenViewModel)
+        ContextCompat.registerReceiver(
+            this,
+            cerrarJuego,
+            IntentFilter(JuegoAbierto.ACCION_CERRAR),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
 
         setContent {
             AppTheme {
@@ -170,7 +192,11 @@ abstract class BaseGameActivity : ImmersiveActivity() {
     }
 
     private fun setUpExceptionsHandler() {
-        Thread.setDefaultUncaughtExceptionHandler { thread, exception ->
+        Thread.setDefaultUncaughtExceptionHandler { _, exception ->
+            // Pokemulador: si el fallo es en el hilo principal, ese hilo se acaba aquí y ya nadie
+            // cierra el proceso: hay que asegurarse. Antes se intenta salvar la partida.
+            GameService.acabarSeguro(PLAZO_TRAS_FALLO_MS)
+            runCatching { baseGameScreenViewModel.guardarDeUrgencia() }
             performUnexpectedErrorFinish(exception)
         }
     }
@@ -372,6 +398,8 @@ abstract class BaseGameActivity : ImmersiveActivity() {
     }
 
     override fun onDestroy() {
+        abiertas--
+        runCatching { unregisterReceiver(cerrarJuego) }
         if (!isChangingConfigurations) {
             GameService.requestTermination()
         }
@@ -439,6 +467,13 @@ abstract class BaseGameActivity : ImmersiveActivity() {
 
     companion object {
         const val DIALOG_REQUEST = 100
+
+        /** Pokemulador: cuántos juegos hay abiertos en este proceso (0 o 1). */
+        @Volatile
+        var abiertas = 0
+            private set
+
+        private const val PLAZO_TRAS_FALLO_MS = 4000L
 
         private const val EXTRA_GAME = "GAME"
         private const val EXTRA_LOAD_SAVE = "LOAD_SAVE"

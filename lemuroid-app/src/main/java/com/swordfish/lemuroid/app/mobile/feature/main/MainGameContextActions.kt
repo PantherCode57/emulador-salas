@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RestartAlt
@@ -70,6 +71,7 @@ import com.swordfish.lemuroid.app.mobile.shared.compose.ui.LemuroidSmallGameImag
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.text.DateFormat
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -138,6 +140,7 @@ private fun ContextActionContent(
     // Pokemulador: cargar una partida .sav (de linkcable.app u otro emulador) o sacar la nuestra.
     val scope = rememberCoroutineScope()
     var dialogoPartida by remember { mutableStateOf<AccionPartida?>(null) }
+    var dialogoCopias by remember { mutableStateOf(false) }
     var perfilElegido by remember { mutableStateOf<String?>(null) }
     val importarLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -213,6 +216,11 @@ private fun ContextActionContent(
                 label = stringResource(id = R.string.emudex_sacar_partida),
                 icon = Icons.Default.Upload,
                 onClick = { dialogoPartida = AccionPartida.EXPORTAR },
+            )
+            ContextActionEntry(
+                label = stringResource(id = R.string.emudex_copias),
+                icon = Icons.Default.History,
+                onClick = { dialogoCopias = true },
             )
         }
 
@@ -297,6 +305,20 @@ private fun ContextActionContent(
                 when (accion) {
                     AccionPartida.IMPORTAR -> importarLauncher.launch(arrayOf("*/*"))
                     AccionPartida.EXPORTAR -> exportarLauncher.launch(PartidasArchivo.nombreSugerido(selectedGame))
+                }
+            },
+        )
+    }
+
+    if (dialogoCopias) {
+        DialogoCopias(
+            game = selectedGame,
+            onDismiss = { dialogoCopias = false },
+            onConfirm = { copia ->
+                dialogoCopias = false
+                scope.launch {
+                    Toast.makeText(context, PartidasArchivo.recuperar(context, selectedGame, copia), Toast.LENGTH_LONG).show()
+                    selectedGameState.value = null
                 }
             },
         )
@@ -389,6 +411,67 @@ private fun FakeScrim(modalSheetState: SheetState) {
 }
 
 private enum class AccionPartida { IMPORTAR, EXPORTAR }
+
+/** Volver a una copia de seguridad de la partida (se hacen solas al jugar). */
+@Composable
+private fun DialogoCopias(
+    game: Game,
+    onDismiss: () -> Unit,
+    onConfirm: (PartidasArchivo.Copia) -> Unit,
+) {
+    val context = LocalContext.current
+    val salas = remember(game) { SalaOnline.salasConPartidaPropia(context, game) }
+    val copias =
+        remember(game) { PartidasArchivo.copias(context, game, listOf<String?>(null) + salas.map { it.perfil }) }
+    var elegida by remember { mutableStateOf<PartidasArchivo.Copia?>(null) }
+    val formato = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
+    val deSiempre = stringResource(R.string.emudex_partida_de_siempre)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.emudex_copias)) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    stringResource(
+                        if (copias.isEmpty()) R.string.emudex_copias_ninguna else R.string.emudex_copias_texto,
+                    ),
+                )
+                copias.forEach { copia ->
+                    val sala = salas.firstOrNull { it.perfil == copia.perfil }
+                    val etiqueta =
+                        if (salas.isEmpty()) {
+                            formato.format(copia.fecha)
+                        } else {
+                            stringResource(
+                                R.string.emudex_copia_de,
+                                formato.format(copia.fecha),
+                                sala?.nombre ?: deSiempre,
+                            )
+                        }
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { elegida = copia },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = elegida == copia, onClick = { elegida = copia })
+                        Text(etiqueta)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = elegida != null, onClick = { elegida?.let(onConfirm) }) {
+                Text(stringResource(R.string.emudex_recuperar))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
+        },
+    )
+}
 
 /** Elegir a qué partida va el archivo (la de siempre o la de una sala) antes de abrir el selector. */
 @Composable

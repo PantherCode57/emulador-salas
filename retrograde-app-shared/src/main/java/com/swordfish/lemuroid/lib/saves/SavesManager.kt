@@ -1,5 +1,6 @@
 package com.swordfish.lemuroid.lib.saves
 
+import com.swordfish.lemuroid.common.kotlin.readBytesAtomicOrNull
 import com.swordfish.lemuroid.common.kotlin.runCatchingWithRetry
 import com.swordfish.lemuroid.common.kotlin.writeBytesAtomic
 import com.swordfish.lemuroid.lib.library.SystemCoreConfig
@@ -8,25 +9,25 @@ import com.swordfish.lemuroid.lib.saves.migrators.getSavesMigrator
 import com.swordfish.lemuroid.lib.storage.DirectoriesManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import java.io.File
 
 class SavesManager(private val directoriesManager: DirectoriesManager) {
+    /**
+     * Pokemulador: si hay partida pero no se puede leer, falla (el juego no se abre). Antes daba null:
+     * el juego empezaba de cero y, al salir, la partida vacía pisaba la buena.
+     */
     suspend fun getSaveRAM(
         game: Game,
         systemCoreConfig: SystemCoreConfig,
     ): ByteArray? {
         return withContext(Dispatchers.IO) {
-            val result =
-                runCatchingWithRetry(FILE_ACCESS_RETRIES) {
-                    val saveFile = getSaveFile(getSaveRAMFileName(game))
-                    if (saveFile.exists() && saveFile.length() > 0) {
-                        saveFile.readBytes()
-                    } else {
-                        val savesMigrator = systemCoreConfig.getSavesMigrator()
-                        savesMigrator?.loadPreviousSaveForGame(game, directoriesManager)
-                    }
-                }
-            result.getOrNull()
+            runCatchingWithRetry(FILE_ACCESS_RETRIES) {
+                val datos =
+                    getSaveFile(getSaveRAMFileName(game)).readBytesAtomicOrNull()
+                        ?: systemCoreConfig.getSavesMigrator()?.loadPreviousSaveForGame(game, directoriesManager)
+                datos?.let { FormatoPartida.paraNucleo(game.systemId, it) }
+            }.getOrThrow()
         }
     }
 
@@ -42,9 +43,16 @@ class SavesManager(private val directoriesManager: DirectoriesManager) {
                     }
 
                     val saveFile = getSaveFile(getSaveRAMFileName(game))
+                    // Pokemulador: una partida vacía nunca pisa a una que tiene algo.
+                    if (saveFile.length() > 0 && CopiasPartida.estaVacia(data) && !CopiasPartida.estaVacia(saveFile.readBytes())) {
+                        Timber.e("No se guarda la partida vacía de ${game.fileName}: la que hay tiene datos")
+                        return@runCatchingWithRetry
+                    }
+                    runCatching { CopiasPartida.hacer(saveFile) }
+                        .onFailure { Timber.e(it, "No se pudo hacer la copia de la partida") }
                     saveFile.writeBytesAtomic(data)
                 }
-            result.getOrNull()
+            result.onFailure { Timber.e(it, "No se pudo guardar la partida de ${game.fileName}") }
         }
     }
 

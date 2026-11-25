@@ -2,16 +2,16 @@ package com.swordfish.lemuroid.app.mobile.feature.online
 
 import android.content.Context
 import android.net.Uri
+import com.swordfish.lemuroid.app.shared.game.JuegoAbierto
 import com.swordfish.lemuroid.lib.library.GameSystem
 import com.swordfish.lemuroid.lib.library.SystemID
 import com.swordfish.lemuroid.lib.library.db.entity.Game
+import com.swordfish.lemuroid.lib.saves.CopiasPartida
 import com.swordfish.lemuroid.lib.storage.DirectoriesManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 
 /**
  * Cargar y sacar partidas como archivo .sav (el formato de linkcable.app, mGBA, VisualBoyAdvance,
@@ -48,49 +48,90 @@ object PartidasArchivo {
                 }
                 val datos = ajustarTamano(game, quitarPieDesmume(leidos))
 
-                val directorios = DirectoriesManager(context)
-                val saves = directorios.getSavesDirectoryFor(perfil)
-                val destino = File(saves, "${base(game)}.srm")
-                val copias = File(saves, "copias")
-                val marca = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
-                var hayCopia = false
-                if (destino.exists() && destino.length() > 0) {
-                    copias.mkdirs()
-                    destino.copyTo(File(copias, "${base(game)}-$marca.srm"), overwrite = true)
-                    hayCopia = true
-                }
-                // Si había una partida de DeSmuME (.dsv) más nueva, ganaría a la importada.
-                File(saves, "${base(game)}.dsv").takeIf { it.exists() }?.let {
-                    copias.mkdirs()
-                    it.renameTo(File(copias, "${base(game)}-$marca.dsv"))
-                }
-
-                val temporal = File(saves, "${base(game)}.srm.tmp")
-                temporal.writeBytes(datos)
-                if (!temporal.renameTo(destino)) {
-                    destino.writeBytes(datos)
-                    temporal.delete()
-                }
-
-                // El juego se reanuda desde el guardado automático; lo apartamos para que empiece
-                // desde la partida que acabamos de poner.
-                directorios.getStatesDirectoryFor(perfil).listFiles()?.forEach { carpetaNucleo ->
-                    listOf("${game.fileName}.state", "${game.fileName}.state.metadata").forEach { nombre ->
-                        val estado = File(carpetaNucleo, nombre)
-                        if (estado.exists()) {
-                            copias.mkdirs()
-                            estado.renameTo(File(copias, "${carpetaNucleo.name}-$marca-$nombre"))
-                        }
-                    }
-                }
-
-                if (hayCopia) {
+                if (poner(context, game, perfil, datos)) {
                     "Partida cargada. La que tenías antes está guardada como copia por si acaso."
                 } else {
                     "Partida cargada. Ya puedes jugar con ella."
                 }
             } catch (e: Exception) {
                 "No se pudo cargar la partida: ${e.message}"
+            }
+        }
+
+    /** Pone [datos] como partida del juego. Devuelve true si la que había se ha guardado como copia. */
+    private suspend fun poner(
+        context: Context,
+        game: Game,
+        perfil: String?,
+        datos: ByteArray,
+    ): Boolean {
+        // Un juego abierto escribiría la suya encima al cerrarse.
+        JuegoAbierto.cerrar(context)
+        val directorios = DirectoriesManager(context)
+        val saves = directorios.getSavesDirectoryFor(perfil)
+        val destino = File(saves, "${base(game)}.srm")
+        val copias = CopiasPartida.carpeta(saves)
+        val marca = CopiasPartida.marca()
+        val hayCopia = destino.length() > 0
+        CopiasPartida.hacer(destino, siempre = true)
+        // Si había una partida de DeSmuME (.dsv) más nueva, ganaría a la importada.
+        File(saves, "${base(game)}.dsv").takeIf { it.exists() }?.let {
+            copias.mkdirs()
+            it.renameTo(File(copias, "${base(game)}-$marca.dsv"))
+        }
+
+        val temporal = File(saves, "${base(game)}.srm.tmp")
+        temporal.writeBytes(datos)
+        if (!temporal.renameTo(destino)) {
+            destino.writeBytes(datos)
+            temporal.delete()
+        }
+        File(saves, "${base(game)}.srm.bak").delete()
+
+        // El juego se reanuda desde el guardado automático; lo apartamos para que empiece
+        // desde la partida que acabamos de poner.
+        val automaticos = listOf("${game.fileName}.state", "${game.fileName}.state.metadata", "${base(game)}.estado-auto")
+        directorios.getStatesDirectoryFor(perfil).listFiles()?.forEach { carpetaNucleo ->
+            automaticos.forEach { nombre ->
+                val estado = File(carpetaNucleo, nombre)
+                if (estado.exists()) {
+                    copias.mkdirs()
+                    estado.renameTo(File(copias, "${carpetaNucleo.name}-$marca-$nombre"))
+                }
+            }
+        }
+        return hayCopia
+    }
+
+    data class Copia(
+        val perfil: String?,
+        val archivo: File,
+        val fecha: Date,
+    )
+
+    /** Las copias de seguridad de este juego: las de la partida de siempre y las de las salas. */
+    fun copias(
+        context: Context,
+        game: Game,
+        perfiles: List<String?>,
+    ): List<Copia> =
+        perfiles.flatMap { perfil ->
+            val partida = File(DirectoriesManager(context).getSavesDirectoryFor(perfil), "${base(game)}.srm")
+            CopiasPartida.listar(partida).map { Copia(perfil, it.archivo, it.fecha) }
+        }.sortedByDescending { it.fecha }
+
+    /** Vuelve a una copia. Devuelve el mensaje para el usuario. */
+    suspend fun recuperar(
+        context: Context,
+        game: Game,
+        copia: Copia,
+    ): String =
+        withContext(Dispatchers.IO) {
+            try {
+                poner(context, game, copia.perfil, copia.archivo.readBytes())
+                "Copia recuperada. Ya puedes jugar con ella."
+            } catch (e: Exception) {
+                "No se pudo recuperar la copia: ${e.message}"
             }
         }
 

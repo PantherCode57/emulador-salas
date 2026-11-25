@@ -77,6 +77,15 @@ class GameViewModelSaves(
         return SaveSnapshot(sramState, autoSaveState)
     }
 
+    /** Pokemulador: solo la partida del juego, sin pasar por el hilo del juego (por si está colgado). */
+    fun capturarSoloPartida(): SaveSnapshot? {
+        val retroGameView = retroGameView.retroGameView ?: return null
+        return SaveSnapshot(retroGameView.serializeSRAM(false), null)
+    }
+
+    /** Pokemulador: la partida del juego tal como está ahora. */
+    fun leerPartida(): ByteArray? = retroGameView.retroGameView?.serializeSRAM(true)
+
     suspend fun writeSaveSnapshot(snapshot: SaveSnapshot?) {
         if (snapshot == null) return
         Timber.i(

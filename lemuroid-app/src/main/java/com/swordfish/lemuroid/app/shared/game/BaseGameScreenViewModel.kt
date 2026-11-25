@@ -40,12 +40,22 @@ import com.swordfish.touchinput.radial.sensors.TiltConfiguration
 import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
 import gg.padkit.inputevents.InputEvent
 import gg.padkit.inputstate.InputState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
+import kotlin.concurrent.thread
 
 class BaseGameScreenViewModel(
     private val appContext: Context,
@@ -149,8 +159,13 @@ class BaseGameScreenViewModel(
 
     private inline fun withLoading(block: () -> Unit) {
         loadingState.value = true
-        block()
-        loadingState.value = false
+        try {
+            block()
+        } finally {
+            // Pokemulador: sin el «finally», salir antes de tiempo dejaba el juego «cargando» para
+            // siempre: ni menú, ni guardar, ni salir.
+            loadingState.value = false
+        }
     }
 
     fun getGameState(): Flow<GameViewModelRetroGameView.GameState> {
@@ -294,15 +309,102 @@ class BaseGameScreenViewModel(
     }
 
     fun requestFinish() {
-        if (loadingState.value) return
+        if (terminando) return
+        terminando = true
         viewModelScope.launch {
-            withLoading {
-                val snapshot = saves.captureSaveSnapshot(true) ?: return@launch
-                saves.writeSaveSnapshot(snapshot)
-                guardarProgresoSala()
-                sideEffects.requestSuccessfulFinish()
+            loadingState.value = true
+            // Pokemulador: guardar tiene un plazo. Antes, si el juego estaba colgado, esto esperaba
+            // para siempre (en el hilo principal) y no se podía ni salir.
+            enPlazo(PLAZO_GUARDAR_MS) { saves.writeSaveSnapshot(capturar()) }
+            enPlazo(PLAZO_SALA_MS) { guardarProgresoSala() }
+            sideEffects.requestSuccessfulFinish()
+        }
+    }
+
+    @Volatile
+    private var terminando = false
+
+    @Volatile
+    private var enPantalla = false
+
+    private val abierto = System.currentTimeMillis()
+
+    // Lo que habla con el núcleo puede colgarse y no se puede cancelar: va aparte y, si no acaba a
+    // tiempo, se deja.
+    private val conElNucleo = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private suspend fun <T> enPlazo(
+        ms: Long,
+        bloque: suspend () -> T?,
+    ): T? {
+        val trabajo =
+            conElNucleo.async {
+                runCatching { bloque() }.onFailure { Timber.e(it, "Fallo al guardar") }.getOrNull()
+            }
+        return withTimeoutOrNull(ms) { trabajo.await() }
+    }
+
+    private suspend fun capturar(): GameViewModelSaves.SaveSnapshot? =
+        enPlazo(PLAZO_CAPTURAR_MS) { saves.captureSaveSnapshot(true) }
+            // El hilo del juego no contesta: al menos, la partida (está en la memoria del núcleo).
+            ?: enPlazo(PLAZO_CAPTURAR_MS) { saves.capturarSoloPartida() }
+
+    /** Pokemulador: el juego ha fallado. Intenta salvar la partida, sin esperar más de la cuenta. */
+    fun guardarDeUrgencia() {
+        if (terminando || System.currentTimeMillis() - abierto < JUGADO_MINIMO_MS) return
+        val hilo =
+            thread(name = "guardar-de-urgencia", isDaemon = true) {
+                runCatching { runBlocking { saves.writeSaveSnapshot(saves.capturarSoloPartida()) } }
+            }
+        runCatching { hilo.join(PLAZO_URGENCIA_MS) }
+    }
+
+    /**
+     * Pokemulador: cuando guardas dentro del juego, la partida se escribe en el móvil a los pocos
+     * segundos. Antes solo se escribía al salir del juego o al cambiar de app: si se cerraba de golpe,
+     * se perdía lo guardado desde entonces.
+     */
+    private fun vigilarPartida() {
+        viewModelScope.launch(Dispatchers.IO) {
+            retroGameView.waitRetroGameViewInitialized()
+            delay(VIGILAR_DESDE_MS)
+            var guardada = enPlazo(PLAZO_CAPTURAR_MS) { saves.leerPartida() }?.contentHashCode()
+            var anterior = guardada
+            while (isActive) {
+                delay(VIGILAR_CADA_MS)
+                if (!enPantalla || loadingState.value || terminando) continue
+                val ahora = enPlazo(PLAZO_CAPTURAR_MS) { saves.leerPartida() }?.takeIf { it.isNotEmpty() }?.contentHashCode()
+                // Se espera a que deje de cambiar, para no pillar al juego a medio guardar.
+                if (ahora != null && ahora == anterior && ahora != guardada) {
+                    withContext(NonCancellable) {
+                        enPlazo(PLAZO_GUARDAR_MS) { saves.writeSaveSnapshot(saves.captureSaveSnapshot(true)) }
+                    }
+                    Timber.i("Partida guardada en el móvil")
+                    guardada = ahora
+                }
+                if (ahora != null) anterior = ahora
             }
         }
+    }
+
+    override fun onResume(owner: LifecycleOwner) {
+        super.onResume(owner)
+        enPantalla = true
+    }
+
+    override fun onPause(owner: LifecycleOwner) {
+        enPantalla = false
+        super.onPause(owner)
+    }
+
+    companion object {
+        private const val PLAZO_CAPTURAR_MS = 2500L
+        private const val PLAZO_GUARDAR_MS = 6000L
+        private const val PLAZO_SALA_MS = 1500L
+        private const val PLAZO_URGENCIA_MS = 1500L
+        private const val JUGADO_MINIMO_MS = 15_000L
+        private const val VIGILAR_DESDE_MS = 10_000L
+        private const val VIGILAR_CADA_MS = 4_000L
     }
 
     fun requestBackgroundSave() {
@@ -332,8 +434,14 @@ class BaseGameScreenViewModel(
         touchControls.handleVirtualInputEvent(events)
     }
 
+    private var partidaVigilada = false
+
     override fun onCreate(owner: LifecycleOwner) {
         super.onCreate(owner)
+        if (!partidaVigilada) {
+            partidaVigilada = true
+            vigilarPartida()
+        }
         if (salaJuego != null && progresoPeriodico == null) {
             // Si los amigos están en la sala a la vez, que vean cómo vamos mientras jugamos.
             progresoPeriodico =
