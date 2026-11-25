@@ -129,7 +129,7 @@ inicio 10
 if [ -z "$(texto Partida)" ]; then
 	toca $(busca_texto Ajustes) 3
 	cap 02-ajustes
-	d=$(texto "Volver a")
+	d=$(texto "Re-escanear")
 	[ -z "$d" ] && d=$(texto "Rescan")
 	toca $d 12
 	inicio 4
