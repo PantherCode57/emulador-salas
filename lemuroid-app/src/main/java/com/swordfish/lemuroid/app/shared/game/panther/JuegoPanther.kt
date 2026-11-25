@@ -11,10 +11,12 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.system.Os
+import android.view.DisplayCutout
 import android.view.Gravity
 import android.view.WindowManager
 import android.widget.ProgressBar
 import android.widget.RelativeLayout
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import com.pokemulador.panther.Emulador
 import com.swordfish.lemuroid.R
@@ -347,12 +349,18 @@ class JuegoPanther : SDLActivity() {
             window.attributes.apply {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
+        // Los márgenes de la ventana a veces llegan con el juego ya empezado: se mira también la pantalla.
+        @Suppress("DEPRECATION")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) windowManager.defaultDisplay.cutout?.let { apuntarRecorte(it) }
         window.decorView.setOnApplyWindowInsetsListener { vista, margenes ->
-            margenes.displayCutout?.let {
-                recorte = maxOf(maxOf(it.safeInsetTop, it.safeInsetBottom), maxOf(it.safeInsetLeft, it.safeInsetRight))
-            }
+            margenes.displayCutout?.let { apuntarRecorte(it) }
             vista.onApplyWindowInsets(margenes)
         }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.P)
+    private fun apuntarRecorte(corte: DisplayCutout) {
+        recorte = maxOf(maxOf(corte.safeInsetTop, corte.safeInsetBottom), maxOf(corte.safeInsetLeft, corte.safeInsetRight))
     }
 
     // ---------------------------------------------------------------------------------------------
