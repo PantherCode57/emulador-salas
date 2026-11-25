@@ -117,6 +117,11 @@ esperar_avisos
 python3 "$AQUI/rom_partida.py" /tmp/partida.gba
 python3 "$AQUI/../../panther-android/prueba/rom_gba.py" /tmp/colores.gba
 python3 "$AQUI/../../lakka/prueba/rom_prueba.py" /tmp/prueba.gb
+# (mGBA mira los 4 primeros bytes de la cabecera para saber que es un juego de Game Boy)
+python3 -c "
+f = open('/tmp/prueba.gb', 'r+b')
+f.seek(0x104)
+f.write(bytes.fromhex('ceed6666'))"
 inicio 6
 cap 01-primera-vez
 adb shell mkdir -p "$DATOS/roms"
