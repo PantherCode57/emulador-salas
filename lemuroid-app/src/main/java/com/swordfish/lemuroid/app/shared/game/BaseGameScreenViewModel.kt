@@ -370,10 +370,14 @@ class BaseGameScreenViewModel(
             delay(VIGILAR_DESDE_MS)
             var guardada = enPlazo(PLAZO_CAPTURAR_MS) { saves.leerPartida() }?.contentHashCode()
             var anterior = guardada
-            while (isActive) {
+            var sinRespuesta = 0
+            // (si el juego está colgado, cada intento deja un hilo esperando: a la tercera se deja)
+            while (isActive && sinRespuesta < VIGILAR_INTENTOS) {
                 delay(VIGILAR_CADA_MS)
                 if (!enPantalla || loadingState.value || terminando) continue
-                val ahora = enPlazo(PLAZO_CAPTURAR_MS) { saves.leerPartida() }?.takeIf { it.isNotEmpty() }?.contentHashCode()
+                val leida = enPlazo(PLAZO_CAPTURAR_MS) { saves.leerPartida() }
+                sinRespuesta = if (leida == null) sinRespuesta + 1 else 0
+                val ahora = leida?.takeIf { it.isNotEmpty() }?.contentHashCode()
                 // Se espera a que deje de cambiar, para no pillar al juego a medio guardar.
                 if (ahora != null && ahora == anterior && ahora != guardada) {
                     withContext(NonCancellable) {
@@ -405,6 +409,7 @@ class BaseGameScreenViewModel(
         private const val JUGADO_MINIMO_MS = 15_000L
         private const val VIGILAR_DESDE_MS = 10_000L
         private const val VIGILAR_CADA_MS = 4_000L
+        private const val VIGILAR_INTENTOS = 3
     }
 
     fun requestBackgroundSave() {

@@ -17,6 +17,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -141,6 +142,15 @@ class GameLauncher(
                 .setOnCancelListener { respuesta.complete(null) }
                 .show()
         }
+        // Si la pantalla se va (al girar el móvil), el diálogo desaparece sin avisar.
+        while (!respuesta.isCompleted) {
+            delay(MIRAR_CADA_MS)
+            if (activity.isDestroyed) respuesta.complete(null)
+        }
         return respuesta.await()
+    }
+
+    companion object {
+        private const val MIRAR_CADA_MS = 200L
     }
 }
