@@ -200,25 +200,27 @@ dos=$(primer_byte "$srm")
 # salir con el menú
 adb shell input keyevent KEYCODE_BACK; sleep 3
 cap 15-menu-de-antes
-d=$(busca_texto "Salir"); [ -z "$d" ] && d=$(texto "Quit")
+d=$(busca_texto "Cerrar"); [ -z "$d" ] && d=$(texto "Quit")
 toca $d 6
 espera_sin_proceso game 12 && bien "al salir se cierra el proceso del juego" || mal "el proceso del juego sigue abierto al salir"
 tres=$(primer_byte "$srm")
 apunta "      primer byte con el de antes: $dos, y al salir: $tres"
 { [ "$tres" = "1" ] || [ "$tres" = "0" ]; } && bien "la partida es la misma en los dos" || mal "la partida no es la misma: $tres"
 
-# 5. Un juego colgado
+# 5. Quitar la app de recientes jugando, y un juego colgado
+quitar_de_recientes() { # como hace la gente: ir a la pantalla de inicio y deslizar la app
+	local t
+	adb shell input keyevent KEYCODE_HOME; sleep 2
+	t=$(adb shell dumpsys activity recents | grep -oE "Recent #[0-9]+: Task\{[^}]*$PKG[^}]*" | grep -oE "#[0-9]+ type" | grep -oE "[0-9]+" | head -1)
+	adb shell am stack remove "${t:-0}" > /dev/null 2>&1
+}
 colgado() { # proceso, texto
 	local p
 	p=$(pid "$1")
 	if [ -z "$p" ]; then mal "($2) no hay proceso que colgar"; return; fi
 	adb shell kill -STOP "$p"
 	sleep 1
-	adb shell input keyevent KEYCODE_HOME; sleep 2
-	# quitar la app de la lista de recientes, como hace la gente, y volver a entrar
-	local t
-	t=$(adb shell dumpsys activity recents | grep -oE "Recent #[0-9]+: Task\{[^}]*$PKG[^}]*" | grep -oE "#[0-9]+ type" | grep -oE "[0-9]+" | head -1)
-	adb shell am stack remove "${t:-0}" > /dev/null 2>&1
+	quitar_de_recientes
 	sleep 2
 	apunta "      ($2) colgado $p; después de quitar la app de recientes: $(pid "$1")"
 	inicio 5
@@ -243,6 +245,20 @@ salir_panther() {
 inicio 4
 largo $(busca_texto Partida) 2
 toca $(busca_texto "Abrir con el emulador de antes") 10
+[ -n "$(pid game)" ] || mal "no se ha abierto el de antes para quitarlo de recientes"
+quitar_de_recientes
+sleep 25   # Android vuelve a arrancar el servicio del juego al rato
+queda=$(pid game)
+[ -z "$queda" ] && bien "al quitar la app de recientes jugando no queda ningún juego abierto" || mal "queda el proceso $queda del juego"
+inicio 5
+abrir Colores 8
+cap 15b-tras-quitar-de-recientes
+delante | grep -q JuegoPanther && bien "y se puede abrir otro juego" || mal "no deja abrir otro: $(delante)"
+salir_panther
+
+inicio 4
+largo $(busca_texto Partida) 2
+toca $(busca_texto "Abrir con el emulador de antes") 10
 colgado game "el de antes" 16-colgado-antes
 salir_panther
 inicio 4
@@ -253,6 +269,7 @@ salir_panther
 # GB con Panther
 inicio 4
 toca $(busca_texto Inicio) 2
+adb shell input swipe 540 1700 540 700 400; sleep 2   # está más abajo
 abrir Verde 8
 cap 18-game-boy
 [ -n "$(pid panther)" ] && bien "un juego de Game Boy se abre con Panther" || mal "Game Boy no se abre con Panther"

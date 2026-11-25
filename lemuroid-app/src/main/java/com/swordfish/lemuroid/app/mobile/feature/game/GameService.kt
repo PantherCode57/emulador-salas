@@ -31,6 +31,17 @@ class GameService : DaggerService() {
 
     override fun onCreate() {
         super.onCreate()
+        // Pokemulador: el servicio lo arranca el juego al abrirse. Si no hay juego es que Android lo ha
+        // vuelto a arrancar solo, en un proceso nuevo (pasa al quitar la app de recientes jugando): ese
+        // proceso sin juego se quedaba para siempre y no dejaba abrir ninguno.
+        if (BaseGameActivity.abiertas == 0) {
+            Timber.i("GameService: no hay juego, se cierra el proceso")
+            stopSelf() // y que no lo arranque más
+            thread(name = "sin-juego", isDaemon = true) {
+                Thread.sleep(PLAZO_SIN_JUEGO_MS)
+                if (BaseGameActivity.abiertas == 0) Process.killProcess(Process.myPid())
+            }
+        }
         serviceScope.launch {
             awaitTermination()
             hideNotification()
@@ -96,6 +107,7 @@ class GameService : DaggerService() {
         /** Pase lo que pase, el proceso del juego se acaba este tiempo después de pedirlo. */
         private const val PLAZO_FINAL_MS = 9000L
         private const val PLAZO_SALIR_MS = 1500L
+        private const val PLAZO_SIN_JUEGO_MS = 1500L
         private const val ESPERA_TAREA_QUITADA_MS = 3000L
 
         private data class GameProcessTask(

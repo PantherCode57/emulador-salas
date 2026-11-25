@@ -133,8 +133,12 @@ static void tumbado(int w, int h) {
 	zona.x += borde, zona.w -= 2 * borde;
 	zona.y += borde, zona.h -= 2 * borde;
 #endif
-	int xl = (lado + zona.x) / 2;
-	columnas(h, u, xl, w - xl, (float)(zona.x - lado));
+	int dentro = zona.x; /* hasta donde llegan las columnas de botones */
+#ifdef TEMA_POKEDEX
+	dentro -= (int)(0.045f * u); /* (el marco de la pantalla) */
+#endif
+	int xl = (lado + dentro) / 2;
+	columnas(h, u, xl, w - xl, (float)(dentro - lado));
 	encima = false;
 	cabecera_h = 0;
 }
@@ -350,7 +354,11 @@ static SDL_Texture *pintar(SDL_Renderer *p, const struct control *k, bool pulsad
 		if (k->grande)
 			texto_centrado(&l, w, h, LETRA_NEGRITA, (int)(h * 0.5f), pulsado ? BLANCO : TEXTO, k->texto);
 		else
-			texto_centrado(&l, w, h, LETRA_NORMAL, (int)(h * 0.4f), pulsado ? BLANCO : TEXTO_SUAVE, k->texto);
+			texto_centrado(&l, w, h, LETRA_NORMAL, (int)(h * 0.4f),
+#ifdef TEMA_POKEDEX
+			               pulsado && k == &c[C_RAPIDO] ? HONDO : k == &c[C_MENU] ? BLANCO :
+#endif
+			               pulsado ? BLANCO : TEXTO_SUAVE, k->texto);
 		break;
 	case CRUZ: {
 		int a = (int)(w * 0.34f);
